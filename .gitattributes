@@ -1,6 +1,11 @@
 # The last matching line wins, so the general rules come first.
+#
+# eol=lf is deliberate and slightly unusual on Windows. Without it, text=auto stores LF in the
+# repository but core.autocrlf=true checks CRLF out into the working tree -- and .editorconfig
+# declares end_of_line = lf, so the stated convention would be one the working tree does not
+# keep. Pinning it here makes the two agree on every platform.
 
-* text=auto
+* text=auto eol=lf
 *.cs text diff=csharp
 *.csproj text
 *.props text
