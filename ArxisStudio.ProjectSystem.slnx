@@ -1,8 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/ArxisStudio.ProjectSystem.Architecture.Tests/ArxisStudio.ProjectSystem.Architecture.Tests.csproj" />
-  </Folder>
-</Solution>

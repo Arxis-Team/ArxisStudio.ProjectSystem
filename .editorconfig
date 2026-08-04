@@ -8,11 +8,16 @@ indent_style = space
 indent_size = 4
 trim_trailing_whitespace = true
 
-[*.{json,yml,yaml,props,targets,csproj,slnx,config}]
+[*.{json,yml,yaml,props,targets,csproj,config}]
 indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
+
+# Matches what the tooling actually writes, so no editor "tidies" the solution into a diff.
+[*.sln]
+end_of_line = crlf
+indent_style = tab
 
 [*.cs]
 dotnet_sort_system_directives_first = true

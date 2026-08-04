@@ -10,7 +10,12 @@
 *.csproj text
 *.props text
 *.targets text
-*.slnx text
 *.md text
 *.json text
 *.yml text
+
+# The one exemption from eol=lf. Visual Studio and Rider write a solution file with a BOM and
+# CRLF and rewrite it that way whenever they touch it, so normalising it to LF would produce a
+# spurious diff every time the solution is opened. Keeping it in its native form is the quiet
+# option; it is also why this line comes last.
+*.sln text eol=crlf

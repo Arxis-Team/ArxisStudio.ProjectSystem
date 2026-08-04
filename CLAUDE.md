@@ -30,8 +30,11 @@ dotnet test tests/ArxisStudio.ProjectSystem.Tests -c Release --filter 'FullyQual
 `global.json` pins SDK `10.0.101` with `rollForward: latestFeature`; the installed SDK is
 `10.0.301` and satisfies it. Always invoke `dotnet` from the repository root.
 
-The solution is `ArxisStudio.ProjectSystem.slnx` — the XML format, which this SDK creates by
-default. There is no `.sln`.
+The solution is `ArxisStudio.ProjectSystem.sln`, the classic format — a deliberate deviation from
+the task specification, which asks for `.slnx`. See
+[ADR 0004](docs/adr/0004-the-solution-file-is-the-classic-format.md). It is the one file in the
+repository exempt from `eol=lf`, because the IDEs rewrite it with a BOM and CRLF whenever they
+touch it.
 
 ## Package boundaries
 
