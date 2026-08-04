@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ArxisStudio.ProjectSystem.Architecture.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
+  </ItemGroup>
+
+  <!-- The declarative project graph is checked from source, so the tests need the repo root. -->
+  <ItemGroup>
+    <AssemblyMetadata Include="RepositoryRoot" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../'))" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,11 @@
+# The last matching line wins, so the general rules come first.
+
+* text=auto
+*.cs text diff=csharp
+*.csproj text
+*.props text
+*.targets text
+*.slnx text
+*.md text
+*.json text
+*.yml text

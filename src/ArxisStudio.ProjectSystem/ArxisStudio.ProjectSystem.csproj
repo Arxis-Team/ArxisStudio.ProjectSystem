@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ArxisStudio.ProjectSystem</RootNamespace>
+    <Description>Provider-neutral project-system core: immutable solution and project snapshots, strongly typed identities, canonical paths, stable diagnostics, an asynchronous provider boundary and a thread-safe workspace that publishes snapshots atomically. Evaluates nothing itself — it has no MSBuild, NuGet, Roslyn or UI dependency, and a provider package supplies the data.</Description>
+  </PropertyGroup>
+
+</Project>
