@@ -23,6 +23,32 @@ snapshot's meaning depend on the state of the disk at the moment it was compared
 A consequence worth stating: a `CanonicalPath` that names a file which does not exist is a
 perfectly valid `CanonicalPath`. Reporting that as a problem is a provider's job.
 
+### Paths compare case-insensitively everywhere, including Linux
+
+`CanonicalPath` folds case on every operating system. The reasoning is in the ADR and on the type,
+and it is a genuine trade: on a case-sensitive volume, two files in one directory differing only in
+case are one path to this library.
+
+That layout already breaks MSBuild, so nothing correct is lost — but if you are building on this
+and your users are on such volumes, this is the sentence to know about.
+
+### A backslash cannot appear in a Unix file name
+
+Normalisation replaces `\` with the platform separator on every platform, because MSBuild writes
+`src\App\file.cs` into project files regardless of where the build runs, and reading that literally
+on Linux would turn a project's whole item list into one absurd file name.
+
+The cost is that a Unix file genuinely named `weird\name.cs` cannot be represented. This is the
+same trade MSBuild itself makes.
+
+### Extended-length Windows paths are distinct from their normal form
+
+`\\?\C:\src\App.csproj` and `C:\src\App.csproj` are two different `CanonicalPath` values.
+Collapsing them would be a few lines, and is deliberately not done: the `\\?\` prefix exists
+precisely to bypass Win32 path normalisation, and can name files that the normal form cannot. Two
+spellings that are *usually* the same file are not reliably the same file, and silently merging
+them would occasionally change which one was meant.
+
 ### No coalescing of refreshes
 
 Requests are serialized in arrival order and every one of them runs. Submitting *N* refreshes runs

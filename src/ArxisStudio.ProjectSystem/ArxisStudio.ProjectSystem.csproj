@@ -5,4 +5,13 @@
     <Description>Provider-neutral project-system core: immutable solution and project snapshots, strongly typed identities, canonical paths, stable diagnostics, an asynchronous provider boundary and a thread-safe workspace that publishes snapshots atomically. Evaluates nothing itself — it has no MSBuild, NuGet, Roslyn or UI dependency, and a provider package supplies the data.</Description>
   </PropertyGroup>
 
+  <!--
+    The workspace's mutation gate and its published state are internal, and the guarantees worth
+    testing about them (FIFO order, the gate being released after a failure) are not observable
+    from the public surface. Shipping API to test them would be the worse trade.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ArxisStudio.ProjectSystem.Tests" />
+  </ItemGroup>
+
 </Project>
