@@ -49,6 +49,25 @@ precisely to bypass Win32 path normalisation, and can name files that the normal
 spellings that are *usually* the same file are not reliably the same file, and silently merging
 them would occasionally change which one was meant.
 
+### Notification delivery is not ordered
+
+Publication is strictly ordered; **delivery is not**. `SnapshotChanged` is raised after the mutation
+boundary is released — which is what lets a handler start another load without deadlocking — so the
+next publication can happen while the previous notification is still being delivered. Two handlers
+can be running for two versions at once, and nothing promises the older one finishes first.
+
+A handler that keeps derived state must compare `WorkspaceChangedEventArgs.Version` against the
+version it last saw and ignore anything older. That is what the version is for. Ordering delivery
+would mean a second lock outside the gate, which introduces a deadlock a handler could reach by
+awaiting a load; the version comparison is the cheaper and safer contract.
+
+### A subscriber's failure is silent
+
+`SnapshotChanged` isolates a throwing handler: the others still run and the exception never reaches
+the caller of the load. The reasoning is in
+[ADR 0007](adr/0007-a-throwing-subscriber-is-isolated.md), and the cost is stated plainly there —
+nothing reports the failure. A handler that wants its own failures surfaced must catch them itself.
+
 ### No coalescing of refreshes
 
 Requests are serialized in arrival order and every one of them runs. Submitting *N* refreshes runs

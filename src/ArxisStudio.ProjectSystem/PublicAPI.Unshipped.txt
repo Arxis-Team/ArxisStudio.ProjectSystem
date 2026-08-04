@@ -242,6 +242,18 @@ ArxisStudio.ProjectSystem.ProjectSnapshotBuilder.ProviderName.get -> string?
 ArxisStudio.ProjectSystem.ProjectSnapshotBuilder.ProviderName.set -> void
 ArxisStudio.ProjectSystem.ProjectSnapshotBuilder.TargetFrameworks.get -> System.Collections.Generic.IList<string!>!
 ArxisStudio.ProjectSystem.ProjectSnapshotBuilder.ToSnapshot() -> ArxisStudio.ProjectSystem.ProjectSnapshot!
+ArxisStudio.ProjectSystem.ProjectWorkspace
+ArxisStudio.ProjectSystem.ProjectWorkspace.CurrentRequest.get -> ArxisStudio.ProjectSystem.WorkspaceLoadRequest?
+ArxisStudio.ProjectSystem.ProjectWorkspace.CurrentSnapshot.get -> ArxisStudio.ProjectSystem.SolutionSnapshot?
+ArxisStudio.ProjectSystem.ProjectWorkspace.CurrentVersion.get -> ArxisStudio.ProjectSystem.WorkspaceVersion
+ArxisStudio.ProjectSystem.ProjectWorkspace.DisposeAsync() -> System.Threading.Tasks.ValueTask
+ArxisStudio.ProjectSystem.ProjectWorkspace.Identity.get -> ArxisStudio.ProjectSystem.WorkspaceIdentity
+ArxisStudio.ProjectSystem.ProjectWorkspace.LoadAsync(ArxisStudio.ProjectSystem.WorkspaceLoadRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<ArxisStudio.ProjectSystem.WorkspaceLoadResult!>
+ArxisStudio.ProjectSystem.ProjectWorkspace.ProjectWorkspace(ArxisStudio.ProjectSystem.IProjectSystemProvider! provider) -> void
+ArxisStudio.ProjectSystem.ProjectWorkspace.ProjectWorkspace(System.Collections.Generic.IEnumerable<ArxisStudio.ProjectSystem.IProjectSystemProvider!>! providers) -> void
+ArxisStudio.ProjectSystem.ProjectWorkspace.Providers.get -> System.Collections.Immutable.ImmutableArray<ArxisStudio.ProjectSystem.IProjectSystemProvider!>
+ArxisStudio.ProjectSystem.ProjectWorkspace.RefreshAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<ArxisStudio.ProjectSystem.WorkspaceLoadResult!>
+ArxisStudio.ProjectSystem.ProjectWorkspace.SnapshotChanged -> System.EventHandler<ArxisStudio.ProjectSystem.WorkspaceChangedEventArgs!>?
 ArxisStudio.ProjectSystem.SolutionIdentity
 ArxisStudio.ProjectSystem.SolutionIdentity.CompareTo(ArxisStudio.ProjectSystem.SolutionIdentity other) -> int
 ArxisStudio.ProjectSystem.SolutionIdentity.Equals(ArxisStudio.ProjectSystem.SolutionIdentity other) -> bool
@@ -277,6 +289,10 @@ ArxisStudio.ProjectSystem.SolutionSnapshotBuilder.SolutionSnapshotBuilder() -> v
 ArxisStudio.ProjectSystem.SolutionSnapshotBuilder.ToSnapshot() -> ArxisStudio.ProjectSystem.SolutionSnapshot!
 ArxisStudio.ProjectSystem.SolutionSnapshotBuilder.Workspace.get -> ArxisStudio.ProjectSystem.WorkspaceIdentity
 ArxisStudio.ProjectSystem.SolutionSnapshotBuilder.Workspace.set -> void
+ArxisStudio.ProjectSystem.WorkspaceChangedEventArgs
+ArxisStudio.ProjectSystem.WorkspaceChangedEventArgs.Previous.get -> ArxisStudio.ProjectSystem.SolutionSnapshot?
+ArxisStudio.ProjectSystem.WorkspaceChangedEventArgs.Snapshot.get -> ArxisStudio.ProjectSystem.SolutionSnapshot!
+ArxisStudio.ProjectSystem.WorkspaceChangedEventArgs.Version.get -> ArxisStudio.ProjectSystem.WorkspaceVersion
 ArxisStudio.ProjectSystem.WorkspaceEntryPoint
 ArxisStudio.ProjectSystem.WorkspaceEntryPoint.Equals(ArxisStudio.ProjectSystem.WorkspaceEntryPoint other) -> bool
 ArxisStudio.ProjectSystem.WorkspaceEntryPoint.Extension.get -> string!
