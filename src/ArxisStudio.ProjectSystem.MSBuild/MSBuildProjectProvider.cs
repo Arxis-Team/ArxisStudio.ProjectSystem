@@ -30,7 +30,7 @@ namespace ArxisStudio.ProjectSystem.MSBuild;
 /// <c>docs/limitations.md</c> as the obvious thing to measure when a large solution is slow.
 /// </para>
 /// </remarks>
-public sealed class MSBuildProjectProvider : IProjectSystemProvider
+public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
 {
     /// <inheritdoc />
     public string Name => "MSBuild";
@@ -237,7 +237,7 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
         // missing workload is NETSDK1147 to everyone who has met them; renaming those into this
         // library's range would leave a caller unable to act on either without reading the message
         // text, which the diagnostics policy exists to make unnecessary.
-        foreach (EvaluationMessage message in evaluated.Messages)
+        foreach (EngineMessage message in evaluated.Messages)
         {
             diagnostics.Add(new ProjectDiagnostic(
                 message.Code,

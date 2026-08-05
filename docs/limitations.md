@@ -156,8 +156,49 @@ A reference pointing outside the solution keeps its `ProjectFilePath` and gets
 `ProjectIdentity.None`, because an identity for a project nobody opened would be a handle to
 nothing.
 
+## Restore, build, rebuild and clean
+
+### A build changes nothing the workspace knows
+
+Running one publishes no snapshot and does not advance the version, because nothing was re-read —
+the reasoning is in [ADR 0014](adr/0014-an-operation-is-not-a-mutation.md). A caller that wants the
+model to reflect what a build produced calls `RefreshAsync` itself, at a moment it chose.
+
+The cost is that this is not automatic, and a caller who forgets will read a snapshot describing the
+project as it was before. That is the deliberate trade for a version whose increment always means
+the same thing.
+
+### One build at a time, per process
+
+`BuildManager.DefaultBuildManager` is a singleton and the MSBuild provider serialises builds behind
+its own lock. Two concurrent `ExecuteAsync` calls run one after the other, and a host that uses the
+default build manager for its own purposes is sharing that singleton with this library.
+
+Parallelism across projects still happens — MSBuild's own scheduler provides it *inside* one build.
+What cannot happen is two builds at once.
+
+### Disposal does not wait for a running operation
+
+`DisposeAsync` waits for the mutation boundary, and an operation never takes it. So a workspace
+disposed while a build is running returns immediately and the build finishes on its own. There is no
+workspace state for it to corrupt, but a host that needs the process to be quiet before exiting must
+track its own operations.
+
+### A cancelled build may still have done some of the work
+
+Cancellation reaches MSBuild, which abandons its submissions, but a target that had already run has
+already run. Files written before the cancellation stay written. `OperationCanceledException` means
+"this was stopped", not "nothing happened" — a caller wanting a known state after cancelling should
+clean.
+
+### Nothing checks whether build output is stale
+
+The same gap as restore output, one level up. `OutputPath` and its kin describe where a build would
+put things, not whether what is there now came from the current source. Freshness is its own
+problem.
+
 ## Deferred by design
 
 Not limitations of the implementation so much as scope boundaries, listed so nobody looks for
-them: restore and build execution, file watching, assembly loading, `AssemblyLoadContext`
-management, package-manager operations, project-file editing, and any UI.
+them: file watching, assembly loading, `AssemblyLoadContext` management, package-manager
+operations, project-file editing, and any UI.

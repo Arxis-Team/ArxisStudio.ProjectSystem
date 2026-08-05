@@ -10,8 +10,9 @@ stable, immutable, and safe to read from several threads while something else re
 
 ## Status
 
-**Milestone 3 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
-solution or a standalone project by evaluating it.
+**Milestone 4 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
+solution or a standalone project by evaluating it, and runs restore, build, rebuild and clean over
+it.
 
 What works today: open a `.sln`, a `.slnx`, or a single `.csproj`, and get an immutable snapshot of
 the projects with their target frameworks, configurations, declared references, items, evaluated
@@ -25,8 +26,26 @@ runtime because a package can be compiled against a reference assembly and contr
 time. A project that declares packages and has not been restored says so as a warning rather than
 failing.
 
-What does not yet: restore and build execution, staleness detection, and file watching. Those are
-Milestones 4 onwards, and the core already models them so a provider can fill them in.
+And it runs work: restore, build, rebuild and clean go through MSBuild's own engine, reporting
+progress as projects start and coming back with the engine's diagnostics attributed to file and
+line. A failing build is a failed result carrying `CS0103`, not an exception.
+
+```csharp
+ProjectOperationResult result = await workspace.ExecuteAsync(new ProjectOperationRequest
+{
+    Kind = ProjectOperationKind.Build,
+    Workspace = workspace.Identity,
+    EntryPointPath = CanonicalPath.Create(@"C:\src\App\App.sln"),
+});
+```
+
+An operation changes what is on disk, not what the workspace knows, so it publishes no snapshot and
+does not advance the version — call `RefreshAsync` when you want the model to catch up.
+[ADR 0014](docs/adr/0014-an-operation-is-not-a-mutation.md) says why that is the deliberate answer
+rather than an omission.
+
+What does not yet: staleness detection and file watching. Those are Milestone 5 onwards, and the
+core already models them so a provider can fill them in.
 
 ## A minimal example
 
@@ -181,8 +200,11 @@ codes are the contract.
 | `APS4xxx` | NuGet package-management operations |
 | `APS5xxx` | Integration adapters |
 
-`APS1xxx` and `APS2xxx` have implemented codes; the rest are reserved. A code with no producer is a
-promise the library has not made, so none is declared.
+`APS1xxx`, `APS2xxx` and `APS3xxx` have implemented codes; the rest are reserved. A code with no
+producer is a promise the library has not made, so none is declared. The ranges divide by concern
+rather than by assembly: the MSBuild package raises `APS2xxx` for evaluating a project and `APS3xxx`
+for building one, because a consumer routing on "the build failed" should not have to know which
+package happened to run it.
 
 A diagnostic may also carry **the engine's own code** — `MSB4011` for a duplicate import,
 `NETSDK1147` for a missing workload — when the engine is what noticed the problem. Renaming those
@@ -199,8 +221,8 @@ paths are values it normalizes and compares, never files it opens.
 **`ArxisStudio.ProjectSystem.MSBuild` does execute things**, and that difference is much of why they
 are separate packages. Evaluating a project runs SDK resolvers, imports and property functions
 declared by that project, in this process — see
-[ADR 0009](docs/adr/0009-evaluation-happens-in-process.md). Restore and build, when they arrive,
-will run tasks and tools as well.
+[ADR 0009](docs/adr/0009-evaluation-happens-in-process.md). Building one goes further still: targets
+run tasks, and tasks are arbitrary code the project chose, including whatever a restore downloaded.
 
 **So do not open a project you do not trust.** There is no sandbox here and none is claimed. Doing
 that safely needs an explicit trust and process-isolation design, which is why the model was built
@@ -212,11 +234,11 @@ security boundary and is not offered as one.
 
 | Milestone | Scope |
 | --- | --- |
-| **0** | Core model, snapshots, diagnostics, provider boundary, workspace — *this one* |
+| 0 | Core model, snapshots, diagnostics, provider boundary, workspace |
 | 1 | `ArxisStudio.ProjectSystem.MSBuild`: locate and host MSBuild, open standalone projects |
 | 2 | Solutions and the project graph: `.sln`, `.slnx`, solution folders, configurations |
 | 3 | References and restore assets, `project.assets.json`, SDK and workload diagnostics |
-| 4 | Explicit restore and build operations with structured progress |
+| **4** | Explicit restore and build operations with structured progress — *this one* |
 | 5 | File watching, debouncing, invalidation, incremental refresh |
 | 6 | `ArxisStudio.ProjectSystem.NuGet`: search, install, update, remove |
 | 7 | `ArxisStudio.ProjectSystem.Markup.Xaml`: optional adapter onto the Markup resolvers |

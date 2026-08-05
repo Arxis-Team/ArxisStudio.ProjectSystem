@@ -9,9 +9,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 roadmap defines what follows. `README.md` is the public statement of what the packages are. Where
 they disagree, the task specification wins and the README is what gets corrected.
 
-Development proceeds one milestone at a time. Milestone 1 (MSBuild, standalone projects) is open;
-Milestone 2 is solutions and the project graph. Do not ship placeholder API for a concept a later
-milestone owns.
+Development proceeds one milestone at a time. Milestones 0–3 are complete; Milestone 4 (restore and
+build execution) is open, and Milestone 5 is file watching and invalidation. Do not ship placeholder
+API for a concept a later milestone owns.
 
 ## Build and test
 
@@ -30,10 +30,11 @@ dotnet test tests/ArxisStudio.ProjectSystem.Tests -c Release --filter 'FullyQual
 The MSBuild provider brings one rule the rest of the repository does not have. `MSBuildLocator` must
 run before any `Microsoft.Build` type is loaded, and the runtime loads an assembly when a method
 *naming* its types is first entered — not when the line executes. So those names live in
-`MSBuildProjectEvaluator` alone, `MSBuildEnvironment` names only the locator's own, and
-`MSBuildProjectProvider` names neither. Adding a `catch (InvalidProjectFileException)` to the
-provider would break it, silently, somewhere unrelated. That is why the evaluator has a `Try` shape
-rather than throwing.
+`MSBuildProjectEvaluator` and `MSBuildOperationRunner` alone, `MSBuildEnvironment` names only the
+locator's own, and `MSBuildProjectProvider` names none of them. Adding a
+`catch (InvalidProjectFileException)` to the provider would break it, silently, somewhere unrelated.
+That is why the evaluator has a `Try` shape rather than throwing, and why both engine-facing types
+are `[MethodImpl(MethodImplOptions.NoInlining)]`.
 
 `global.json` pins SDK `10.0.101` with `rollForward: latestFeature`; the installed SDK is
 `10.0.301` and satisfies it. Always invoke `dotnet` from the repository root.
@@ -111,6 +112,13 @@ Code ranges: `APS1xxx` core, `APS2xxx` MSBuild, `APS3xxx` restore/build, `APS4xx
 `APS5xxx` adapters. **Declare no code nothing raises** — a code with no producer is a promise the
 library has not made.
 
+The ranges divide by **concern, not by assembly**: the MSBuild package holds two catalogues,
+`MSBuildDiagnosticCodes` for evaluating a project and `OperationDiagnosticCodes` for building one,
+because a consumer routing on "the build failed" should not have to know which package ran it. A
+condition that means the same thing in both keeps one code — a missing project file is `APS2003`
+whether it was going to be evaluated or built. `DiagnosticCatalogueTests` enforces the ranges per
+catalogue, so a new one must be listed there with the range it owns.
+
 A diagnostic may also carry an engine's own code — `MSB4011`, `NETSDK1147` — when the engine is what
 noticed. The split is by who noticed, not by who reported, and [ADR 0013](docs/adr/0013-a-provider-may-keep-its-engines-diagnostic-codes.md)
 says why renaming those would break the rule it appears to serve.
@@ -143,6 +151,11 @@ rediscovered here: state and disposal checks happen **inside** the gate and the 
 way in is not consulted; the disposal flag is an `Interlocked` int, not a `bool`, because disposal
 and the operations it races are on different threads by design; and events are raised after
 publication and **outside** the gate, because a subscriber is arbitrary user code.
+
+**Restore and build are not mutations and do not take the gate.** They change what is on disk, not
+what the workspace knows, so they publish nothing, do not advance the version, and `DisposeAsync`
+does not wait for them — [ADR 0014](docs/adr/0014-an-operation-is-not-a-mutation.md). Anything that
+re-reads a project belongs on the load path instead, behind the gate, where it can publish.
 
 ## Test determinism
 
@@ -184,6 +197,7 @@ What is recorded so far:
 | [0011](docs/adr/0011-these-libraries-are-referenced-not-published.md) | Referenced directly, not published, so the packaging apparatus is gone |
 | [0012](docs/adr/0012-restore-assets-are-read-not-resolved.md) | `project.assets.json` is read by hand, so no NuGet client library enters |
 | [0013](docs/adr/0013-a-provider-may-keep-its-engines-diagnostic-codes.md) | A provider passes its engine's codes through rather than renaming them |
+| [0014](docs/adr/0014-an-operation-is-not-a-mutation.md) | Building changes disk, not the model, so it stays outside the mutation boundary |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

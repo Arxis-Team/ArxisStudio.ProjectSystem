@@ -6,7 +6,9 @@ namespace ArxisStudio.ProjectSystem.MSBuild;
 /// <remarks>
 /// <para>
 /// <c>APS2xxx</c> is the range reserved for MSBuild discovery and evaluation. The core owns
-/// <c>APS1xxx</c>; the ranges above this one belong to packages that do not exist yet.
+/// <c>APS1xxx</c>, and running targets rather than evaluating them is <c>APS3xxx</c> in
+/// <see cref="OperationDiagnosticCodes"/>; the ranges above that belong to packages that do not
+/// exist yet.
 /// </para>
 /// <para>
 /// Only codes something actually raises are declared. A code with no producer is a promise the

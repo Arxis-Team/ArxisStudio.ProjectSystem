@@ -125,8 +125,8 @@ internal static class MSBuildProjectEvaluator
     /// </remarks>
     private sealed class EvaluationListener : ILogger
     {
-        public ImmutableArray<EvaluationMessage>.Builder Messages { get; } =
-            ImmutableArray.CreateBuilder<EvaluationMessage>();
+        public ImmutableArray<EngineMessage>.Builder Messages { get; } =
+            ImmutableArray.CreateBuilder<EngineMessage>();
 
         public LoggerVerbosity Verbosity { get; set; } = LoggerVerbosity.Quiet;
 
@@ -144,7 +144,7 @@ internal static class MSBuildProjectEvaluator
 
         private void Add(string? code, string? message, bool isError, string? file, int line, int column)
         {
-            Messages.Add(new EvaluationMessage
+            Messages.Add(new EngineMessage
             {
                 Code = string.IsNullOrWhiteSpace(code) ? "MSBUILD" : code,
                 Message = message ?? string.Empty,

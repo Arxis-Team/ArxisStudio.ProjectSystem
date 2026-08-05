@@ -1,0 +1,28 @@
+<!--
+  A plain MSBuild project with no SDK, so it builds without a restore, without packages and without
+  the network. That is what lets the build path be exercised for real under the contract's rule that
+  tests must not depend on a package cache.
+-->
+<Project>
+
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+  </PropertyGroup>
+
+  <Target Name="Build">
+    <Message Text="Buildable built in $(Configuration)" Importance="High" />
+    <Warning Text="a warning that does not fail the build" Code="APSTEST01" Condition="'$(EmitWarning)' == 'true'" />
+    <Error Text="asked to fail" Code="APSTEST02" Condition="'$(EmitError)' == 'true'" />
+  </Target>
+
+  <Target Name="Rebuild" DependsOnTargets="Clean;Build" />
+
+  <Target Name="Clean">
+    <Message Text="Buildable cleaned" Importance="High" />
+  </Target>
+
+  <Target Name="Restore">
+    <Message Text="Buildable restored" Importance="High" />
+  </Target>
+
+</Project>

@@ -11,8 +11,8 @@ Every example uses only public API.
 and the workspace. It **reads nothing** — no `.sln`, `.slnx` or `.csproj` parsing, no MSBuild — and a
 tool that only wants to hold, cache or render a solution model references it alone.
 
-`ArxisStudio.ProjectSystem.MSBuild` is what fills the model in, by evaluating real projects. Reference
-it when you want to open something on disk.
+`ArxisStudio.ProjectSystem.MSBuild` is what fills the model in, by evaluating real projects, and what
+runs restore and build over them. Reference it when you want to open or build something on disk.
 
 Implementing `IProjectSystemProvider` yourself remains useful after that: it is how a tool built on
 this model gets tested without an SDK on the machine, and the example below is exactly that.
@@ -26,7 +26,8 @@ ProjectWorkspace          owns the current snapshot, its version, and the order 
 ```
 
 `IProjectSystemProvider` is what fills that in. The workspace calls it, checks what comes back, and
-publishes.
+publishes. `IProjectOperationProvider` is the separate, optional capability for changing what is on
+disk — restore, build, rebuild, clean — and it publishes nothing.
 
 ## Ten minutes end to end
 
@@ -203,6 +204,49 @@ Nothing here checks that the restore output is current. If a `PackageReference` 
 last restore, this reports the previous resolution — see
 [known limitations](../limitations.md).
 
+## Running restore and build
+
+Executing is a **second, optional capability**. `IProjectSystemProvider` reads projects;
+`IProjectOperationProvider` does things to them, and a provider may implement one, the other, or
+both. `MSBuildProjectProvider` implements both.
+
+```csharp
+ProjectOperationResult result = await workspace.ExecuteAsync(
+    new ProjectOperationRequest
+    {
+        Kind = ProjectOperationKind.Build,
+        Workspace = workspace.Identity,
+        EntryPointPath = CanonicalPath.Create(@"C:\src\App\App.sln"),
+        Configuration = "Release",
+    },
+    new Progress<ProjectOperationProgress>(p => Console.WriteLine(p.Message)));
+```
+
+`Kind` is `Restore`, `Build`, `Rebuild` or `Clean`. `Configuration`, `Platform` and `TargetFramework`
+become global properties, and `GlobalProperties` carries anything else. Asking for something no
+provider can do is `APS1004` — an ordinary diagnostic, because a read-only provider is a legitimate
+configuration rather than a broken one.
+
+Three things about this that differ from loading, all of them deliberate and recorded in
+[ADR 0014](../adr/0014-an-operation-is-not-a-mutation.md):
+
+- **It does not take the mutation boundary.** A build takes minutes, and stalling every read behind
+  one would freeze a designer for the length of the build. Loads and refreshes run alongside it.
+- **It publishes nothing and does not advance the version.** A build changed what is on disk, not
+  what the workspace knows — nothing was re-read. Call `RefreshAsync` yourself when you want the
+  model to catch up. This is why a version increment always means the same thing.
+- **`DisposeAsync` does not wait for it.** There is no workspace state for a running operation to
+  corrupt, so disposal returns at once and the build finishes on its own. A host that needs quiet
+  before exiting tracks its own operations.
+
+The MSBuild provider serialises builds behind a process-wide lock, because
+`BuildManager.DefaultBuildManager` is a singleton: **one build at a time per process**. Parallelism
+across projects still happens — MSBuild's own scheduler provides it inside one build.
+
+Cancellation reaches the engine, which abandons its submissions. It always surfaces as
+`OperationCanceledException`, never as a failed result — but a target that had already run has
+already run, so files written before the cancellation stay written.
+
 ## Results and diagnostics
 
 `WorkspaceLoadResult.Status` is computed from whether there is a snapshot and whether anything
@@ -216,6 +260,11 @@ with one broken project reports `SucceededWithErrors` — never `Succeeded`. See
 | `SucceededWithErrors` | A usable snapshot, and something in it failed |
 | `Failed` | No usable snapshot; `Snapshot` is `null` |
 
+`ProjectOperationResult.Status` follows the same discipline with only two outcomes — `Succeeded` or
+`Failed` — because a build either produced its outputs or did not. The constructors enforce the
+agreement in both directions: `Succeeded` with an error diagnostic throws, and so does `Failed`
+without one. Warnings do not fail an operation.
+
 Ordinary problems are `ProjectDiagnostic` values with a stable code, never exceptions. Branch on
 `Code`, never on `Message` — the message is for people and may be reworded.
 
@@ -227,9 +276,17 @@ Ordinary problems are `ProjectDiagnostic` values with a stable code, never excep
 | `APS4xxx` | NuGet package-management operations |
 | `APS5xxx` | Integration adapters |
 
-The core implements three: `APS1001` (no provider can open this), `APS1002` (a provider threw),
-`APS1003` (a provider returned something that breaks the boundary's contract). Codes with no
-producer are not declared.
+The ranges divide by concern rather than by assembly, so the MSBuild package raises `APS2xxx` for
+evaluating a project and `APS3xxx` for building one: a consumer routing on "the build failed" should
+not have to know which package happened to run it.
+
+The core implements four: `APS1001` (no provider can open this), `APS1002` (a provider threw),
+`APS1003` (a provider returned something that breaks the boundary's contract), `APS1004` (no
+provider can do that to a project). Codes with no producer are not declared.
+
+Most of what a failed build reports arrives under **the engine's own codes** — `CS0103`, `MSB3021` —
+rather than an `APS` one, attributed to the file and line the engine named. See
+[ADR 0013](../adr/0013-a-provider-may-keep-its-engines-diagnostic-codes.md).
 
 Exceptions are reserved for invalid API use, cancellation, disposed objects and broken invariants.
 Cancellation is always `OperationCanceledException`, never a diagnostic.
@@ -258,6 +315,9 @@ Both are recorded in [ADR 0007](../adr/0007-a-throwing-subscriber-is-isolated.md
 asynchronous. Work queued behind disposal gets `ObjectDisposedException`. Providers are not disposed;
 the workspace did not create them.
 
+None of this applies to `ExecuteAsync`, which never takes the boundary: builds run alongside loads,
+in no particular order relative to them, and disposal does not wait for one.
+
 ## Writing a provider
 
 The contract, in the order it matters:
@@ -277,6 +337,12 @@ The contract, in the order it matters:
 The workspace checks what comes back and refuses a snapshot stamped with another workspace's
 identity, one answering a different entry point, or one containing duplicate project identities —
 each as `APS1003`. Those are the shapes that would silently corrupt identity determinism.
+
+Implementing `IProjectOperationProvider` as well is optional and follows the same first two rules —
+diagnostics rather than exceptions, and let cancellation through. Two more are specific to it:
+**answer `CanExecute` honestly**, since the workspace routes on it and a wrong answer turns into a
+failure a caller cannot interpret; and **never return `null`**, which is `APS1003` like any other
+broken result.
 
 ## Further reading
 

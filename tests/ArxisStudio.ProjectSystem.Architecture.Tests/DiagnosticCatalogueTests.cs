@@ -13,17 +13,19 @@ namespace ArxisStudio.ProjectSystem.Architecture.Tests;
 /// a code outside its package's range, or one nobody can look up is a defect in the contract itself.
 /// </summary>
 /// <remarks>
-/// Every package that raises diagnostics owns a numeric range and declares a catalogue. Both are
-/// listed here, so a package that grows a catalogue without a range — or takes a number from
-/// somebody else's — fails rather than ships.
+/// Every catalogue owns a numeric range, and the ranges are divided by concern rather than by
+/// assembly — one package may hold two catalogues, as the MSBuild provider does for evaluating a
+/// project and for building one. All of them are listed here, so a catalogue that appears without a
+/// range, or takes a number from somebody else's, fails rather than ships.
 /// </remarks>
 public sealed class DiagnosticCatalogueTests
 {
-    /// <summary>Package, the type holding its codes, and the range it owns.</summary>
+    /// <summary>Package, the type holding a set of codes, and the range that set owns.</summary>
     private static readonly (string Package, string Catalogue, string Range)[] All =
     [
         (RepositoryLayout.CorePackage, "ProjectDiagnosticCodes", "^APS1[0-9]{3}$"),
         (RepositoryLayout.MSBuildPackage, "MSBuildDiagnosticCodes", "^APS2[0-9]{3}$"),
+        (RepositoryLayout.MSBuildPackage, "OperationDiagnosticCodes", "^APS3[0-9]{3}$"),
     ];
 
     public static TheoryData<string, string, string> Catalogues
@@ -71,10 +73,10 @@ public sealed class DiagnosticCatalogueTests
     }
 
     /// <summary>
-    /// No code may be shared between packages, whatever range it claims to be in.
+    /// No code may be shared between catalogues, whatever range it claims to be in.
     /// </summary>
     [Fact]
-    public void NoCode_IsClaimedByTwoPackages()
+    public void NoCode_IsClaimedTwice()
     {
         List<string> all = [.. All
             .SelectMany(static row => Codes(row.Package, row.Catalogue))
@@ -129,6 +131,8 @@ public sealed class DiagnosticCatalogueTests
     [InlineData(RepositoryLayout.MSBuildPackage, "MSBuildDiagnosticCodes", "MSBuildNotFound")]
     [InlineData(RepositoryLayout.MSBuildPackage, "MSBuildDiagnosticCodes", "EvaluationFailed")]
     [InlineData(RepositoryLayout.MSBuildPackage, "MSBuildDiagnosticCodes", "ProjectFileNotFound")]
+    [InlineData(RepositoryLayout.CorePackage, "ProjectDiagnosticCodes", "UnsupportedOperation")]
+    [InlineData(RepositoryLayout.MSBuildPackage, "OperationDiagnosticCodes", "OperationFailed")]
     public void TheCodesAMilestoneNeeds_Exist(string package, string catalogue, string name)
     {
         Assert.Contains(Codes(package, catalogue), pair => string.Equals(pair.Name, name, StringComparison.Ordinal));

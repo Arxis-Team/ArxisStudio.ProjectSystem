@@ -35,7 +35,7 @@ internal sealed record EvaluatedProject
     } = [];
 
     /// <summary>Gets what the engine said while evaluating.</summary>
-    public ImmutableArray<EvaluationMessage> Messages
+    public ImmutableArray<EngineMessage> Messages
     {
         get => field;
         init => field = value.IsDefault ? [] : value;
@@ -43,15 +43,16 @@ internal sealed record EvaluatedProject
 }
 
 /// <summary>
-/// Something the engine reported while evaluating, in a shape that owes nothing to MSBuild.
+/// Something the engine reported, in a shape that owes nothing to MSBuild.
 /// </summary>
 /// <remarks>
-/// An unresolvable SDK, a missing import, a workload the machine does not have: MSBuild notices all
-/// of these and names them with codes of its own that consumers already know. Those names are kept
-/// rather than replaced, because a code the caller can act on is worth more than a code that merely
-/// belongs to this library's range.
+/// An unresolvable SDK, a missing import, a workload the machine does not have, a compiler error:
+/// MSBuild notices all of these and names them with codes of its own that consumers already know.
+/// Those names are kept rather than replaced, because a code the caller can act on is worth more
+/// than a code that merely belongs to this library's range. Used for evaluation and for builds,
+/// which report through the same mechanism.
 /// </remarks>
-internal sealed record EvaluationMessage
+internal sealed record EngineMessage
 {
     /// <summary>Gets the engine's own code, such as <c>MSB4236</c> or <c>NETSDK1147</c>.</summary>
     public required string Code { get; init; }
