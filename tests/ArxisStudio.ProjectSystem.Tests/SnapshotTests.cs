@@ -243,6 +243,104 @@ public sealed class SnapshotTests
         Assert.True(MinimalSolution().Solution.IsEmpty);
     }
 
+    [Fact]
+    public void ASolutionWithoutFolders_HasEmptyOnesRatherThanDefault()
+    {
+        SolutionSnapshot solution = MinimalSolution();
+
+        Assert.False(solution.Folders.IsDefault);
+        Assert.Empty(solution.Folders);
+        Assert.Empty(solution.Configurations);
+        Assert.Empty(solution.Platforms);
+        Assert.False(solution.TryGetFolder(Identity(), out SolutionFolder? none));
+        Assert.Null(none);
+    }
+
+    [Fact]
+    public void AProjectInAFolder_IsFoundThroughIt()
+    {
+        var builder = new SolutionSnapshotBuilder
+        {
+            Workspace = Workspace,
+            Name = "App",
+            Request = Request(),
+        };
+
+        builder.Projects.Add(MinimalProject());
+        builder.Folders.Add(new SolutionFolder
+        {
+            Name = "Libraries",
+            Path = "/Libraries/",
+            Projects = [Identity()],
+        });
+        builder.Configurations.Add("Debug");
+        builder.Platforms.Add("Any CPU");
+
+        SolutionSnapshot solution = builder.ToSnapshot();
+
+        Assert.True(solution.TryGetFolder(Identity(), out SolutionFolder? folder));
+        Assert.Equal("Libraries", folder.Name);
+        Assert.Equal("/Libraries/", folder.Path);
+        Assert.Equal("/Libraries/", folder.ToString());
+        Assert.Equal(["Debug"], solution.Configurations);
+        Assert.Equal(["Any CPU"], solution.Platforms);
+    }
+
+    /// <summary>
+    /// Not hypothetical: MSBuild's own <c>SolutionFile</c> produces this shape for <c>.slnx</c>,
+    /// where a project carries a parent folder guid that resolves to nothing.
+    /// </summary>
+    [Fact]
+    public void AFolderNamingAProjectTheSnapshotDoesNotHold_Throws()
+    {
+        var builder = new SolutionSnapshotBuilder
+        {
+            Workspace = Workspace,
+            Name = "App",
+            Request = Request(),
+        };
+
+        builder.Projects.Add(MinimalProject());
+        builder.Folders.Add(new SolutionFolder
+        {
+            Name = "Ghosts",
+            Path = "/Ghosts/",
+            Projects = [ProjectIdentity.Create(Workspace, TestPaths.Project("Absent"))],
+        });
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(builder.ToSnapshot);
+
+        Assert.Contains("not in this snapshot", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AFolderGivenADefaultArray_StoresAnEmptyOne()
+    {
+        var folder = new SolutionFolder { Name = "Empty", Path = "/Empty/", Projects = default };
+
+        Assert.False(folder.Projects.IsDefault);
+        Assert.Empty(folder.Projects);
+    }
+
+    [Fact]
+    public void WithVersion_CarriesTheFoldersAcross()
+    {
+        var builder = new SolutionSnapshotBuilder
+        {
+            Workspace = Workspace,
+            Name = "App",
+            Request = Request(),
+        };
+
+        builder.Projects.Add(MinimalProject());
+        builder.Folders.Add(new SolutionFolder { Name = "L", Path = "/L/", Projects = [Identity()] });
+
+        SolutionSnapshot published = builder.ToSnapshot().WithVersion(WorkspaceVersion.Initial);
+
+        Assert.True(published.TryGetFolder(Identity(), out SolutionFolder? folder));
+        Assert.Equal("L", folder.Name);
+    }
+
     private static void AssertNoDefaultArrays(object instance)
     {
         PropertyInfo[] arrays = [.. instance.GetType()

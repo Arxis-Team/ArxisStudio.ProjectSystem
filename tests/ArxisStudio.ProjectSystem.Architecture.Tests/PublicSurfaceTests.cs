@@ -178,6 +178,21 @@ public sealed class PublicSurfaceTests
     /// is the door, not a leak through the wall. What matters is that nothing the model
     /// <em>stores</em> is a bare path.
     /// </remarks>
+    /// <summary>
+    /// Members that are named after a path and are deliberately not one.
+    /// </summary>
+    /// <remarks>
+    /// The criterion for being here is narrow: the value must name something that <b>cannot</b> be a
+    /// file, so that no amount of use could turn it into a file-system path by accident. A solution
+    /// folder's path — <c>/src/Libraries/</c> — is a position in a display tree that exists nowhere
+    /// on disk, which is exactly that. Anything that merely "usually is not" a file does not qualify
+    /// and should be a <c>CanonicalPath</c>.
+    /// </remarks>
+    private static readonly string[] NotFileSystemPaths =
+    [
+        "SolutionFolder.Path",
+    ];
+
     [Fact]
     public void NoPublicProperty_NamedAfterAPath_IsAString()
     {
@@ -185,7 +200,8 @@ public sealed class PublicSurfaceTests
             .Where(static pair => pair.Property.PropertyType == typeof(string))
             .Where(static pair => pair.Property.Name.EndsWith("Path", StringComparison.Ordinal)
                 || pair.Property.Name.EndsWith("Directory", StringComparison.Ordinal))
-            .Select(static pair => $"{pair.Owner.Name}.{pair.Property.Name}")];
+            .Select(static pair => $"{pair.Owner.Name}.{pair.Property.Name}")
+            .Where(static member => !NotFileSystemPaths.Contains(member, StringComparer.Ordinal))];
 
         Assert.True(
             offenders.Count == 0,

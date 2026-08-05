@@ -30,6 +30,7 @@ public sealed class SolutionSnapshot
 {
     private readonly FrozenDictionary<ProjectIdentity, ProjectSnapshot> _byIdentity;
     private readonly FrozenDictionary<CanonicalPath, ProjectSnapshot> _byPath;
+    private readonly FrozenDictionary<ProjectIdentity, SolutionFolder> _folderByProject;
 
     internal SolutionSnapshot(
         WorkspaceIdentity workspace,
@@ -39,6 +40,9 @@ public sealed class SolutionSnapshot
         string? providerName,
         WorkspaceLoadRequest request,
         ImmutableArray<ProjectSnapshot> projects,
+        ImmutableArray<SolutionFolder> folders,
+        ImmutableArray<string> configurations,
+        ImmutableArray<string> platforms,
         ImmutableArray<ProjectDiagnostic> diagnostics,
         WorkspaceVersion version)
     {
@@ -49,6 +53,9 @@ public sealed class SolutionSnapshot
         ProviderName = providerName;
         Request = request;
         Projects = projects;
+        Folders = folders;
+        Configurations = configurations;
+        Platforms = platforms;
         Diagnostics = diagnostics;
         Version = version;
 
@@ -61,8 +68,19 @@ public sealed class SolutionSnapshot
             byPath[project.ProjectFilePath] = project;
         }
 
+        Dictionary<ProjectIdentity, SolutionFolder> folderByProject = [];
+
+        foreach (SolutionFolder folder in folders)
+        {
+            foreach (ProjectIdentity member in folder.Projects)
+            {
+                folderByProject[member] = folder;
+            }
+        }
+
         _byIdentity = byIdentity.ToFrozenDictionary();
         _byPath = byPath.ToFrozenDictionary();
+        _folderByProject = folderByProject.ToFrozenDictionary();
     }
 
     /// <summary>Gets the workspace this snapshot belongs to.</summary>
@@ -94,6 +112,18 @@ public sealed class SolutionSnapshot
 
     /// <summary>Gets the projects, in the order the provider supplied them.</summary>
     public ImmutableArray<ProjectSnapshot> Projects { get; }
+
+    /// <summary>
+    /// Gets the solution's folders, which organise the projects for display and exist nowhere on
+    /// disk. Empty when the entry point was a standalone project.
+    /// </summary>
+    public ImmutableArray<SolutionFolder> Folders { get; }
+
+    /// <summary>Gets the configurations the solution declares, such as <c>Debug</c> and <c>Release</c>.</summary>
+    public ImmutableArray<string> Configurations { get; }
+
+    /// <summary>Gets the platforms the solution declares, such as <c>Any CPU</c>.</summary>
+    public ImmutableArray<string> Platforms { get; }
 
     /// <summary>Gets the diagnostics raised about the solution as a whole.</summary>
     /// <remarks>
@@ -142,6 +172,13 @@ public sealed class SolutionSnapshot
     public bool TryGetProject(CanonicalPath projectFilePath, [NotNullWhen(true)] out ProjectSnapshot? project) =>
         _byPath.TryGetValue(projectFilePath, out project);
 
+    /// <summary>Finds the folder a project sits in.</summary>
+    /// <param name="project">The project to look for.</param>
+    /// <param name="folder">The folder, when the project is in one.</param>
+    /// <returns><see langword="true"/> when the project sits in a folder rather than at the root.</returns>
+    public bool TryGetFolder(ProjectIdentity project, [NotNullWhen(true)] out SolutionFolder? folder) =>
+        _folderByProject.TryGetValue(project, out folder);
+
     /// <summary>Returns the solution name and its project count.</summary>
     /// <returns>Something like <c>App (3 projects, version 2)</c>.</returns>
     public override string ToString() =>
@@ -159,5 +196,6 @@ public sealed class SolutionSnapshot
         version == Version
             ? this
             : new SolutionSnapshot(
-                Workspace, Solution, EntryPoint, Name, ProviderName, Request, Projects, Diagnostics, version);
+                Workspace, Solution, EntryPoint, Name, ProviderName, Request,
+                Projects, Folders, Configurations, Platforms, Diagnostics, version);
 }

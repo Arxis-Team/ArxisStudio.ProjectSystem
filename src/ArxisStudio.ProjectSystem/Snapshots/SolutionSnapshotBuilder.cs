@@ -34,6 +34,15 @@ public sealed class SolutionSnapshotBuilder
     /// <summary>Gets the projects.</summary>
     public IList<ProjectSnapshot> Projects { get; } = [];
 
+    /// <summary>Gets the solution's display folders. Leave empty for a standalone project.</summary>
+    public IList<SolutionFolder> Folders { get; } = [];
+
+    /// <summary>Gets the configurations the solution declares.</summary>
+    public IList<string> Configurations { get; } = [];
+
+    /// <summary>Gets the platforms the solution declares.</summary>
+    public IList<string> Platforms { get; } = [];
+
     /// <summary>Gets the diagnostics about the solution as a whole.</summary>
     public IList<ProjectDiagnostic> Diagnostics { get; } = [];
 
@@ -93,6 +102,24 @@ public sealed class SolutionSnapshotBuilder
             }
         }
 
+        // A folder naming a project the snapshot does not hold is a dangling reference, and it is
+        // not hypothetical: MSBuild's own SolutionFile produces exactly that shape for .slnx, where
+        // projects carry a parent folder guid that resolves to nothing. A snapshot that published it
+        // would give a consumer a tree with a hole in it.
+        foreach (SolutionFolder folder in Folders)
+        {
+            foreach (ProjectIdentity member in folder.Projects)
+            {
+                if (!seen.Contains(member))
+                {
+                    throw new InvalidOperationException(
+                        $"Folder '{folder.Path}' names project '{member}', which is not in this snapshot. " +
+                        "A project that failed to load belongs in the snapshot with its diagnostics, " +
+                        "not removed from it.");
+                }
+            }
+        }
+
         return new SolutionSnapshot(
             Workspace,
             Solution,
@@ -101,6 +128,9 @@ public sealed class SolutionSnapshotBuilder
             ProviderName,
             Request,
             [.. Projects],
+            [.. Folders],
+            [.. Configurations],
+            [.. Platforms],
             [.. Diagnostics],
             WorkspaceVersion.None);
     }
