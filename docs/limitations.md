@@ -263,15 +263,32 @@ the pin. Removing it would break projects it never looked at.
 The cost is an entry that may now be unused. A tool that wants to tidy those up has to look at every
 project, which is a different operation over a different input.
 
-### Nothing restores, searches, or picks a version
+### Nothing restores, and the editor does not consult a feed
 
-The editor writes what it is told to write. It does not reach a feed, does not know which versions
-exist, and does not check that the one it was given is real — a version string is written verbatim,
-because `[1.0,2.0)` and `1.0.0-*` are both meaningful and a library that normalised them would
-change what the project asked for.
+The editor writes what it is told to write. It does not check that the version it was given exists —
+a version string is written verbatim, because `[1.0,2.0)` and `1.0.0-*` are both meaningful and a
+library that normalised them would change what the project asked for. Searching and choosing are
+separate calls a caller makes first.
 
 Restoring afterwards is the caller's, through the workspace's own operations. That keeps the rule
 that changing disk is not changing the model.
+
+### The bundled feed reads no configuration and cannot authenticate
+
+`NuGetHttpFeed` speaks enough NuGet V3 to search a public feed and list a package's versions. It does
+**not** read `NuGet.config`, so it does not discover configured sources, and it does not implement
+NuGet's credential-provider model, so it cannot reach a private feed.
+
+Both are deliberate rather than unfinished. Source discovery is hierarchical and credentials are a
+plugin protocol; a half-implementation of either fails by silently not finding a package, which is
+worse than not offering the feature. A host with private sources implements `IPackageFeed` over its
+own client, which is why that interface exists.
+
+### A search reflects one feed, not a repository's real source list
+
+Because sources are not discovered, whatever feed a host constructs is the only one asked. A project
+restored from several sources will not have all of them represented in a search, and package source
+mapping is not applied.
 
 ### An edit is transactional, not durable
 

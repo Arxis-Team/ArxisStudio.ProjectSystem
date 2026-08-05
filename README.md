@@ -65,9 +65,11 @@ deliberate answer.
 And `ArxisStudio.ProjectSystem.NuGet` changes what a project references — install, update, uninstall
 — written straight into the project XML, keeping its comments, its blank lines and its indentation.
 Under central package management the reference and the version go into two different files, and they
-are written together or not at all.
+are written together or not at all. It also searches a NuGet V3 feed and orders a package's
+versions, so "install the latest stable" is a question it can answer.
 
-What does not yet: package search and version discovery, and staleness detection for build outputs.
+What does not yet: reading `NuGet.config` to discover configured sources, authenticating to private
+feeds, and staleness detection for build outputs.
 
 ## A minimal example
 

@@ -366,6 +366,43 @@ An edit with nothing to do — installing something already referenced, removing
 succeeds and says so with `APS4004` as a warning. A silent no-op looks exactly like a successful
 change.
 
+### Finding a package and choosing a version
+
+```csharp
+using var client = new HttpClient();
+using var feed = new NuGetHttpFeed(client);          // nuget.org unless told otherwise
+
+FeedResult<FoundPackage> found = await feed.SearchAsync(
+    new PackageSearchRequest { Query = "avalonia" }, token);
+
+if (found.HasErrors) { /* the feed did not answer; found.Diagnostics says why */ }
+```
+
+`FeedResult<T>` exists to keep two answers apart: **nothing matched** and **nobody answered**. An
+empty list for both would let a tool report that a package has no versions when in fact the network
+is down, and those call for opposite responses.
+
+```csharp
+FeedResult<string> versions = await feed.GetVersionsAsync("Serilog", token);
+
+string? target = PackageVersions.Latest(versions.Items);                      // newest stable
+string? preview = PackageVersions.Latest(versions.Items, includePrerelease: true);
+```
+
+`PackageVersions` orders and chooses; versions cross the boundary as the strings a project file
+holds, never as a NuGet type. Prereleases are excluded by default, and a package whose only versions
+are prereleases returns `null` rather than quietly offering an alpha to somebody who asked for "the
+latest". Inside, the comparison is NuGet's own — a prerelease sorts *before* the release it
+precedes, `beta.9` before `beta.10`, build metadata is ignored, and there is a fourth numeric field.
+
+`IPackageFeed` is an interface because feeds vary in ways this library should not try to contain.
+`NuGetHttpFeed` speaks enough V3 to search a public feed, and deliberately **does not read
+`NuGet.config` and does not authenticate** — discovering configured sources is hierarchical and
+private feeds need NuGet's credential-provider model, neither of which is safe to half-implement,
+because a half-implementation fails by silently not finding a package. A host with private sources
+implements the interface over its own client. That seam is also what lets everything above it be
+tested without a network.
+
 `ResolvedPackages` is empty when nothing has been restored, which is not the same as a project having
 no packages. A project that declares packages and has no restore output says so with `APS2005`, as a
 warning rather than a failure.

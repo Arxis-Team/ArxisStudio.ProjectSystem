@@ -58,4 +58,21 @@
     <PackageVersion Include="Microsoft.VisualStudio.SolutionPersistence" Version="1.0.52" />
   </ItemGroup>
 
+  <!--
+    For the package-management package only, which is the one allowed to host NuGet.
+
+    Just the versioning library, and deliberately not NuGet.Protocol. Comparing versions is where
+    being subtly wrong is silent and harmful: SemVer 2 ordering has a fourth numeric field, a
+    prerelease that sorts *before* the release it precedes, dot-separated identifiers that compare
+    numerically or lexically depending on their shape, and build metadata that is ignored entirely.
+    Nobody should reimplement that. This assembly has no dependencies of its own, so the cost is one
+    file.
+
+    Reading a search response, by contrast, is a documented JSON shape and is read by hand for the
+    same reason project.assets.json is (ADR 0012).
+  -->
+  <ItemGroup>
+    <PackageVersion Include="NuGet.Versioning" Version="7.6.0" />
+  </ItemGroup>
+
 </Project>

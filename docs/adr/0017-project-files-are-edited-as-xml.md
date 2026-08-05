@@ -64,3 +64,24 @@ Removing the `PackageVersion` would break the projects it cannot see.
 - If a future need genuinely requires MSBuild's understanding of conditions and imports to place an
   edit correctly, this is the decision to revisit — and it would mean moving the editing to the
   provider rather than adding an engine here.
+
+## Postscript: what NuGet reference this package did take
+
+`NuGet.Versioning`, and nothing else. The rule above is that each package hosts one engine, and
+NuGet is this one's; the question was only how much of it to take.
+
+Comparing versions is where being subtly wrong is silent and harmful. SemVer 2 ordering has a fourth
+numeric field, a prerelease that sorts *before* the release it precedes, dot-separated identifiers
+that compare numerically or lexically depending on their shape, and build metadata that is ignored
+entirely. A hand-rolled comparison that gets one of those wrong offers somebody a downgrade and
+nothing notices. That assembly has no dependencies of its own, so the cost is one file.
+
+`NuGet.Protocol` was refused on ADR 0012's reasoning, unchanged: reading a search response is a
+documented JSON shape with four fields in it, and the alternative was a client stack, a plugin model
+and a credential system to read them. What that refusal costs is stated plainly in the limitations —
+no `NuGet.config` discovery and no authentication — and it is bounded by `IPackageFeed`, so a host
+that needs either implements the interface over NuGet's own client without anything above it
+changing.
+
+`NuGetVersion` never crosses the public surface; versions cross it as the strings a project file
+holds. That is enforced for every package in this family, and proved by mutation.

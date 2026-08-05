@@ -25,4 +25,13 @@
     <InternalsVisibleTo Include="ArxisStudio.ProjectSystem.NuGet.Tests" />
   </ItemGroup>
 
+  <!--
+    The one engine this package hosts. NuGetVersion never reaches the public surface: versions cross
+    it as the strings a project file holds, and an architecture test enforces that for every package
+    in this family.
+  -->
+  <ItemGroup>
+    <PackageReference Include="NuGet.Versioning" />
+  </ItemGroup>
+
 </Project>

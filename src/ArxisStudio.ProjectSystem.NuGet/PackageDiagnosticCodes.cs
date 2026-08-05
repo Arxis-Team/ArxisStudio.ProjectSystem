@@ -64,4 +64,24 @@ public static class PackageDiagnosticCodes
     /// the repository's configuration is not.
     /// </remarks>
     public const string CentralVersionFileNotFound = "APS4005";
+
+    /// <summary>
+    /// <c>APS4006</c> — a package feed could not be reached.
+    /// </summary>
+    /// <remarks>
+    /// The ordinary state of a tool on an aeroplane, behind a proxy, or pointed at a private source
+    /// that wants credentials. A search that fails this way found nothing <em>and says so</em>,
+    /// which is a different answer from a search that matched nothing.
+    /// </remarks>
+    public const string FeedUnreachable = "APS4006";
+
+    /// <summary>
+    /// <c>APS4007</c> — a feed answered, and the answer was not one this library understands.
+    /// </summary>
+    /// <remarks>
+    /// A service index advertising no search service, or a response that is not the documented
+    /// shape. Separate from <see cref="FeedUnreachable"/> because the network is fine and the
+    /// remedy is different: this one is about which feed was configured.
+    /// </remarks>
+    public const string FeedNotUnderstood = "APS4007";
 }
