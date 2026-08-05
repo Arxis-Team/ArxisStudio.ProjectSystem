@@ -14,8 +14,10 @@
 *.json text
 *.yml text
 
-# The one exemption from eol=lf. Visual Studio and Rider write a solution file with a BOM and
-# CRLF and rewrite it that way whenever they touch it, so normalising it to LF would produce a
-# spurious diff every time the solution is opened. Keeping it in its native form is the quiet
-# option; it is also why this line comes last.
+# The one exemption from eol=lf, and it covers both solution formats. The tooling writes them with
+# CRLF and rewrites them that way whenever it touches them -- measured: `dotnet sln` produces a .sln
+# with a BOM and CRLF, and a .slnx with CRLF and no BOM. Normalising either to LF would produce a
+# spurious diff every time the solution is opened. Keeping them in their native form is the quiet
+# option; it is also why these lines come last.
 *.sln text eol=crlf
+*.slnx text eol=crlf
