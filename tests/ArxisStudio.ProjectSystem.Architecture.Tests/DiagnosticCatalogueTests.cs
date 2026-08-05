@@ -10,57 +10,103 @@ namespace ArxisStudio.ProjectSystem.Architecture.Tests;
 
 /// <summary>
 /// Diagnostic codes are a published contract: consumers suppress and route on them, so a duplicate,
-/// a code outside its range, or one nobody can look up is a defect in the contract itself.
+/// a code outside its package's range, or one nobody can look up is a defect in the contract itself.
 /// </summary>
+/// <remarks>
+/// Every package that raises diagnostics owns a numeric range and declares a catalogue. Both are
+/// listed here, so a package that grows a catalogue without a range — or takes a number from
+/// somebody else's — fails rather than ships.
+/// </remarks>
 public sealed class DiagnosticCatalogueTests
 {
-    [Fact]
-    public void EveryCode_IsUnique()
-    {
-        List<string> codes = [.. Codes().Select(static pair => pair.Code)];
+    /// <summary>Package, the type holding its codes, and the range it owns.</summary>
+    private static readonly (string Package, string Catalogue, string Range)[] All =
+    [
+        (RepositoryLayout.CorePackage, "ProjectDiagnosticCodes", "^APS1[0-9]{3}$"),
+        (RepositoryLayout.MSBuildPackage, "MSBuildDiagnosticCodes", "^APS2[0-9]{3}$"),
+    ];
 
+    public static TheoryData<string, string, string> Catalogues
+    {
+        get
+        {
+            TheoryData<string, string, string> data = [];
+
+            foreach ((string package, string catalogue, string range) in All)
+            {
+                data.Add(package, catalogue, range);
+            }
+
+            return data;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Catalogues))]
+    public void EveryCode_IsUnique(string package, string catalogue, string range)
+    {
+        _ = range;
+
+        List<string> codes = [.. Codes(package, catalogue).Select(static pair => pair.Code)];
+
+        Assert.NotEmpty(codes);
         Assert.Equal(codes.Count, codes.Distinct(StringComparer.Ordinal).Count());
     }
 
     /// <summary>
-    /// The core owns <c>APS1xxx</c>. The other ranges are reserved for packages that do not exist
-    /// yet, and taking a number from one of them now would be spending somebody else's budget.
+    /// The other ranges belong to packages that may not exist yet, and taking a number from one of
+    /// them now would be spending somebody else's budget.
     /// </summary>
-    [Fact]
-    public void EveryCode_SitsInTheCoreRange()
+    [Theory]
+    [MemberData(nameof(Catalogues))]
+    public void EveryCode_SitsInItsPackagesRange(string package, string catalogue, string range)
     {
-        List<string> offenders = [.. Codes()
+        List<string> offenders = [.. Codes(package, catalogue)
             .Select(static pair => pair.Code)
-            .Where(static code => !Regex.IsMatch(code, "^APS1[0-9]{3}$"))];
+            .Where(code => !Regex.IsMatch(code, range))];
 
         Assert.True(
             offenders.Count == 0,
-            "These codes are not in the core's APS1xxx range: " + string.Join(", ", offenders) + ".");
+            $"These codes of '{package}' are outside {range}: " + string.Join(", ", offenders) + ".");
     }
 
     /// <summary>
-    /// A code a consumer cannot look up is a code they will guess at. The XML documentation ships
-    /// in the package, so this checks the shipped file rather than the source.
+    /// No code may be shared between packages, whatever range it claims to be in.
     /// </summary>
     [Fact]
-    public void EveryCode_IsDocumentedInTheShippedXml()
+    public void NoCode_IsClaimedByTwoPackages()
     {
-        string documentation = File.ReadAllText(
-            RepositoryLayout.DocumentationFileOf(RepositoryLayout.CorePackage));
+        List<string> all = [.. All
+            .SelectMany(static row => Codes(row.Package, row.Catalogue))
+            .Select(static pair => pair.Code)];
 
-        List<string> undocumented = [.. Codes()
-            .Where(pair => !documentation.Contains(
-                $"ProjectDiagnosticCodes.{pair.Name}", StringComparison.Ordinal))
+        Assert.Equal(all.Count, all.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    /// <summary>
+    /// A code a consumer cannot look up is a code they will guess at. The XML documentation ships in
+    /// the package, so this checks the shipped file rather than the source.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Catalogues))]
+    public void EveryCode_IsDocumentedInTheShippedXml(string package, string catalogue, string range)
+    {
+        _ = range;
+
+        string documentation = File.ReadAllText(RepositoryLayout.DocumentationFileOf(package));
+
+        List<string> undocumented = [.. Codes(package, catalogue)
+            .Where(pair => !documentation.Contains($"{catalogue}.{pair.Name}", StringComparison.Ordinal))
             .Select(static pair => pair.Name)];
 
         Assert.True(
             undocumented.Count == 0,
-            "These codes ship without documentation: " + string.Join(", ", undocumented) + ".");
+            $"These codes of '{package}' ship without documentation: " + string.Join(", ", undocumented) + ".");
     }
 
     /// <summary>
     /// The reserved ranges are a promise to the packages that will claim them, so they are written
-    /// down where a reader of the catalogue will find them.
+    /// down where a reader of the core's catalogue will find them.
     /// </summary>
     [Theory]
     [InlineData("APS1xxx")]
@@ -76,22 +122,21 @@ public sealed class DiagnosticCatalogueTests
         Assert.Contains(range, documentation, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// Every code this milestone must be able to raise. The converse — that nothing is declared
-    /// without a producer — is not mechanically checkable, and is a review rule instead.
-    /// </summary>
     [Theory]
-    [InlineData("UnsupportedEntryPoint")]
-    [InlineData("ProviderFailed")]
-    [InlineData("InvalidProviderResult")]
-    public void TheCodesTheMilestoneNeeds_Exist(string name)
+    [InlineData(RepositoryLayout.CorePackage, "ProjectDiagnosticCodes", "UnsupportedEntryPoint")]
+    [InlineData(RepositoryLayout.CorePackage, "ProjectDiagnosticCodes", "ProviderFailed")]
+    [InlineData(RepositoryLayout.CorePackage, "ProjectDiagnosticCodes", "InvalidProviderResult")]
+    [InlineData(RepositoryLayout.MSBuildPackage, "MSBuildDiagnosticCodes", "MSBuildNotFound")]
+    [InlineData(RepositoryLayout.MSBuildPackage, "MSBuildDiagnosticCodes", "EvaluationFailed")]
+    [InlineData(RepositoryLayout.MSBuildPackage, "MSBuildDiagnosticCodes", "ProjectFileNotFound")]
+    public void TheCodesAMilestoneNeeds_Exist(string package, string catalogue, string name)
     {
-        Assert.Contains(Codes(), pair => string.Equals(pair.Name, name, StringComparison.Ordinal));
+        Assert.Contains(Codes(package, catalogue), pair => string.Equals(pair.Name, name, StringComparison.Ordinal));
     }
 
-    private static IReadOnlyList<(string Name, string Code)> Codes() =>
-        [.. RepositoryLayout.LoadAssembly(RepositoryLayout.CorePackage)
-            .GetType($"{RepositoryLayout.CorePackage}.ProjectDiagnosticCodes")!
+    private static IReadOnlyList<(string Name, string Code)> Codes(string package, string catalogue) =>
+        [.. RepositoryLayout.LoadAssembly(package)
+            .GetType($"{package}.{catalogue}")!
             .GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(static field => field.IsLiteral && field.FieldType == typeof(string))
             .Select(static field => (field.Name, (string)field.GetRawConstantValue()!))];

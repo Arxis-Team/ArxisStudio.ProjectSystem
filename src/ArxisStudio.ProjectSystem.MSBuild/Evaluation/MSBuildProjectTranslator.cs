@@ -1,0 +1,295 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace ArxisStudio.ProjectSystem.MSBuild;
+
+/// <summary>
+/// Turns an evaluation into a core snapshot.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A pure function over <see cref="EvaluatedProject"/>: no MSBuild, no file system, no clock. That
+/// is what lets the mapping be tested exhaustively and in milliseconds, which matters because the
+/// mapping is where the bugs are. Everything that needs MSBuild lives in the adapter that produces
+/// the input.
+/// </para>
+/// <para>
+/// Two things it deliberately does not do. It does not guess: a property MSBuild did not set
+/// becomes an absent value rather than a default, because "the provider did not say" and "the
+/// project says zero" are different answers and a consumer can tell them apart. And it does not
+/// interpret: a package version is carried across as the text the project wrote, because parsing
+/// NuGet version ranges is NuGet's job and getting it subtly wrong here would be worse than not
+/// doing it.
+/// </para>
+/// </remarks>
+internal static class MSBuildProjectTranslator
+{
+    /// <summary>Translates one evaluated project.</summary>
+    /// <param name="project">What the evaluation produced.</param>
+    /// <param name="workspace">The workspace the snapshot belongs to.</param>
+    /// <param name="providerName">The provider to attribute it to.</param>
+    /// <returns>The snapshot.</returns>
+    internal static ProjectSnapshot Translate(
+        EvaluatedProject project,
+        WorkspaceIdentity workspace,
+        string providerName)
+    {
+        CanonicalPath directory = project.FullPath.Directory;
+
+        var builder = new ProjectSnapshotBuilder
+        {
+            Identity = ProjectIdentity.Create(workspace, project.FullPath),
+            Name = Property(project, "MSBuildProjectName")
+                ?? Property(project, "AssemblyName")
+                ?? System.IO.Path.GetFileNameWithoutExtension(project.FullPath.FileName),
+            ProjectFilePath = project.FullPath,
+            ProviderName = providerName,
+            Language = MSBuildWellKnown.LanguagesByExtension.GetValueOrDefault(project.FullPath.Extension),
+            Kind = Property(project, "OutputType"),
+            ActiveConfiguration = Property(project, "Configuration"),
+            ActivePlatform = Property(project, "Platform"),
+            ActiveTargetFramework = Property(project, "TargetFramework"),
+        };
+
+        AddRange(builder.TargetFrameworks, TargetFrameworks(project));
+        AddRange(builder.Configurations, List(project, "Configurations"));
+        AddRange(builder.Platforms, List(project, "Platforms"));
+
+        foreach (KeyValuePair<string, string> property in project.Properties)
+        {
+            if (MSBuildWellKnown.SurfacedProperties.Contains(property.Key))
+            {
+                builder.Properties[property.Key] = property.Value;
+            }
+        }
+
+        foreach (EvaluatedItem item in project.Items)
+        {
+            Translate(item, builder, directory, workspace);
+        }
+
+        foreach (OutputArtifact artifact in Outputs(project, directory))
+        {
+            builder.Outputs.Add(artifact);
+        }
+
+        return builder.ToSnapshot();
+    }
+
+    private static void Translate(
+        EvaluatedItem item,
+        ProjectSnapshotBuilder builder,
+        CanonicalPath directory,
+        WorkspaceIdentity workspace)
+    {
+        if (string.Equals(item.ItemType, MSBuildWellKnown.ProjectReference, StringComparison.OrdinalIgnoreCase))
+        {
+            CanonicalPath referenced = item.FullPath.IsEmpty
+                ? Resolve(directory, item.EvaluatedInclude)
+                : item.FullPath;
+
+            if (referenced.IsEmpty)
+            {
+                return;
+            }
+
+            builder.ProjectReferences.Add(new ProjectReferenceInfo
+            {
+                ProjectFilePath = referenced,
+
+                // The referenced project is only given an identity once it is known to be in this
+                // workspace, which a single-project load never establishes. Milestone 2 fills this
+                // in when it can see the whole graph; guessing now would mint an identity for a
+                // project nobody loaded.
+                Project = ProjectIdentity.None,
+                Aliases = [.. Aliases(item.Metadata.GetValueOrDefault("Aliases"))],
+                ReferenceOutputAssembly = Boolean(item.Metadata.GetValueOrDefault("ReferenceOutputAssembly")),
+                Metadata = item.Metadata,
+            });
+
+            return;
+        }
+
+        if (string.Equals(item.ItemType, MSBuildWellKnown.PackageReference, StringComparison.OrdinalIgnoreCase))
+        {
+            builder.PackageReferences.Add(new PackageReferenceInfo
+            {
+                PackageId = item.EvaluatedInclude,
+                VersionText = item.Metadata.GetValueOrDefault("Version"),
+                PrivateAssets = item.Metadata.GetValueOrDefault("PrivateAssets"),
+                IncludeAssets = item.Metadata.GetValueOrDefault("IncludeAssets"),
+                ExcludeAssets = item.Metadata.GetValueOrDefault("ExcludeAssets"),
+                Metadata = item.Metadata,
+            });
+
+            return;
+        }
+
+        if (string.Equals(item.ItemType, MSBuildWellKnown.FrameworkReference, StringComparison.OrdinalIgnoreCase))
+        {
+            builder.FrameworkReferences.Add(new FrameworkReferenceInfo
+            {
+                Name = item.EvaluatedInclude,
+                Metadata = item.Metadata,
+            });
+
+            return;
+        }
+
+        if (string.Equals(item.ItemType, MSBuildWellKnown.Reference, StringComparison.OrdinalIgnoreCase))
+        {
+            builder.AssemblyReferences.Add(new AssemblyReferenceInfo
+            {
+                Name = item.EvaluatedInclude,
+                HintPath = Resolve(directory, item.Metadata.GetValueOrDefault("HintPath")),
+                ResolvedPath = item.FullPath,
+                Aliases = [.. Aliases(item.Metadata.GetValueOrDefault("Aliases"))],
+                Private = Boolean(item.Metadata.GetValueOrDefault("Private")),
+                Metadata = item.Metadata,
+            });
+
+            return;
+        }
+
+        if (string.Equals(item.ItemType, MSBuildWellKnown.Analyzer, StringComparison.OrdinalIgnoreCase))
+        {
+            CanonicalPath assembly = item.FullPath.IsEmpty
+                ? Resolve(directory, item.EvaluatedInclude)
+                : item.FullPath;
+
+            if (assembly.IsEmpty)
+            {
+                return;
+            }
+
+            builder.AnalyzerReferences.Add(new AnalyzerReferenceInfo
+            {
+                AssemblyPath = assembly,
+                Metadata = item.Metadata,
+            });
+
+            return;
+        }
+
+        builder.Items.Add(new ProjectItem
+        {
+            ItemType = item.ItemType,
+            Include = item.EvaluatedInclude,
+            FullPath = item.FullPath,
+            Link = item.Metadata.GetValueOrDefault("Link"),
+            Metadata = item.Metadata,
+            Origin = item.IsImported ? ProjectItemOrigin.Imported : ProjectItemOrigin.Declared,
+        });
+    }
+
+    /// <summary>
+    /// The frameworks the project declares, preferring the plural property.
+    /// </summary>
+    /// <remarks>
+    /// A cross-targeting project sets <c>TargetFrameworks</c> and, inside a per-framework
+    /// evaluation, also sets <c>TargetFramework</c> to whichever one is being evaluated. Reading
+    /// the singular first would report a cross-targeting project as targeting one thing.
+    /// </remarks>
+    private static IEnumerable<string> TargetFrameworks(EvaluatedProject project)
+    {
+        IReadOnlyList<string> plural = List(project, "TargetFrameworks");
+
+        if (plural.Count > 0)
+        {
+            return plural;
+        }
+
+        return Property(project, "TargetFramework") is { } single ? [single] : [];
+    }
+
+    private static IEnumerable<OutputArtifact> Outputs(EvaluatedProject project, CanonicalPath directory)
+    {
+        string? framework = Property(project, "TargetFramework");
+
+        if (Resolve(directory, Property(project, "TargetPath")) is { IsEmpty: false } assembly)
+        {
+            yield return new OutputArtifact
+            {
+                Kind = OutputArtifactKind.Assembly,
+                Path = assembly,
+                TargetFramework = framework,
+            };
+        }
+
+        if (Resolve(directory, Property(project, "DocumentationFile")) is { IsEmpty: false } documentation)
+        {
+            yield return new OutputArtifact
+            {
+                Kind = OutputArtifactKind.DocumentationFile,
+                Path = documentation,
+                TargetFramework = framework,
+            };
+        }
+    }
+
+    /// <summary>Reads a property, treating blank as absent.</summary>
+    private static string? Property(EvaluatedProject project, string name)
+    {
+        string? value = project.Properties.GetValueOrDefault(name);
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    /// <summary>Splits a semicolon-separated property, dropping blanks and duplicates.</summary>
+    private static IReadOnlyList<string> List(EvaluatedProject project, string name)
+    {
+        if (Property(project, name) is not { } value)
+        {
+            return [];
+        }
+
+        return [.. value
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    /// <summary>
+    /// Splits extern aliases, which MSBuild writes separated by commas or semicolons depending on
+    /// who wrote the project file.
+    /// </summary>
+    private static string[] Aliases(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>
+    /// Parses an MSBuild boolean, where anything unrecognised means the project did not say.
+    /// </summary>
+    private static bool? Boolean(string? value) =>
+        bool.TryParse(value, out bool parsed) ? parsed : null;
+
+    /// <summary>Resolves a possibly-relative path against the project directory.</summary>
+    private static CanonicalPath Resolve(CanonicalPath directory, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || directory.IsEmpty)
+        {
+            return CanonicalPath.None;
+        }
+
+        try
+        {
+            return CanonicalPath.Create(directory, value);
+        }
+        catch (ArgumentException)
+        {
+            // A property that is not a usable path -- a wildcard, a leftover token, a value some
+            // target built out of pieces. Not worth a diagnostic: the project is fine, this one
+            // string simply is not a path, and inventing one would be worse than having none.
+            return CanonicalPath.None;
+        }
+    }
+
+    private static void AddRange(IList<string> target, IEnumerable<string> values)
+    {
+        foreach (string value in values)
+        {
+            target.Add(value);
+        }
+    }
+}

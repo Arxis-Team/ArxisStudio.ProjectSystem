@@ -10,6 +10,16 @@
   </ItemGroup>
 
   <!--
+    The evaluation shape and the translation over it are internal on purpose: the boundary a
+    consumer uses is IProjectSystemProvider, and a second public model beside it would be a second
+    thing to support. The translation is also the part most worth testing exhaustively, so the
+    tests reach it directly rather than through an evaluation they would have to run first.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ArxisStudio.ProjectSystem.MSBuild.Tests" />
+  </ItemGroup>
+
+  <!--
     ExcludeAssets="runtime" on everything but the locator. MSBuild's assemblies must be the ones
     belonging to the SDK the locator finds at run time; these packages supply the compile-time
     reference only. Copying them to the output directory as well produces a process holding two
