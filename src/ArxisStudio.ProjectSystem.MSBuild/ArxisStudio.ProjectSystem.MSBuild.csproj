@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ArxisStudio.ProjectSystem.MSBuild</RootNamespace>
+    <Description>MSBuild provider for ArxisStudio.ProjectSystem: locates and hosts MSBuild, evaluates project files, and translates the result into the core's provider-neutral immutable snapshots. No Microsoft.Build type appears in its public surface, so a consumer inspects the model without referencing MSBuild.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
+  </ItemGroup>
+
+  <!--
+    ExcludeAssets="runtime" on everything but the locator. MSBuild's assemblies must be the ones
+    belonging to the SDK the locator finds at run time; these packages supply the compile-time
+    reference only. Copying them to the output directory as well produces a process holding two
+    different MSBuilds, which fails later and somewhere else.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Locator" />
+    <PackageReference Include="Microsoft.Build" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build.Framework" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+</Project>

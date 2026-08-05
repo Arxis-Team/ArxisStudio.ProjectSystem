@@ -12,31 +12,29 @@ namespace ArxisStudio.ProjectSystem.Architecture.Tests;
 /// </summary>
 public sealed class PublicApiTests
 {
-    private static string Shipped =>
-        Path.Combine(RepositoryLayout.RepositoryRoot, "src", RepositoryLayout.CorePackage, "PublicAPI.Shipped.txt");
+    public static TheoryData<string> ShippingPackages => [.. RepositoryLayout.Packages];
 
-    private static string Unshipped =>
-        Path.Combine(RepositoryLayout.RepositoryRoot, "src", RepositoryLayout.CorePackage, "PublicAPI.Unshipped.txt");
-
-    [Fact]
-    public void TheCore_TracksItsPublicSurface()
+    [Theory]
+    [MemberData(nameof(ShippingPackages))]
+    public void EveryPackage_TracksItsPublicSurface(string package)
     {
-        Assert.True(File.Exists(Shipped), $"'{Shipped}' is missing.");
-        Assert.True(File.Exists(Unshipped), $"'{Unshipped}' is missing.");
+        Assert.True(File.Exists(ApiFile(package, "Shipped")), $"'{ApiFile(package, "Shipped")}' is missing.");
+        Assert.True(File.Exists(ApiFile(package, "Unshipped")), $"'{ApiFile(package, "Unshipped")}' is missing.");
     }
 
-    [Fact]
-    public void TheCore_ReferencesTheAnalyzerThatEnforcesIt()
+    [Theory]
+    [MemberData(nameof(ShippingPackages))]
+    public void EveryPackage_ReferencesTheAnalyzerThatEnforcesIt(string package)
     {
         Assert.Contains(
             "Microsoft.CodeAnalysis.PublicApiAnalyzers",
-            RepositoryLayout.PackageReferencesOf(RepositoryLayout.CorePackage),
+            RepositoryLayout.PackageReferencesOf(package),
             StringComparer.Ordinal);
     }
 
     /// <summary>
-    /// Declaring the analyzer is not the same as failing the build on an undeclared member, and
-    /// only the second one is worth anything.
+    /// Declaring the analyzer is not the same as failing the build on an undeclared member, and only
+    /// the second one is worth anything.
     /// </summary>
     [Theory]
     [InlineData("RS0016")]
@@ -49,26 +47,27 @@ public sealed class PublicApiTests
     }
 
     /// <summary>
-    /// The milestone ships nothing: everything stays unshipped until a release is deliberately
-    /// prepared, because moving an entry into the shipped file is a promise about compatibility.
+    /// Nothing has shipped: everything stays unshipped until a release is deliberately prepared,
+    /// because moving an entry into the shipped file is a promise about compatibility.
     /// </summary>
-    [Fact]
-    public void Milestone0_HasShippedNothingYet()
+    [Theory]
+    [MemberData(nameof(ShippingPackages))]
+    public void NothingHasShippedYet(string package)
     {
-        IEnumerable<string> entries = Declared(Shipped);
-
         Assert.True(
-            !entries.Any(),
-            "PublicAPI.Shipped.txt is not empty. Moving entries into it is a separate, deliberate act " +
-            "that belongs to release preparation.");
+            !Declared(ApiFile(package, "Shipped")).Any(),
+            $"'{package}' has entries in PublicAPI.Shipped.txt. Moving entries into it is a separate, " +
+            "deliberate act that belongs to release preparation.");
     }
 
-    [Fact]
-    public void EveryPublicType_IsDeclared()
+    [Theory]
+    [MemberData(nameof(ShippingPackages))]
+    public void EveryPublicType_IsDeclared(string package)
     {
-        HashSet<string> declared = [.. Declared(Shipped).Concat(Declared(Unshipped))];
+        HashSet<string> declared =
+            [.. Declared(ApiFile(package, "Shipped")).Concat(Declared(ApiFile(package, "Unshipped")))];
 
-        List<string> missing = RepositoryLayout.LoadAssembly(RepositoryLayout.CorePackage)
+        List<string> missing = RepositoryLayout.LoadAssembly(package)
             .GetExportedTypes()
             .Select(static type => type.FullName!.Replace('+', '.'))
             .Where(name => !declared.Contains(name))
@@ -77,19 +76,20 @@ public sealed class PublicApiTests
 
         Assert.True(
             missing.Count == 0,
-            "These public types are not declared in the API files: " + string.Join(", ", missing) + ".");
+            $"These public types of '{package}' are not declared: " + string.Join(", ", missing) + ".");
     }
 
-    [Fact]
-    public void EveryDeclaredType_StillExists()
+    [Theory]
+    [MemberData(nameof(ShippingPackages))]
+    public void EveryDeclaredType_StillExists(string package)
     {
-        HashSet<string> live = [.. RepositoryLayout.LoadAssembly(RepositoryLayout.CorePackage)
+        HashSet<string> live = [.. RepositoryLayout.LoadAssembly(package)
             .GetExportedTypes()
             .Select(static type => type.FullName!.Replace('+', '.'))];
 
         // A bare line with no parenthesis and no arrow is a type; anything else is a member.
-        List<string> stale = Declared(Shipped)
-            .Concat(Declared(Unshipped))
+        List<string> stale = Declared(ApiFile(package, "Shipped"))
+            .Concat(Declared(ApiFile(package, "Unshipped")))
             .Where(static line => !line.Contains('(', StringComparison.Ordinal)
                 && !line.Contains("->", StringComparison.Ordinal))
             .Where(name => !live.Contains(name))
@@ -98,8 +98,11 @@ public sealed class PublicApiTests
 
         Assert.True(
             stale.Count == 0,
-            "These declared types no longer exist: " + string.Join(", ", stale) + ".");
+            $"These types declared by '{package}' no longer exist: " + string.Join(", ", stale) + ".");
     }
+
+    private static string ApiFile(string package, string which) =>
+        Path.Combine(RepositoryLayout.RepositoryRoot, "src", package, $"PublicAPI.{which}.txt");
 
     private static IEnumerable<string> Declared(string path) =>
         !File.Exists(path)

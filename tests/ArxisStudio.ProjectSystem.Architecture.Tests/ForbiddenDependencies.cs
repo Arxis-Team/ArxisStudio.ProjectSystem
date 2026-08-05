@@ -5,21 +5,27 @@ using System.Linq;
 namespace ArxisStudio.ProjectSystem.Architecture.Tests;
 
 /// <summary>
-/// The dependency rules the core package may not break, in one place so that the declarative
+/// The dependency rules the shipping packages may not break, in one place so that the declarative
 /// check and the compiled check cannot drift apart.
 /// </summary>
 /// <remarks>
-/// These are the task specification's independence rules: the core is provider-neutral, so no
-/// build engine, package client, compiler, UI framework or sibling library may reach it. A
-/// provider package implements the boundary and depends on the core, never the other way round.
+/// <para>
+/// There are two different questions here and they have different answers, which is why there are
+/// two methods. <b>What a package may reference</b> depends on the package: the MSBuild provider
+/// exists to host MSBuild, so it references it, while the core references nothing.
+/// <b>What may appear in a public surface</b> does not depend on the package: no consumer of any
+/// package in this family should need MSBuild on their compile line to inspect a snapshot.
+/// </para>
+/// <para>
+/// Conflating the two would either forbid the provider from doing its job or let engine types leak
+/// through it, and the second is the failure the whole boundary exists to prevent.
+/// </para>
 /// </remarks>
 internal static class ForbiddenDependencies
 {
-    /// <summary>Identifier prefixes that signal out-of-scope functionality creeping in.</summary>
-    public static IReadOnlyList<string> Prefixes { get; } =
+    /// <summary>Out of scope for every shipping package, whatever its job.</summary>
+    private static readonly string[] Everywhere =
     [
-        "Microsoft.Build",
-        "MSBuild",
         "NuGet.",
         "Microsoft.CodeAnalysis",
         "Avalonia",
@@ -32,17 +38,51 @@ internal static class ForbiddenDependencies
         "Gtk",
     ];
 
+    /// <summary>Additionally out of scope for the provider-neutral core.</summary>
+    private static readonly string[] CoreOnly =
+    [
+        "Microsoft.Build",
+        "MSBuild",
+    ];
+
     /// <summary>
     /// Build-time-only analyzers that ship no runtime code, so they cannot bring the forbidden
-    /// capability into the package.
+    /// capability into a package.
     /// </summary>
-    public static IReadOnlyList<string> Allowed { get; } =
+    private static readonly string[] Allowed =
     [
         "Microsoft.CodeAnalysis.PublicApiAnalyzers",
     ];
 
-    /// <summary>Whether an identifier names something the core may not depend on.</summary>
-    public static bool IsForbidden(string identifier) =>
+    /// <summary>Whether a package may not reference something.</summary>
+    /// <param name="package">The shipping package doing the referencing.</param>
+    /// <param name="identifier">The package id or assembly name being referenced.</param>
+    /// <returns><see langword="true"/> when the reference breaks the boundary.</returns>
+    public static bool IsForbiddenReference(string package, string identifier)
+    {
+        if (Allowed.Contains(identifier, StringComparer.Ordinal))
+        {
+            return false;
+        }
+
+        IEnumerable<string> prefixes = string.Equals(package, RepositoryLayout.CorePackage, StringComparison.Ordinal)
+            ? Everywhere.Concat(CoreOnly)
+            : Everywhere;
+
+        return prefixes.Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Whether something may not appear in any package's public surface.
+    /// </summary>
+    /// <remarks>
+    /// Stricter than <see cref="IsForbiddenReference"/> on purpose: the MSBuild provider references
+    /// MSBuild and must still not hand a <c>ProjectInstance</c> to anybody. That is the rule that
+    /// lets a snapshot outlive the engine that produced it.
+    /// </remarks>
+    /// <param name="identifier">The assembly name of a type appearing in a public member.</param>
+    /// <returns><see langword="true"/> when it may not be exposed.</returns>
+    public static bool IsForbiddenInPublicApi(string identifier) =>
         !Allowed.Contains(identifier, StringComparer.Ordinal)
-        && Prefixes.Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
+        && Everywhere.Concat(CoreOnly).Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
 }

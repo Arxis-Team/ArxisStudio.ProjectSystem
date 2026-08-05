@@ -16,41 +16,51 @@ public sealed class PublicSurfaceTests
 {
     private static Assembly Core => RepositoryLayout.LoadAssembly(RepositoryLayout.CorePackage);
 
+    public static TheoryData<string> ShippingPackages => [.. RepositoryLayout.Packages];
+
+    private static IEnumerable<Assembly> Shipping =>
+        RepositoryLayout.Packages.Select(RepositoryLayout.LoadAssembly);
+
     /// <summary>
-    /// Exactly the root namespace, not merely a prefix of it. Folders organise files; they do not
-    /// make namespaces, and a consumer should need one <c>using</c>.
+    /// Exactly the package's own namespace, not merely a prefix of it. Folders organise files; they
+    /// do not make namespaces, and a consumer should need one <c>using</c> per package.
     /// </summary>
-    [Fact]
-    public void EveryPublicType_LivesInTheRootNamespace()
+    [Theory]
+    [MemberData(nameof(ShippingPackages))]
+    public void EveryPublicType_LivesInItsPackageNamespace(string package)
     {
-        List<string> offenders = Core.GetExportedTypes()
-            .Where(static type => !string.Equals(
-                type.Namespace, RepositoryLayout.CorePackage, StringComparison.Ordinal))
+        List<string> offenders = RepositoryLayout.LoadAssembly(package)
+            .GetExportedTypes()
+            .Where(type => !string.Equals(type.Namespace, package, StringComparison.Ordinal))
             .Select(static type => type.FullName ?? type.Name)
             .OrderBy(static name => name, StringComparer.Ordinal)
             .ToList();
 
         Assert.True(
             offenders.Count == 0,
-            "These public types are outside the root namespace: " + string.Join(", ", offenders) + ".");
+            $"These public types of '{package}' are outside its namespace: " + string.Join(", ", offenders) + ".");
     }
 
     /// <summary>
-    /// No provider implementation type may appear anywhere a consumer can reach, which is the rule
-    /// that lets a snapshot outlive the machinery that produced it.
+    /// No engine type may appear anywhere a consumer can reach — <b>including in the provider that
+    /// hosts the engine</b>. The provider references MSBuild; it may not hand a
+    /// <c>ProjectInstance</c> to anybody. That is what lets a snapshot outlive the machinery that
+    /// produced it, and it is why this rule is stricter than the reference rule.
     /// </summary>
-    [Fact]
-    public void NoPublicMember_ExposesAForbiddenType()
+    [Theory]
+    [MemberData(nameof(ShippingPackages))]
+    public void NoPublicMember_ExposesAForbiddenType(string package)
     {
+        Assembly assembly = RepositoryLayout.LoadAssembly(package);
         var offenders = new List<string>();
 
-        foreach (Type type in Core.GetExportedTypes())
+        foreach (Type type in assembly.GetExportedTypes())
         {
             foreach (Type referenced in ReferencedTypes(type))
             {
                 string name = referenced.Assembly.GetName().Name ?? string.Empty;
 
-                if (ForbiddenDependencies.IsForbidden(name))
+                if (ForbiddenDependencies.IsForbiddenInPublicApi(name))
                 {
                     offenders.Add($"{type.Name} -> {referenced.FullName}");
                 }
@@ -59,7 +69,8 @@ public sealed class PublicSurfaceTests
 
         Assert.True(
             offenders.Count == 0,
-            "These public members expose out-of-scope types: " + string.Join(", ", offenders.Distinct()) + ".");
+            $"These public members of '{package}' expose out-of-scope types: "
+            + string.Join(", ", offenders.Distinct()) + ".");
     }
 
     /// <summary>
@@ -139,7 +150,9 @@ public sealed class PublicSurfaceTests
     {
         var offenders = new List<string>();
 
-        foreach (Type type in Core.GetExportedTypes().Where(static type => !type.Name.EndsWith("Builder", StringComparison.Ordinal)))
+        foreach (Type type in Shipping
+            .SelectMany(static assembly => assembly.GetExportedTypes())
+            .Where(static type => !type.Name.EndsWith("Builder", StringComparison.Ordinal)))
         {
             foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
             {
@@ -187,14 +200,14 @@ public sealed class PublicSurfaceTests
                 modifier.FullName, "System.Runtime.CompilerServices.IsExternalInit", StringComparison.Ordinal));
 
     private static IEnumerable<(Type Owner, PropertyInfo Property)> PublicProperties() =>
-        Core.GetExportedTypes()
+        Shipping.SelectMany(static assembly => assembly.GetExportedTypes())
             .SelectMany(static type => type
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                 .Select(property => (type, property)));
 
     private static IEnumerable<(Type Owner, string Name, Type Type, string Where)> PublicMemberTypes()
     {
-        foreach (Type type in Core.GetExportedTypes())
+        foreach (Type type in Shipping.SelectMany(static assembly => assembly.GetExportedTypes()))
         {
             foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
             {
@@ -270,7 +283,7 @@ public sealed class PublicSurfaceTests
                     continue;
                 }
 
-                if (part.Assembly == Core && !part.IsEnum)
+                if (RepositoryLayout.Packages.Contains(part.Assembly.GetName().Name) && !part.IsEnum)
                 {
                     Walk(part, visited, offenders);
                 }

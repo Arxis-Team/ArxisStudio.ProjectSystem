@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ArxisStudio.ProjectSystem.MSBuild.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.MSBuild/ArxisStudio.ProjectSystem.MSBuild.csproj" />
+  </ItemGroup>
+
+</Project>

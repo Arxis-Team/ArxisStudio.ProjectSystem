@@ -16,11 +16,27 @@
   </ItemGroup>
 
   <!--
-    The only package the shipping project references, and it ships no runtime code:
+    Referenced by every shipping project, and it ships no runtime code:
     PrivateAssets="all" in src/Directory.Build.props keeps it out of the consumer graph.
   -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" />
+  </ItemGroup>
+
+  <!--
+    MSBuild, for the provider package only. The core references none of this and an architecture
+    test enforces that.
+
+    Every one of these except the locator carries ExcludeAssets="runtime" at the reference site, and
+    that is not optional: MSBuild's assemblies must come from the SDK the locator finds at run time,
+    not from these packages. Shipping both copies is the classic way to get a process that loads two
+    different MSBuilds and fails somewhere unrelated. The locator itself is exempt because it is what
+    does the finding, so it has to load first and on its own.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" />
+    <PackageVersion Include="Microsoft.Build" Version="18.8.2" />
+    <PackageVersion Include="Microsoft.Build.Framework" Version="18.8.2" />
   </ItemGroup>
 
 </Project>

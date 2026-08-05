@@ -4,8 +4,15 @@
     <RootNamespace>ArxisStudio.ProjectSystem.Architecture.Tests</RootNamespace>
   </PropertyGroup>
 
+  <!--
+    Every shipping package, because these tests inspect compiled metadata and an assembly that is
+    not in the output directory cannot be loaded to be inspected. Referencing the whole stack from
+    one cross-cutting test project is also what keeps the per-package test suites from having to
+    reference packages above them.
+  -->
   <ItemGroup>
     <ProjectReference Include="../../src/ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.MSBuild/ArxisStudio.ProjectSystem.MSBuild.csproj" />
   </ItemGroup>
 
   <!-- The declarative project graph is checked from source, so the tests need the repo root. -->

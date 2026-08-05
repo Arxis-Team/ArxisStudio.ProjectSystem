@@ -60,17 +60,20 @@ public sealed class PackagingTests
     /// A description is what a consumer reads before restoring. The length floor is arbitrary but
     /// it is what stops the placeholder that says the package name back.
     /// </summary>
-    [Fact]
-    public void TheCoreDescribesItself()
+    public static TheoryData<string> ShippingPackages => [.. RepositoryLayout.Packages];
+
+    [Theory]
+    [MemberData(nameof(ShippingPackages))]
+    public void EveryPackageDescribesItself(string package)
     {
         string? description = RepositoryLayout.PropertyOf(
-            RepositoryLayout.ProjectFileOf(RepositoryLayout.CorePackage),
+            RepositoryLayout.ProjectFileOf(package),
             "Description");
 
         Assert.NotNull(description);
         Assert.True(
             description!.Length > 40,
-            $"The core's Description is {description.Length} characters. Say what the package is for.");
+            $"'{package}' has a Description of {description.Length} characters. Say what it is for.");
     }
 
     [Fact]
@@ -85,16 +88,17 @@ public sealed class PackagingTests
     }
 
     /// <summary>
-    /// Exactly one project is published this milestone. Anything else becoming packable would be
-    /// published by the same <c>dotnet pack</c> that publishes the core.
+    /// Only the shipping projects are published. Anything else becoming packable would be pushed by
+    /// the same <c>dotnet pack</c> that pushes them, which is how a test helper ends up on NuGet.
     /// </summary>
     [Fact]
-    public void OnlyTheCoreIsPackable()
+    public void OnlyShippingProjectsArePackable()
     {
-        string corePath = Path.GetFullPath(RepositoryLayout.ProjectFileOf(RepositoryLayout.CorePackage));
+        HashSet<string> shipping = [.. RepositoryLayout.Packages
+            .Select(static package => Path.GetFullPath(RepositoryLayout.ProjectFileOf(package)))];
 
         List<string> offenders = RepositoryLayout.AllProjectFiles()
-            .Where(path => !string.Equals(Path.GetFullPath(path), corePath, StringComparison.OrdinalIgnoreCase))
+            .Where(path => !shipping.Contains(Path.GetFullPath(path), StringComparer.OrdinalIgnoreCase))
             .Where(static path => string.Equals(
                 RepositoryLayout.PropertyOf(path, "IsPackable"), "true", StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -105,11 +109,12 @@ public sealed class PackagingTests
     }
 
     /// <summary>
-    /// The consumer's dependency graph must be empty. The analyzer is the only reference the core
-    /// has, and it is build-time only — <c>PrivateAssets="all"</c> is what keeps it out.
+    /// The core's consumer graph must be empty, and no package may flow a build-time-only analyzer
+    /// to a consumer. The provider legitimately carries MSBuild and the core, so it is the shared
+    /// props -- which every package inherits -- that this checks.
     /// </summary>
     [Fact]
-    public void NothingLeaksIntoPackageDependencies()
+    public void NoBuildTimeOnlyPackageReachesAConsumer()
     {
         Assert.Empty(RepositoryLayout.ProjectReferencesOf(RepositoryLayout.CorePackage));
 

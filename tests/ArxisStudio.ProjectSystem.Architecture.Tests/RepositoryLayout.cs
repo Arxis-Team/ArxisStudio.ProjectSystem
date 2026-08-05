@@ -14,11 +14,14 @@ namespace ArxisStudio.ProjectSystem.Architecture.Tests;
 /// </summary>
 internal static class RepositoryLayout
 {
-    /// <summary>The one package this milestone ships.</summary>
+    /// <summary>The provider-neutral core.</summary>
     public const string CorePackage = "ArxisStudio.ProjectSystem";
 
-    /// <summary>The shipping packages.</summary>
-    public static IReadOnlyList<string> Packages { get; } = new[] { CorePackage };
+    /// <summary>The MSBuild provider.</summary>
+    public const string MSBuildPackage = "ArxisStudio.ProjectSystem.MSBuild";
+
+    /// <summary>The shipping packages, ordered from the bottom of the stack upwards.</summary>
+    public static IReadOnlyList<string> Packages { get; } = new[] { CorePackage, MSBuildPackage };
 
     public static string RepositoryRoot { get; } = ResolveRepositoryRoot();
 
