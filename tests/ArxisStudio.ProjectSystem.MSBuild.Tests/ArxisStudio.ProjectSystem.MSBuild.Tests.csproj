@@ -20,7 +20,7 @@
       **/*.*proj, so these are not default None items and an Update would match nothing. That
       failure is silent, because the build succeeds and the fixtures simply are not there.
     -->
-    <None Include="Fixtures/**/*.*proj" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures/**/*.*proj;Fixtures/**/*.sln;Fixtures/**/*.slnx" CopyToOutputDirectory="PreserveNewest" />
 
     <!-- These are default None items already, so Update is the right verb and Include would be a
          duplicate-item error. -->

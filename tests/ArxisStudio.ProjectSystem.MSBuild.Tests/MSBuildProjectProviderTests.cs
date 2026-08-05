@@ -52,14 +52,18 @@ public sealed class MSBuildProjectProviderTests
     }
 
     [Fact]
-    public void CanLoad_AcceptsProjectsAndDeclinesSolutions()
+    public void CanLoad_AcceptsWhatMSBuildUnderstandsAndNothingElse()
     {
         var provider = new MSBuildProjectProvider();
 
         Assert.Equal("MSBuild", provider.Name);
         Assert.True(provider.CanLoad(WorkspaceEntryPoint.FromPath(Fixture("Basic"))));
+
+        // Anything unrecognised is declined rather than attempted, so a workspace with several
+        // providers can offer it to one that does know the format.
         Assert.False(provider.CanLoad(WorkspaceEntryPoint.FromPath(
-            CanonicalPath.Create(Path.Combine(AppContext.BaseDirectory, "App.sln")))));
+            CanonicalPath.Create(Path.Combine(AppContext.BaseDirectory, "notes.txt")))));
+        Assert.False(provider.CanLoad(WorkspaceEntryPoint.None));
     }
 
     [Fact]

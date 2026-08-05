@@ -39,4 +39,17 @@
     <PackageVersion Include="Microsoft.Build.Framework" Version="18.8.2" />
   </ItemGroup>
 
+  <!--
+    Reads .sln and .slnx, and is the library the SDK itself uses for both. MSBuild vendors a copy
+    internally, so it cannot be reached through Microsoft.Build; this is the public one.
+
+    It is here rather than MSBuild's own SolutionFile because SolutionFile loses solution folders
+    entirely for .slnx: projects come back carrying a parent folder guid while the folder appears in
+    neither ProjectsInOrder nor ProjectsByGuid, so the reference resolves to nothing. Measured, not
+    assumed. This one returns identical, complete results for both formats.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.VisualStudio.SolutionPersistence" Version="1.0.52" />
+  </ItemGroup>
+
 </Project>

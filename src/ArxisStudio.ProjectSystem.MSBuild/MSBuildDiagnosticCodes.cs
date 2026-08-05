@@ -37,6 +37,16 @@ public static class MSBuildDiagnosticCodes
     public const string EvaluationFailed = "APS2002";
 
     /// <summary>
+    /// <c>APS2004</c> — the solution file could not be read.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="EvaluationFailed"/> because nothing was evaluated: the solution
+    /// itself is malformed or is a format this provider does not read, so there is no project to
+    /// attribute the failure to.
+    /// </remarks>
+    public const string SolutionReadFailed = "APS2004";
+
+    /// <summary>
     /// <c>APS2003</c> — the project file is not there.
     /// </summary>
     /// <remarks>

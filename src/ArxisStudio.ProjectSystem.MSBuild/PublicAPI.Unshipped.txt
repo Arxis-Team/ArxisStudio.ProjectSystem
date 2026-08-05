@@ -19,6 +19,7 @@ ArxisStudio.ProjectSystem.MSBuild.MSBuildRegistration.Version.init -> void
 const ArxisStudio.ProjectSystem.MSBuild.MSBuildDiagnosticCodes.EvaluationFailed = "APS2002" -> string!
 const ArxisStudio.ProjectSystem.MSBuild.MSBuildDiagnosticCodes.MSBuildNotFound = "APS2001" -> string!
 const ArxisStudio.ProjectSystem.MSBuild.MSBuildDiagnosticCodes.ProjectFileNotFound = "APS2003" -> string!
+const ArxisStudio.ProjectSystem.MSBuild.MSBuildDiagnosticCodes.SolutionReadFailed = "APS2004" -> string!
 override ArxisStudio.ProjectSystem.MSBuild.MSBuildRegistration.Equals(object? obj) -> bool
 override ArxisStudio.ProjectSystem.MSBuild.MSBuildRegistration.GetHashCode() -> int
 override ArxisStudio.ProjectSystem.MSBuild.MSBuildRegistration.ToString() -> string!

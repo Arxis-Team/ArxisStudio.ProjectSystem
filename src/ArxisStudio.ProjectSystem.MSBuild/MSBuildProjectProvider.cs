@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,16 +8,9 @@ using System.Threading.Tasks;
 namespace ArxisStudio.ProjectSystem.MSBuild;
 
 /// <summary>
-/// Opens a project file by evaluating it with MSBuild.
+/// Opens a solution or a standalone project by evaluating it with MSBuild.
 /// </summary>
 /// <remarks>
-/// <para>
-/// This milestone opens a <b>standalone project</b>. Solutions, and the project graph that comes
-/// with them, are the next one — <see cref="CanLoad"/> says so by accepting only
-/// <see cref="WorkspaceEntryPointKind.Project"/>, which lets a workspace configured with several
-/// providers pass a solution to whichever one grows that ability without this one having to
-/// pretend.
-/// </para>
 /// <para>
 /// <b>Evaluation happens in this process</b>, and see
 /// <c>docs/adr/0009-evaluation-happens-in-process.md</c> for what that costs and what it would take
@@ -25,9 +19,15 @@ namespace ArxisStudio.ProjectSystem.MSBuild;
 /// </para>
 /// <para>
 /// <b>Evaluation is not interruptible.</b> MSBuild offers no way to abandon one part-way, so the
-/// token is observed before the work starts and after it finishes, and a cancellation during a slow
+/// token is observed between projects and after the work finishes, and a cancellation during a slow
 /// evaluation takes effect when that evaluation ends. The work runs on the thread pool rather than
 /// on the caller's thread, so cancelling still returns control immediately to whoever asked.
+/// </para>
+/// <para>
+/// <b>A solution's projects are evaluated one at a time.</b> Correctness first: each gets its own
+/// <c>ProjectCollection</c>, and nothing here yet says that evaluating several at once is safe with
+/// the SDK resolvers and caches MSBuild installs per process. Recorded in
+/// <c>docs/limitations.md</c> as the obvious thing to measure when a large solution is slow.
 /// </para>
 /// </remarks>
 public sealed class MSBuildProjectProvider : IProjectSystemProvider
@@ -37,7 +37,9 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
 
     /// <inheritdoc />
     public bool CanLoad(WorkspaceEntryPoint entryPoint) =>
-        entryPoint.Kind == WorkspaceEntryPointKind.Project;
+        entryPoint.Kind is WorkspaceEntryPointKind.Project
+            or WorkspaceEntryPointKind.Solution
+            or WorkspaceEntryPointKind.SolutionXml;
 
     /// <inheritdoc />
     public async ValueTask<WorkspaceLoadResult> LoadAsync(
@@ -60,34 +62,30 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
         {
             return Failure(
                 MSBuildDiagnosticCodes.ProjectFileNotFound,
-                $"There is no project file at '{request.EntryPointPath}'.",
+                $"There is nothing at '{request.EntryPointPath}'.",
                 request.EntryPointPath);
         }
 
-        Dictionary<string, string> globalProperties = GlobalProperties(request);
-        bool includeItems = request.Options.IncludeItems;
-        CanonicalPath path = request.EntryPointPath;
+        return request.EntryPoint.Kind == WorkspaceEntryPointKind.Project
+            ? await LoadProjectAsync(request, cancellationToken).ConfigureAwait(false)
+            : await LoadSolutionAsync(request, cancellationToken).ConfigureAwait(false);
+    }
 
-        (EvaluatedProject? evaluated, string? evaluationError) = await Task.Run(
-            () => MSBuildProjectEvaluator.TryEvaluate(path, globalProperties, includeItems, out EvaluatedProject? result, out string? error)
-                ? (result, (string?)null)
-                : (null, error),
+    private async ValueTask<WorkspaceLoadResult> LoadProjectAsync(
+        WorkspaceLoadRequest request,
+        CancellationToken cancellationToken)
+    {
+        (ProjectSnapshot? project, ProjectDiagnostic? failure) = await EvaluateAsync(
+            request.EntryPointPath,
+            request.EntryPointPath.FileName,
+            request,
+            knownProjects: null,
             cancellationToken).ConfigureAwait(false);
 
-        // A slow evaluation cannot be abandoned part-way, so this is where a cancellation that
-        // arrived during it takes effect. Publishing the result anyway would advance a version the
-        // caller asked not to advance.
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (evaluated is null)
+        if (project is null)
         {
-            return Failure(
-                MSBuildDiagnosticCodes.EvaluationFailed,
-                $"'{request.EntryPointPath}' could not be evaluated: {evaluationError}",
-                request.EntryPointPath);
+            return WorkspaceLoadResult.Failure(failure!);
         }
-
-        ProjectSnapshot project = MSBuildProjectTranslator.Translate(evaluated, request.Workspace, Name);
 
         var solution = new SolutionSnapshotBuilder
         {
@@ -104,6 +102,159 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
         solution.Projects.Add(project);
 
         return WorkspaceLoadResult.Success(solution.ToSnapshot());
+    }
+
+    private async ValueTask<WorkspaceLoadResult> LoadSolutionAsync(
+        WorkspaceLoadRequest request,
+        CancellationToken cancellationToken)
+    {
+        (DiscoveredSolution? discovered, string? error) =
+            await MSBuildSolutionReader.ReadAsync(request.EntryPointPath, cancellationToken).ConfigureAwait(false);
+
+        if (discovered is null)
+        {
+            return Failure(
+                MSBuildDiagnosticCodes.SolutionReadFailed,
+                $"'{request.EntryPointPath}' could not be read: {error}",
+                request.EntryPointPath);
+        }
+
+        // Every project the solution lists, known before any of them is evaluated. That is what
+        // lets a project reference be resolved to an identity on the first pass rather than needing
+        // a second one to stitch the graph together.
+        HashSet<CanonicalPath> knownProjects = [.. Enumerate(discovered)];
+
+        var solution = new SolutionSnapshotBuilder
+        {
+            Workspace = request.Workspace,
+            Solution = SolutionIdentity.Create(request.Workspace, request.EntryPointPath),
+            Name = discovered.Name,
+            ProviderName = Name,
+            Request = request,
+        };
+
+        foreach (string configuration in discovered.Configurations)
+        {
+            solution.Configurations.Add(configuration);
+        }
+
+        foreach (string platform in discovered.Platforms)
+        {
+            solution.Platforms.Add(platform);
+        }
+
+        foreach (DiscoveredProject listed in discovered.Projects)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            (ProjectSnapshot? project, ProjectDiagnostic? failure) = await EvaluateAsync(
+                listed.FullPath, listed.Name, request, knownProjects, cancellationToken).ConfigureAwait(false);
+
+            // A project that will not evaluate stays in the snapshot carrying its diagnostic. It is
+            // still a project the solution lists, a consumer still has to show it, and removing it
+            // would leave the folder that holds it pointing at nothing.
+            solution.Projects.Add(project ?? Unloadable(listed, request.Workspace, failure!));
+        }
+
+        foreach (SolutionFolder folder in Folders(discovered, request.Workspace))
+        {
+            solution.Folders.Add(folder);
+        }
+
+        return WorkspaceLoadResult.Success(solution.ToSnapshot());
+    }
+
+    private async ValueTask<(ProjectSnapshot? Project, ProjectDiagnostic? Failure)> EvaluateAsync(
+        CanonicalPath path,
+        string name,
+        WorkspaceLoadRequest request,
+        IReadOnlySet<CanonicalPath>? knownProjects,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path.Value))
+        {
+            return (null, Diagnostic(
+                MSBuildDiagnosticCodes.ProjectFileNotFound,
+                $"The solution lists '{name}' at '{path}', but there is no file there.",
+                path));
+        }
+
+        Dictionary<string, string> globalProperties = GlobalProperties(request);
+        bool includeItems = request.Options.IncludeItems;
+
+        (EvaluatedProject? evaluated, string? error) = await Task.Run(
+            () => MSBuildProjectEvaluator.TryEvaluate(
+                path, globalProperties, includeItems, out EvaluatedProject? result, out string? failure)
+                ? (result, (string?)null)
+                : (null, failure),
+            cancellationToken).ConfigureAwait(false);
+
+        // A slow evaluation cannot be abandoned part-way, so this is where a cancellation that
+        // arrived during it takes effect.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return evaluated is null
+            ? (null, Diagnostic(
+                MSBuildDiagnosticCodes.EvaluationFailed,
+                $"'{path}' could not be evaluated: {error}",
+                path))
+            : (MSBuildProjectTranslator.Translate(evaluated, request.Workspace, Name, knownProjects), null);
+    }
+
+    /// <summary>
+    /// A snapshot for a project the solution lists and MSBuild could not read.
+    /// </summary>
+    /// <remarks>
+    /// Carries what the solution knew — a name, a path, an identity — and the reason, and nothing
+    /// else. The alternative, dropping it, would make a solution quietly smaller than it is.
+    /// </remarks>
+    private ProjectSnapshot Unloadable(
+        DiscoveredProject listed,
+        WorkspaceIdentity workspace,
+        ProjectDiagnostic failure)
+    {
+        var builder = new ProjectSnapshotBuilder
+        {
+            Identity = ProjectIdentity.Create(workspace, listed.FullPath),
+            Name = listed.Name,
+            ProjectFilePath = listed.FullPath,
+            ProviderName = Name,
+        };
+
+        builder.Diagnostics.Add(failure);
+
+        return builder.ToSnapshot();
+    }
+
+    private static IEnumerable<CanonicalPath> Enumerate(DiscoveredSolution solution)
+    {
+        foreach (DiscoveredProject project in solution.Projects)
+        {
+            yield return project.FullPath;
+        }
+    }
+
+    private static IEnumerable<SolutionFolder> Folders(DiscoveredSolution discovered, WorkspaceIdentity workspace)
+    {
+        foreach (DiscoveredFolder folder in discovered.Folders)
+        {
+            ImmutableArray<ProjectIdentity>.Builder members = ImmutableArray.CreateBuilder<ProjectIdentity>();
+
+            foreach (DiscoveredProject project in discovered.Projects)
+            {
+                if (string.Equals(project.FolderPath, folder.Path, StringComparison.Ordinal))
+                {
+                    members.Add(ProjectIdentity.Create(workspace, project.FullPath));
+                }
+            }
+
+            yield return new SolutionFolder
+            {
+                Name = folder.Name,
+                Path = folder.Path,
+                Projects = members.ToImmutable(),
+            };
+        }
     }
 
     /// <summary>
@@ -157,10 +308,12 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
         }
     }
 
+    private static ProjectDiagnostic Diagnostic(string code, string message, CanonicalPath path) =>
+        ProjectDiagnostic.ForFile(code, message, ProjectDiagnosticSeverity.Error, path) with
+        {
+            ProviderName = "MSBuild",
+        };
+
     private static WorkspaceLoadResult Failure(string code, string message, CanonicalPath path) =>
-        WorkspaceLoadResult.Failure(
-            ProjectDiagnostic.ForFile(code, message, ProjectDiagnosticSeverity.Error, path) with
-            {
-                ProviderName = "MSBuild",
-            });
+        WorkspaceLoadResult.Failure(Diagnostic(code, message, path));
 }

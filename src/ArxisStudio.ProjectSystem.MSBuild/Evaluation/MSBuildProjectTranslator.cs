@@ -29,11 +29,18 @@ internal static class MSBuildProjectTranslator
     /// <param name="project">What the evaluation produced.</param>
     /// <param name="workspace">The workspace the snapshot belongs to.</param>
     /// <param name="providerName">The provider to attribute it to.</param>
+    /// <param name="knownProjects">
+    /// The project files this workspace is loading, which is what turns a project reference into a
+    /// resolved identity. Empty when a standalone project is being opened: nothing is then known
+    /// about which other projects exist, and an identity minted anyway would be one for a project
+    /// nobody loaded.
+    /// </param>
     /// <returns>The snapshot.</returns>
     internal static ProjectSnapshot Translate(
         EvaluatedProject project,
         WorkspaceIdentity workspace,
-        string providerName)
+        string providerName,
+        IReadOnlySet<CanonicalPath>? knownProjects = null)
     {
         CanonicalPath directory = project.FullPath.Directory;
 
@@ -66,7 +73,7 @@ internal static class MSBuildProjectTranslator
 
         foreach (EvaluatedItem item in project.Items)
         {
-            Translate(item, builder, directory, workspace);
+            Translate(item, builder, directory, workspace, knownProjects);
         }
 
         foreach (OutputArtifact artifact in Outputs(project, directory))
@@ -81,7 +88,8 @@ internal static class MSBuildProjectTranslator
         EvaluatedItem item,
         ProjectSnapshotBuilder builder,
         CanonicalPath directory,
-        WorkspaceIdentity workspace)
+        WorkspaceIdentity workspace,
+        IReadOnlySet<CanonicalPath>? knownProjects)
     {
         if (string.Equals(item.ItemType, MSBuildWellKnown.ProjectReference, StringComparison.OrdinalIgnoreCase))
         {
@@ -98,11 +106,12 @@ internal static class MSBuildProjectTranslator
             {
                 ProjectFilePath = referenced,
 
-                // The referenced project is only given an identity once it is known to be in this
-                // workspace, which a single-project load never establishes. Milestone 2 fills this
-                // in when it can see the whole graph; guessing now would mint an identity for a
-                // project nobody loaded.
-                Project = ProjectIdentity.None,
+                // An identity only when the target is one of the projects this workspace is
+                // loading. A reference can perfectly well point outside the solution, and giving
+                // that an identity would invent a project nobody opened.
+                Project = knownProjects?.Contains(referenced) == true
+                    ? ProjectIdentity.Create(workspace, referenced)
+                    : ProjectIdentity.None,
                 Aliases = [.. Aliases(item.Metadata.GetValueOrDefault("Aliases"))],
                 ReferenceOutputAssembly = Boolean(item.Metadata.GetValueOrDefault("ReferenceOutputAssembly")),
                 Metadata = item.Metadata,

@@ -78,6 +78,42 @@ Adding it here would mean designing a coalescing policy against no real trigger,
 specification is explicit that coalescing must be a deliberate design with deterministic tests
 rather than an incidental race.
 
+## The MSBuild provider
+
+### A solution's projects are evaluated one at a time
+
+Correctness first. Each evaluation gets its own `ProjectCollection`, and nothing measured here yet
+says that running several at once is safe alongside the SDK resolvers and caches MSBuild installs
+per process. A large solution is therefore slower than it could be, and this is the first thing to
+measure when that matters — not the first thing to guess at.
+
+### Evaluation cannot be interrupted
+
+MSBuild offers no way to abandon an evaluation part-way. The cancellation token is observed between
+projects and after the work finishes, so cancelling a solution load stops it at the next project
+boundary rather than immediately. The work runs on the thread pool, so the caller does get control
+back at once, but a thread stays busy until the current project is done.
+
+### Solution folders are a flat list with paths
+
+Nesting is expressed by the path — `/src/Libraries/` sits inside `/src/` — rather than by parent and
+child links. A consumer that wants a tree builds one from the paths. Modelling the links as well
+would be two representations of one fact, and they would eventually disagree.
+
+### Solution configurations are not mapped to project configurations
+
+A solution says which project configuration each of its own configurations selects. That mapping is
+read by nothing here: `SolutionSnapshot.Configurations` lists what the solution declares, and each
+project reports what it was evaluated under. Joining the two is worth doing when something needs it,
+and inventing the shape before then would be guessing.
+
+### A project reference outside the solution has no identity
+
+`ProjectReferenceInfo.Project` is resolved only when the target is one of the projects being loaded.
+A reference pointing outside the solution keeps its `ProjectFilePath` and gets
+`ProjectIdentity.None`, because an identity for a project nobody opened would be a handle to
+nothing.
+
 ## Deferred by design
 
 Not limitations of the implementation so much as scope boundaries, listed so nobody looks for

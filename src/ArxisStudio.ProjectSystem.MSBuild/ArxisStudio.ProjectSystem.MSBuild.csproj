@@ -31,4 +31,12 @@
     <PackageReference Include="Microsoft.Build.Framework" ExcludeAssets="runtime" />
   </ItemGroup>
 
+  <!--
+    Not excluded from runtime, unlike the MSBuild packages above: this one is a plain library that
+    parses solution files, not part of the SDK the locator finds, so it has to ship.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.SolutionPersistence" />
+  </ItemGroup>
+
 </Project>
