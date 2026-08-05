@@ -196,6 +196,26 @@ foreach (ResolvedPackage package in project.ResolvedPackages)
 reference assembly and contribute nothing at run time — `ExcludeAssets="runtime"` produces exactly
 that. Use the one that matches what you are building.
 
+**A project's own output has the same split**, so ask for the kind you mean rather than taking the
+first thing in `bin`:
+
+| `OutputArtifactKind` | What it is for |
+| --- | --- |
+| `Assembly` | The real output. What a host loads. |
+| `ReferenceAssembly` | Public surface, no method bodies, in `obj/…/ref/`. What a compiler wants. |
+| `SymbolFile` | The `.pdb`, for mapping a frame back to source. |
+| `DependencyManifest` | `.deps.json` — what a runtime environment needs to resolve. |
+| `RuntimeConfiguration` | `.runtimeconfig.json`, for a project that produces one. |
+| `DocumentationFile` | The generated XML, where the project asked for it. |
+
+`Outputs` describes **what a build produces**, not what is on disk now: nothing is checked for
+existence, so a project that has never been built still reports where its assembly will land. A kind
+is absent only when the build genuinely will not emit it — an ordinary library reports no
+`RuntimeConfiguration`, and a project built with `DebugType=none` reports no `SymbolFile`.
+
+Every artifact carries the `TargetFramework` it belongs to, because a cross-targeting project
+produces one set per framework and the path alone does not say which build it came from.
+
 `ResolvedPackages` is empty when nothing has been restored, which is not the same as a project having
 no packages. A project that declares packages and has no restore output says so with `APS2005`, as a
 warning rather than a failure.

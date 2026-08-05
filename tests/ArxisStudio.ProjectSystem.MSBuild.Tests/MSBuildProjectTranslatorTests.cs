@@ -315,6 +315,94 @@ public sealed class MSBuildProjectTranslatorTests
         Assert.Contains(snapshot.Outputs, static o => o.Kind == OutputArtifactKind.DocumentationFile);
     }
 
+    /// <summary>
+    /// Everything a consumer needs to assemble a runtime environment, from one evaluation. The
+    /// properties are the ones a real SDK project carries; which of them gates which artifact was
+    /// measured against the SDK rather than assumed.
+    /// </summary>
+    [Fact]
+    public void Outputs_DescribeEverythingTheBuildWillProduce()
+    {
+        ProjectSnapshot snapshot = Translate(Project(properties: Meta(
+            ("TargetPath", Native("src", "App", "bin", "App.dll")),
+            ("DebugType", "portable"),
+            ("TargetRefPath", Native("src", "App", "obj", "ref", "App.dll")),
+            ("GenerateDependencyFile", "true"),
+            ("ProjectDepsFilePath", Native("src", "App", "bin", "App.deps.json")),
+            ("GenerateRuntimeConfigurationFiles", "true"),
+            ("ProjectRuntimeConfigFilePath", Native("src", "App", "bin", "App.runtimeconfig.json")),
+            ("DocumentationFile", Native("src", "App", "bin", "App.xml")),
+            ("TargetFramework", "net10.0"))));
+
+        Assert.Equal(6, snapshot.Outputs.Length);
+        Assert.All(snapshot.Outputs, static o => Assert.Equal("net10.0", o.TargetFramework));
+
+        Assert.Equal(
+            CanonicalPath.Create(Native("src", "App", "obj", "ref", "App.dll")),
+            Single(snapshot, OutputArtifactKind.ReferenceAssembly).Path);
+
+        Assert.Equal(
+            CanonicalPath.Create(Native("src", "App", "bin", "App.deps.json")),
+            Single(snapshot, OutputArtifactKind.DependencyManifest).Path);
+
+        Assert.Equal(
+            CanonicalPath.Create(Native("src", "App", "bin", "App.runtimeconfig.json")),
+            Single(snapshot, OutputArtifactKind.RuntimeConfiguration).Path);
+    }
+
+    /// <summary>
+    /// Symbols are the one artifact no property names, so the path is composed the way the SDK
+    /// composes it — beside the assembly, with the extension changed.
+    /// </summary>
+    [Fact]
+    public void Symbols_SitBesideTheAssembly()
+    {
+        ProjectSnapshot snapshot = Translate(Project(properties: Meta(
+            ("TargetPath", Native("src", "App", "bin", "App.dll")),
+            ("DebugType", "portable"))));
+
+        Assert.Equal(
+            CanonicalPath.Create(Native("src", "App", "bin", "App.pdb")),
+            Single(snapshot, OutputArtifactKind.SymbolFile).Path);
+    }
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("None")]
+    public void AProjectThatEmitsNoSymbols_ReportsNone(string debugType)
+    {
+        ProjectSnapshot snapshot = Translate(Project(properties: Meta(
+            ("TargetPath", Native("src", "App", "bin", "App.dll")),
+            ("DebugType", debugType))));
+
+        Assert.DoesNotContain(snapshot.Outputs, static o => o.Kind == OutputArtifactKind.SymbolFile);
+    }
+
+    /// <summary>
+    /// The case that makes the gates necessary, and it is not hypothetical: an ordinary library
+    /// carries a populated <c>ProjectRuntimeConfigFilePath</c> and emits no such file. Reporting the
+    /// path because it has a value would name a file that never appears.
+    /// </summary>
+    [Theory]
+    [InlineData("GenerateRuntimeConfigurationFiles", "ProjectRuntimeConfigFilePath", OutputArtifactKind.RuntimeConfiguration)]
+    [InlineData("GenerateDependencyFile", "ProjectDepsFilePath", OutputArtifactKind.DependencyManifest)]
+    public void AnArtifactTheBuildWillNotEmit_IsNotReported(string gate, string path, OutputArtifactKind kind)
+    {
+        ProjectSnapshot withoutTheGate = Translate(Project(properties: Meta(
+            (path, Native("src", "App", "bin", "App.json")))));
+
+        Assert.DoesNotContain(withoutTheGate.Outputs, o => o.Kind == kind);
+
+        ProjectSnapshot toldItIsOff = Translate(Project(properties: Meta(
+            (gate, "false"),
+            (path, Native("src", "App", "bin", "App.json")))));
+
+        Assert.DoesNotContain(toldItIsOff.Outputs, o => o.Kind == kind);
+    }
+
+    private static OutputArtifact Single(ProjectSnapshot snapshot, OutputArtifactKind kind) =>
+        Assert.Single(snapshot.Outputs.Where(o => o.Kind == kind));
+
     [Fact]
     public void Outputs_OfAProjectThatSaysNothing_AreEmpty()
     {

@@ -26,6 +26,12 @@ runtime because a package can be compiled against a reference assembly and contr
 time. A project that declares packages and has not been restored says so as a warning rather than
 failing.
 
+Each project also describes what building it produces: the assembly, its symbols, its reference
+assembly, and the `.deps.json` and `.runtimeconfig.json` a runtime environment needs — each present
+only when the build genuinely emits it, and each tagged with the framework it belongs to. The
+reference assembly and the real output are separate answers because a compiler and a loader want
+different files.
+
 And it runs work: restore, build, rebuild and clean go through MSBuild's own engine, reporting
 progress as projects start and coming back with the engine's diagnostics attributed to file and
 line. A failing build is a failed result carrying `CS0103`, not an exception.

@@ -193,9 +193,23 @@ clean.
 
 ### Nothing checks whether build output is stale
 
-The same gap as restore output, one level up. `OutputPath` and its kin describe where a build would
-put things, not whether what is there now came from the current source. Freshness is its own
-problem.
+The same gap as restore output, one level up. `Outputs` describes where a build puts things, not
+whether what is there now came from the current source, and nothing reports a timestamp or a version
+identity for it either. Both are deliberate: baking "this file was current at 14:02" into an
+immutable snapshot produces a value that starts ageing the moment it is taken and cannot say so. A
+consumer holds the paths and can ask the file system whenever the answer needs to be fresh.
+
+Detecting staleness properly needs to know when inputs change, which is the freshness work.
+
+### The symbol file's path is composed, not read
+
+Every other artifact comes from a property that names it. Symbols have none: the SDK builds the path
+inside a target, from the same output directory and assembly name that make up `TargetPath`, so this
+composes it the same way and gates it on `DebugType`.
+
+A project that redirects its symbols somewhere else therefore gets a `SymbolFile` path that is
+wrong. It is reported anyway because a consumer mapping a stack frame to source degrades gracefully
+when the file is not there, and reporting nothing helps nobody.
 
 ## Deferred by design
 

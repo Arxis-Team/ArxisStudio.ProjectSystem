@@ -237,30 +237,83 @@ internal static class MSBuildProjectTranslator
         return Property(project, "TargetFramework") is { } single ? [single] : [];
     }
 
+    /// <summary>
+    /// What the build will put on disk, read from the evaluated context that decides it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These are the artifacts a consumer needs to assemble a runtime environment, so the promise is
+    /// "what this build produces", not "what is there now". Nothing is checked for existence: a
+    /// snapshot taken before a build would then report nothing, and one taken after would silently
+    /// mean something different.
+    /// </para>
+    /// <para>
+    /// Each is therefore gated on what decides whether the build emits it at all, and the gates are
+    /// not uniform — which was measured rather than assumed. <c>TargetRefPath</c> empties itself when
+    /// <c>ProduceReferenceAssembly</c> is false, so the path is its own gate. But
+    /// <c>ProjectRuntimeConfigFilePath</c> is populated for an ordinary library that emits no
+    /// <c>runtimeconfig.json</c> at all, so that one needs
+    /// <c>GenerateRuntimeConfigurationFiles</c> to be asked as well. Reporting it regardless would
+    /// name a file that never appears — the same mistake as taking <c>bin/placeholder/</c>
+    /// literally, which <see href="../../docs/adr/0012-restore-assets-are-read-not-resolved.md">ADR 0012</see>
+    /// records from the restore side.
+    /// </para>
+    /// </remarks>
     private static IEnumerable<OutputArtifact> Outputs(EvaluatedProject project, CanonicalPath directory)
     {
         string? framework = Property(project, "TargetFramework");
+        string? targetPath = Property(project, "TargetPath");
 
-        if (Resolve(directory, Property(project, "TargetPath")) is { IsEmpty: false } assembly)
+        if (Resolve(directory, targetPath) is { IsEmpty: false } assembly)
         {
-            yield return new OutputArtifact
+            yield return Artifact(OutputArtifactKind.Assembly, assembly, framework);
+        }
+
+        // Symbols are the one artifact with no property naming them: the SDK composes the path
+        // inside a target, from the same TargetDir and TargetName that make up TargetPath. So this
+        // composes it too, gated on DebugType, which is what decides whether one is emitted.
+        // A project that redirects its symbols elsewhere is the documented cost.
+        if (targetPath is not null && Property(project, "DebugType") is { } debugType
+            && !string.Equals(debugType, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Resolve(directory, System.IO.Path.ChangeExtension(targetPath, ".pdb")) is
+                { IsEmpty: false } symbols)
             {
-                Kind = OutputArtifactKind.Assembly,
-                Path = assembly,
-                TargetFramework = framework,
-            };
+                yield return Artifact(OutputArtifactKind.SymbolFile, symbols, framework);
+            }
+        }
+
+        if (Resolve(directory, Property(project, "TargetRefPath")) is { IsEmpty: false } reference)
+        {
+            yield return Artifact(OutputArtifactKind.ReferenceAssembly, reference, framework);
+        }
+
+        if (Boolean(Property(project, "GenerateDependencyFile")) == true
+            && Resolve(directory, Property(project, "ProjectDepsFilePath")) is { IsEmpty: false } dependencies)
+        {
+            yield return Artifact(OutputArtifactKind.DependencyManifest, dependencies, framework);
+        }
+
+        if (Boolean(Property(project, "GenerateRuntimeConfigurationFiles")) == true
+            && Resolve(directory, Property(project, "ProjectRuntimeConfigFilePath")) is
+                { IsEmpty: false } runtimeConfiguration)
+        {
+            yield return Artifact(OutputArtifactKind.RuntimeConfiguration, runtimeConfiguration, framework);
         }
 
         if (Resolve(directory, Property(project, "DocumentationFile")) is { IsEmpty: false } documentation)
         {
-            yield return new OutputArtifact
-            {
-                Kind = OutputArtifactKind.DocumentationFile,
-                Path = documentation,
-                TargetFramework = framework,
-            };
+            yield return Artifact(OutputArtifactKind.DocumentationFile, documentation, framework);
         }
     }
+
+    private static OutputArtifact Artifact(OutputArtifactKind kind, CanonicalPath path, string? framework) =>
+        new()
+        {
+            Kind = kind,
+            Path = path,
+            TargetFramework = framework,
+        };
 
     /// <summary>Reads a property, treating blank as absent.</summary>
     private static string? Property(EvaluatedProject project, string name)

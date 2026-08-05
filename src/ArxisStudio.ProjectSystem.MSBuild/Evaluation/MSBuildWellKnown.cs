@@ -48,6 +48,8 @@ internal static class MSBuildWellKnown
         "TargetFramework", "TargetFrameworks", "TargetFrameworkIdentifier", "TargetFrameworkVersion",
         "Configuration", "Configurations", "Platform", "Platforms", "PlatformTarget",
         "OutputPath", "TargetPath", "TargetFileName", "TargetName", "TargetExt",
+        "TargetRefPath", "DebugType", "ProjectDepsFilePath", "ProjectRuntimeConfigFilePath",
+        "GenerateDependencyFile", "GenerateRuntimeConfigurationFiles",
         "BaseIntermediateOutputPath", "IntermediateOutputPath", "ProjectAssetsFile",
         "LangVersion", "Nullable", "ImplicitUsings", "TreatWarningsAsErrors",
         "UseWPF", "UseWindowsForms", "IsPackable", "IsTestProject",

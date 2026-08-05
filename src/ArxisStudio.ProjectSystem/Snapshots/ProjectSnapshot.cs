@@ -150,7 +150,17 @@ public sealed class ProjectSnapshot
     /// <summary>Gets the project's items.</summary>
     public ImmutableArray<ProjectItem> Items { get; }
 
-    /// <summary>Gets the artifacts a provider found, when a build had produced any.</summary>
+    /// <summary>
+    /// Gets the artifacts a build of this project produces — the assembly, its symbols, its
+    /// reference assembly and its manifests.
+    /// </summary>
+    /// <remarks>
+    /// These describe what a build <em>puts</em> at those paths, not what is there now: nothing is
+    /// checked for existence, so a project that has never been built still reports where its output
+    /// will land. A consumer that needs to know whether the file is there, and current, asks the
+    /// file system — the snapshot deliberately does not, because an answer baked into an immutable
+    /// value would start ageing the moment it was taken.
+    /// </remarks>
     public ImmutableArray<OutputArtifact> Outputs { get; }
 
     /// <summary>Gets the diagnostics raised about this project.</summary>

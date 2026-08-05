@@ -175,6 +175,63 @@ public sealed class MSBuildProjectProviderTests
         Assert.Single(project.Outputs.Where(static o => o.Kind == OutputArtifactKind.Assembly));
     }
 
+    /// <summary>
+    /// The artifacts a consumer needs to assemble a runtime environment, read from a real
+    /// evaluation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This one is deliberately end to end rather than over a hand-built evaluation, because the
+    /// half it checks is the half a pure translation test cannot see: the evaluator copies only an
+    /// allow-listed set of properties out of MSBuild, so a translation that reads a property nobody
+    /// surfaced is correct and dead at the same time. That is not hypothetical — it is exactly what
+    /// happened when these artifacts were added.
+    /// </para>
+    /// <para>
+    /// A library, so what is <em>absent</em> matters as much: an ordinary library carries a
+    /// populated <c>ProjectRuntimeConfigFilePath</c> and emits no such file.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Outputs_DescribeARealProjectsArtifacts()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("Basic"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal(
+            [
+                OutputArtifactKind.Assembly,
+                OutputArtifactKind.SymbolFile,
+                OutputArtifactKind.DependencyManifest,
+                OutputArtifactKind.ReferenceAssembly,
+            ],
+            project.Outputs.Select(static o => o.Kind).Order());
+
+        Assert.EndsWith(
+            "BasicAssembly.pdb",
+            Single(project, OutputArtifactKind.SymbolFile).Path.Value,
+            StringComparison.Ordinal);
+
+        Assert.EndsWith(
+            "BasicAssembly.deps.json",
+            Single(project, OutputArtifactKind.DependencyManifest).Path.Value,
+            StringComparison.Ordinal);
+
+        // The reference assembly is the one a compiler wants and the primary output is the one a
+        // loader wants, and they are different files in different directories. Reporting either as
+        // "the output" would answer half the callers wrongly.
+        Assert.NotEqual(
+            Single(project, OutputArtifactKind.Assembly).Path,
+            Single(project, OutputArtifactKind.ReferenceAssembly).Path);
+
+        Assert.All(project.Outputs, static o => Assert.Equal("net10.0", o.TargetFramework));
+    }
+
+    private static OutputArtifact Single(ProjectSnapshot project, OutputArtifactKind kind) =>
+        Assert.Single(project.Outputs.Where(o => o.Kind == kind));
+
     [Fact]
     public async Task DeclaredReferences_ComeThroughWithoutRestoring()
     {
