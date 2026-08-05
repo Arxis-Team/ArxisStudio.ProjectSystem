@@ -254,6 +254,28 @@ switch (invalidation.Scope)
 `Causes` carries the changes that actually mattered, so a host can say *why* it reloaded rather than
 just that it did.
 
+A file system does not report one change per edit — a save produces two or three notifications, a
+branch switch produces thousands — so changes go through a coalescer first:
+
+```csharp
+using var coalescer = new FileChangeCoalescer(batch =>
+{
+    WorkspaceInvalidation invalidation = workspace.CurrentSnapshot?.Invalidate(batch)
+        ?? WorkspaceInvalidation.None;
+
+    if (!invalidation.IsEmpty) { /* refresh */ }
+});
+
+watcher.Changed += (_, e) => coalescer.Add(CanonicalPath.Create(e.FullPath));
+```
+
+It delivers once the changes have stopped for `QuietPeriod`, **or** once `MaximumDelay` has passed
+since the first of them — whichever comes first. Both exist because either alone misbehaves: a quiet
+period never fires during a branch switch, and a maximum delay alone fires on a fixed schedule in
+the middle of one. `Flush()` delivers immediately, for a host that knows the burst is over.
+
+The clock is a `TimeProvider`, so a test advances it by hand rather than waiting.
+
 **Staleness does not spread along project references,** which looks like an omission and is a
 finding: evaluating a project does not read the projects it references — MSBuild resolves a
 `ProjectReference` during a build, not during an evaluation. So a change to `Library` leaves `App`'s

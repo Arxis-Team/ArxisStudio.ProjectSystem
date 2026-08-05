@@ -16,6 +16,20 @@
   </ItemGroup>
 
   <!--
+    Microsoft's FakeTimeProvider, for tests only. Debouncing is the one thing in this repository
+    that genuinely depends on the passage of time, and the contract forbids Task.Delay as a
+    substitute for coordination, so the clock has to be something a test advances by hand.
+
+    Taken as a dependency rather than hand-written, unlike the deliberate refusal of a NuGet client
+    in ADR 0012, and the difference is which side of the boundary it lands on: nothing ships with
+    this, and the alternative is a fake timer implementation whose Change semantics would themselves
+    need testing.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.8.0" />
+  </ItemGroup>
+
+  <!--
     MSBuild, for the provider package only. The core references none of this and an architecture
     test enforces that.
 

@@ -8,4 +8,12 @@
     <ProjectReference Include="../../src/ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
   </ItemGroup>
 
+  <!--
+    A clock the tests advance by hand. The only thing here that genuinely depends on time passing is
+    the coalescer, and the contract forbids waiting for it.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+
 </Project>
