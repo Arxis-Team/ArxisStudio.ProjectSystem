@@ -9,9 +9,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 roadmap defines what follows. `README.md` is the public statement of what the packages are. Where
 they disagree, the task specification wins and the README is what gets corrected.
 
-Development proceeds one milestone at a time. Milestones 0–3 are complete; Milestone 4 (restore and
-build execution) is open, and Milestone 5 is file watching and invalidation. Do not ship placeholder
-API for a concept a later milestone owns.
+Development proceeds one milestone at a time. Milestones 0–5 are complete; Milestone 6 (NuGet
+management) is open, and Milestone 7 is the Markup.Xaml adapter. Do not ship placeholder API for a
+concept a later milestone owns.
 
 ## Build and test
 
@@ -49,18 +49,24 @@ touch it.
 
 ```text
 ArxisStudio.ProjectSystem                 provider-neutral core
-        ↑
+        ↑                    ↑
+        │                    └── ArxisStudio.ProjectSystem.NuGet    package management
+        │
 ArxisStudio.ProjectSystem.MSBuild         MSBuild discovery and evaluation
-        ↑
-ArxisStudio.ProjectSystem.NuGet           Milestone 6
+
 ArxisStudio.ProjectSystem.Markup.Xaml     Milestone 7, depends on ProjectSystem *and* Markup
 ```
 
+Note that NuGet sits **beside** MSBuild rather than above it. Each package hosts exactly one engine:
+MSBuild reads projects, NuGet writes them, and neither references the other. A package manager that
+could evaluate would start to, and then two packages would read project files and eventually
+disagree.
+
 Two questions hide behind "what may a package depend on", and they have different answers. **What a
-package may reference** depends on the package: the MSBuild provider exists to host MSBuild.
-**What may appear in a public surface** does not: no consumer of any package in this family should
-need MSBuild on their compile line to read a snapshot. `ForbiddenDependencies` has a method for each
-and they are not interchangeable.
+package may reference** depends on the package: the MSBuild provider exists to host MSBuild, and the
+package manager to host NuGet. **What may appear in a public surface** does not: no consumer of any
+package in this family should need MSBuild or NuGet on their compile line to read a snapshot.
+`ForbiddenDependencies` has a method for each and they are not interchangeable.
 
 **The core references nothing.** Not MSBuild, not NuGet, not Roslyn, not Avalonia, not
 `ArxisStudio.Markup`, not any UI framework, not any IDE API — and no such type may appear in its
@@ -200,6 +206,7 @@ What is recorded so far:
 | [0014](docs/adr/0014-an-operation-is-not-a-mutation.md) | Building changes disk, not the model, so it stays outside the mutation boundary |
 | [0015](docs/adr/0015-invalidation-is-not-transitive.md) | Evaluating a project does not read its references, so staleness does not spread |
 | [0016](docs/adr/0016-watching-belongs-with-the-provider.md) | Watching is composed by the host from four pieces; the workspace is not one of them |
+| [0017](docs/adr/0017-project-files-are-edited-as-xml.md) | Project files are edited as XML; each package hosts one engine and no other |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

@@ -11,10 +11,11 @@ namespace ArxisStudio.ProjectSystem.Architecture.Tests;
 /// <remarks>
 /// <para>
 /// There are two different questions here and they have different answers, which is why there are
-/// two methods. <b>What a package may reference</b> depends on the package: the MSBuild provider
-/// exists to host MSBuild, so it references it, while the core references nothing.
+/// two methods. <b>What a package may reference</b> depends on the package: each exists to host one
+/// engine, so the MSBuild provider references MSBuild and the package manager references NuGet,
+/// while the core references neither and nothing references both.
 /// <b>What may appear in a public surface</b> does not depend on the package: no consumer of any
-/// package in this family should need MSBuild on their compile line to inspect a snapshot.
+/// package in this family should need MSBuild or NuGet on their compile line to inspect a snapshot.
 /// </para>
 /// <para>
 /// Conflating the two would either forbid the provider from doing its job or let engine types leak
@@ -23,9 +24,11 @@ namespace ArxisStudio.ProjectSystem.Architecture.Tests;
 /// </remarks>
 internal static class ForbiddenDependencies
 {
-    /// <summary>Out of scope for every shipping package, whatever its job.</summary>
-    private static readonly string[] Everywhere =
+    /// <summary>Out of scope by default, for every shipping package.</summary>
+    private static readonly string[] Engines =
     [
+        "Microsoft.Build",
+        "MSBuild",
         "NuGet.",
         "Microsoft.CodeAnalysis",
         "Avalonia",
@@ -38,12 +41,20 @@ internal static class ForbiddenDependencies
         "Gtk",
     ];
 
-    /// <summary>Additionally out of scope for the provider-neutral core.</summary>
-    private static readonly string[] CoreOnly =
-    [
-        "Microsoft.Build",
-        "MSBuild",
-    ];
+    /// <summary>
+    /// The one engine each package exists to host, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// Stated per package rather than as "everything except the core", because the interesting rule
+    /// is not that the core is special — it is that a package hosting one engine must not quietly
+    /// acquire a second. The MSBuild provider evaluating packages, or the package manager evaluating
+    /// projects, would each put two readers of the same files in one repository.
+    /// </remarks>
+    private static readonly Dictionary<string, string[]> Hosts = new(StringComparer.Ordinal)
+    {
+        [RepositoryLayout.MSBuildPackage] = ["Microsoft.Build", "MSBuild"],
+        [RepositoryLayout.NuGetPackage] = ["NuGet."],
+    };
 
     /// <summary>Whether a package may not reference something.</summary>
     /// <param name="package">The shipping package doing the referencing.</param>
@@ -51,11 +62,11 @@ internal static class ForbiddenDependencies
     /// <returns><see langword="true"/> when the reference breaks the boundary.</returns>
     public static bool IsForbiddenReference(string package, string identifier)
     {
-        IEnumerable<string> prefixes = string.Equals(package, RepositoryLayout.CorePackage, StringComparison.Ordinal)
-            ? Everywhere.Concat(CoreOnly)
-            : Everywhere;
+        string[] hosted = Hosts.GetValueOrDefault(package, []);
 
-        return prefixes.Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
+        return Engines
+            .Where(prefix => !hosted.Contains(prefix, StringComparer.Ordinal))
+            .Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -69,5 +80,5 @@ internal static class ForbiddenDependencies
     /// <param name="identifier">The assembly name of a type appearing in a public member.</param>
     /// <returns><see langword="true"/> when it may not be exposed.</returns>
     public static bool IsForbiddenInPublicApi(string identifier) =>
-        Everywhere.Concat(CoreOnly).Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
+        Engines.Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
 }

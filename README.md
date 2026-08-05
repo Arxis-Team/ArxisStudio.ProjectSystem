@@ -10,7 +10,7 @@ stable, immutable, and safe to read from several threads while something else re
 
 ## Status
 
-**Milestone 5 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
+**Milestone 6 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
 solution or a standalone project by evaluating it, and runs restore, build, rebuild and clean over
 it.
 
@@ -62,8 +62,12 @@ Nothing refreshes on its own — you call `RefreshAsync`, with your own token an
 handling. [ADR 0016](docs/adr/0016-watching-belongs-with-the-provider.md) says why that is the
 deliberate answer.
 
-What does not yet: staleness detection for build outputs. That is deferred with the freshness work,
-and the core already models what it needs.
+And `ArxisStudio.ProjectSystem.NuGet` changes what a project references — install, update, uninstall
+— written straight into the project XML, keeping its comments, its blank lines and its indentation.
+Under central package management the reference and the version go into two different files, and they
+are written together or not at all.
+
+What does not yet: package search and version discovery, and staleness detection for build outputs.
 
 ## A minimal example
 
@@ -137,22 +141,28 @@ diagnostics, ordering, and what a provider must get right.
 
 ## Libraries and dependency direction
 
-These are referenced directly rather than published to a feed. Reference the highest one you need;
-it brings the others with it.
+These are referenced directly rather than published to a feed. Reference what you need; each brings
+the core with it.
 
 ```text
-ArxisStudio.ProjectSystem                 provider-neutral core
-        ↑
-ArxisStudio.ProjectSystem.MSBuild         MSBuild discovery and evaluation
+                 ArxisStudio.ProjectSystem              provider-neutral core
+                      ↑                ↑
+                      │                │
+ArxisStudio.ProjectSystem.MSBuild      ArxisStudio.ProjectSystem.NuGet
+  reads projects                         writes them
 
 Later, optional:
-ArxisStudio.ProjectSystem.NuGet           package-management operations (Milestone 6)
 ArxisStudio.ProjectSystem.Markup.Xaml     adapter onto ArxisStudio.Markup (Milestone 7)
 ```
 
 Arrows mean "depends on". The core depends on nothing but the base class library. A tool that only
 wants the model — to cache it, to render it, to write its own provider — references the core alone
 and never loads MSBuild.
+
+**Each package hosts exactly one engine.** MSBuild reads projects and NuGet writes them; neither
+references the other, and neither references the other's engine. A package manager that could
+evaluate would start to, and then two packages would read project files and eventually disagree
+about one. That is enforced per package, not as a special case for the core.
 
 ### What the core is independent of, and why it matters
 
@@ -218,7 +228,7 @@ codes are the contract.
 | `APS4xxx` | NuGet package-management operations |
 | `APS5xxx` | Integration adapters |
 
-`APS1xxx`, `APS2xxx` and `APS3xxx` have implemented codes; the rest are reserved. A code with no
+`APS1xxx` through `APS4xxx` have implemented codes; the rest are reserved. A code with no
 producer is a promise the library has not made, so none is declared. The ranges divide by concern
 rather than by assembly: the MSBuild package raises `APS2xxx` for evaluating a project and `APS3xxx`
 for building one, because a consumer routing on "the build failed" should not have to know which
@@ -257,8 +267,8 @@ security boundary and is not offered as one.
 | 2 | Solutions and the project graph: `.sln`, `.slnx`, solution folders, configurations |
 | 3 | References and restore assets, `project.assets.json`, SDK and workload diagnostics |
 | 4 | Explicit restore and build operations with structured progress |
-| **5** | File watching, debouncing, invalidation, incremental refresh — *this one* |
-| 6 | `ArxisStudio.ProjectSystem.NuGet`: search, install, update, remove |
+| 5 | File watching, debouncing, invalidation, incremental refresh |
+| **6** | `ArxisStudio.ProjectSystem.NuGet`: install, update, remove — *this one* |
 | 7 | `ArxisStudio.ProjectSystem.Markup.Xaml`: optional adapter onto the Markup resolvers |
 
 ## Build and test

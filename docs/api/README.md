@@ -318,6 +318,54 @@ takes bare paths rather than any watcher's event type.
 Project identities survive a refresh, so anything you remember about a project — an expanded node,
 an open editor, a cached analysis — stays valid across one.
 
+## Changing what a project references
+
+`ArxisStudio.ProjectSystem.NuGet` writes project files. It sits **beside** the MSBuild provider
+rather than above it and references neither MSBuild nor it: reading a project and writing one are
+different jobs, and a package that could do both would eventually disagree with itself.
+
+```csharp
+ProjectOperationResult result = await PackageEditor.ApplyAsync(
+    new PackageEditRequest
+    {
+        Kind = PackageEditKind.Install,
+        ProjectFilePath = project.ProjectFilePath,
+        PackageId = "Serilog",
+        Version = "4.1.0",
+    },
+    PackageVersionLayout.From(project));
+```
+
+`PackageVersionLayout` is the one thing that cannot be guessed. Under **central package management**
+the project declares `<PackageReference Include="Serilog" />` with no version and the version lives
+in `Directory.Packages.props`; without it the version is an attribute on the reference. Writing it
+in the wrong place produces a file that either does not restore or silently keeps the old version.
+`From(project)` reads both facts off a loaded snapshot, so you do not have to know either property
+name.
+
+One change can therefore touch two files, and it touches them together: **if the second write fails,
+the first is put back.** A half-applied edit leaves a reference with no version, which is a
+repository that does not restore.
+
+Edits are surgical. Existing lines keep their exact text, comments and blank lines survive, a new
+item copies the indentation and newline of what it sits beside, and a new item is sorted into a list
+only when that list is already sorted — imposing an order on a list somebody grouped by meaning
+rearranges their file as a side effect of adding one line.
+[ADR 0017](../adr/0017-project-files-are-edited-as-xml.md) has the reasoning.
+
+Three things it deliberately does not do:
+
+- **Restore.** Changing a file changes disk, not the model. Restore through the workspace and
+  refresh when you want the snapshot to catch up.
+- **Validate the version.** It is written verbatim, because `[1.0,2.0)` and `1.0.0-*` are both
+  meaningful and normalising them would change what the project asked for.
+- **Remove a central version on uninstall.** `Directory.Packages.props` is shared by every project
+  in the repository and this edit was given one, so it cannot see who else still needs the pin.
+
+An edit with nothing to do — installing something already referenced, removing something absent —
+succeeds and says so with `APS4004` as a warning. A silent no-op looks exactly like a successful
+change.
+
 `ResolvedPackages` is empty when nothing has been restored, which is not the same as a project having
 no packages. A project that declares packages and has no restore output says so with `APS2005`, as a
 warning rather than a failure.
@@ -395,7 +443,7 @@ Ordinary problems are `ProjectDiagnostic` values with a stable code, never excep
 | `APS1xxx` | Core: requests, paths, snapshots, workspace, invariants |
 | `APS2xxx` | MSBuild discovery and evaluation |
 | `APS3xxx` | Restore and build execution |
-| `APS4xxx` | NuGet package-management operations |
+| `APS4xxx` | Package-management operations |
 | `APS5xxx` | Integration adapters |
 
 The ranges divide by concern rather than by assembly, so the MSBuild package raises `APS2xxx` for

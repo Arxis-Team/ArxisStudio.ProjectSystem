@@ -251,6 +251,35 @@ The watcher reports paths. Whether a file was created, edited, renamed or delete
 because nothing here needs it: any of them makes a project stale in exactly the same way. A host
 that wants to distinguish them uses its own file observation, which it probably already has.
 
+## Package management
+
+### Uninstalling leaves the central version behind
+
+Under central package management, removing a `PackageReference` from a project does not remove the
+`PackageVersion` from `Directory.Packages.props`. That file is shared by every project in the
+repository and the editor is given one project, so it cannot see whether anything else still needs
+the pin. Removing it would break projects it never looked at.
+
+The cost is an entry that may now be unused. A tool that wants to tidy those up has to look at every
+project, which is a different operation over a different input.
+
+### Nothing restores, searches, or picks a version
+
+The editor writes what it is told to write. It does not reach a feed, does not know which versions
+exist, and does not check that the one it was given is real — a version string is written verbatim,
+because `[1.0,2.0)` and `1.0.0-*` are both meaningful and a library that normalised them would
+change what the project asked for.
+
+Restoring afterwards is the caller's, through the workspace's own operations. That keeps the rule
+that changing disk is not changing the model.
+
+### An edit is transactional, not durable
+
+If two files must change and the second write fails, the first is put back from bytes held in
+memory. That handles the failure that actually happens — a file open in another editor. It is not a
+journal: a process killed mid-write leaves what it left, and nothing defends against another process
+writing the same file at the same moment.
+
 ## Deferred by design
 
 Not limitations of the implementation so much as scope boundaries, listed so nobody looks for

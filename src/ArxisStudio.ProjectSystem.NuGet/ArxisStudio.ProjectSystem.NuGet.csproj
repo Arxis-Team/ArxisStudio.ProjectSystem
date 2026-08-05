@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ArxisStudio.ProjectSystem.NuGet</RootNamespace>
+    <Description>Package management for ArxisStudio.ProjectSystem: installing, updating and removing PackageReference items, including under central package management, as transactional edits to the project files. Reading what a project already declares belongs to the MSBuild provider; this package is what changes it.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
+  </ItemGroup>
+
+  <!--
+    Deliberately no reference to ArxisStudio.ProjectSystem.MSBuild. Changing a project file is XML,
+    not evaluation, and restoring afterwards goes through the core's IProjectOperationProvider, so
+    this package needs an engine for neither. An architecture test enforces it, because the moment
+    this could evaluate a project it would start to, and then two packages would read project files.
+  -->
+
+  <!--
+    The rewriting and the file layout are internal: what a consumer uses is the editor, and a second
+    public XML model beside it would be a second thing to support. The rewriting is also the part
+    most worth testing exhaustively, so the tests reach it directly rather than through a file.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ArxisStudio.ProjectSystem.NuGet.Tests" />
+  </ItemGroup>
+
+</Project>

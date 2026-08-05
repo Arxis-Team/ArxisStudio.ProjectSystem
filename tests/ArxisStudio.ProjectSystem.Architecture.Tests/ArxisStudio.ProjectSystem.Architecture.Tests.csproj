@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
     <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.MSBuild/ArxisStudio.ProjectSystem.MSBuild.csproj" />
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.NuGet/ArxisStudio.ProjectSystem.NuGet.csproj" />
   </ItemGroup>
 
   <!-- The declarative project graph is checked from source, so the tests need the repo root. -->

@@ -26,6 +26,7 @@ public sealed class DiagnosticCatalogueTests
         (RepositoryLayout.CorePackage, "ProjectDiagnosticCodes", "^APS1[0-9]{3}$"),
         (RepositoryLayout.MSBuildPackage, "MSBuildDiagnosticCodes", "^APS2[0-9]{3}$"),
         (RepositoryLayout.MSBuildPackage, "OperationDiagnosticCodes", "^APS3[0-9]{3}$"),
+        (RepositoryLayout.NuGetPackage, "PackageDiagnosticCodes", "^APS4[0-9]{3}$"),
     ];
 
     public static TheoryData<string, string, string> Catalogues

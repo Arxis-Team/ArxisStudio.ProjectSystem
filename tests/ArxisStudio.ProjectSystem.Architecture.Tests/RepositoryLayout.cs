@@ -20,8 +20,12 @@ internal static class RepositoryLayout
     /// <summary>The MSBuild provider.</summary>
     public const string MSBuildPackage = "ArxisStudio.ProjectSystem.MSBuild";
 
+    /// <summary>Package management.</summary>
+    public const string NuGetPackage = "ArxisStudio.ProjectSystem.NuGet";
+
     /// <summary>The shipping packages, ordered from the bottom of the stack upwards.</summary>
-    public static IReadOnlyList<string> Packages { get; } = new[] { CorePackage, MSBuildPackage };
+    public static IReadOnlyList<string> Packages { get; } =
+        new[] { CorePackage, MSBuildPackage, NuGetPackage };
 
     public static string RepositoryRoot { get; } = ResolveRepositoryRoot();
 
