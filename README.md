@@ -10,7 +10,7 @@ stable, immutable, and safe to read from several threads while something else re
 
 ## Status
 
-**Milestone 6 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
+**Milestones 0-6 complete.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
 solution or a standalone project by evaluating it, and runs restore, build, rebuild and clean over
 it.
 
@@ -65,11 +65,20 @@ deliberate answer.
 And `ArxisStudio.ProjectSystem.NuGet` changes what a project references — install, update, uninstall
 — written straight into the project XML, keeping its comments, its blank lines and its indentation.
 Under central package management the reference and the version go into two different files, and they
-are written together or not at all. It also searches a NuGet V3 feed and orders a package's
-versions, so "install the latest stable" is a question it can answer.
+are written together or not at all. It searches a NuGet V3 feed and orders a package's versions, so
+"install the latest stable" is a question it can answer:
+
+```csharp
+ProjectOperationResult result = await PackageInstaller.ApplyAndRestoreAsync(
+    request, workspace, PackageVersionLayout.From(project));
+```
+
+If the restore fails, the change is put back — a project carrying a reference that will not restore
+does not build. The restore itself goes through the workspace, because this package hosts no build
+engine and must not: two packages able to read project files would eventually disagree about one.
 
 What does not yet: reading `NuGet.config` to discover configured sources, authenticating to private
-feeds, and staleness detection for build outputs.
+feeds, dependency resolution before an install, and staleness detection for build outputs.
 
 ## A minimal example
 
@@ -270,8 +279,8 @@ security boundary and is not offered as one.
 | 3 | References and restore assets, `project.assets.json`, SDK and workload diagnostics |
 | 4 | Explicit restore and build operations with structured progress |
 | 5 | File watching, debouncing, invalidation, incremental refresh |
-| **6** | `ArxisStudio.ProjectSystem.NuGet`: install, update, remove — *this one* |
-| 7 | `ArxisStudio.ProjectSystem.Markup.Xaml`: optional adapter onto the Markup resolvers |
+| 6 | `ArxisStudio.ProjectSystem.NuGet`: search, install, update, remove, restore |
+| **7** | `ArxisStudio.ProjectSystem.Markup.Xaml`: optional adapter onto the Markup resolvers — *next* |
 
 ## Build and test
 

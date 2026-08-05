@@ -84,4 +84,24 @@ public static class PackageDiagnosticCodes
     /// remedy is different: this one is about which feed was configured.
     /// </remarks>
     public const string FeedNotUnderstood = "APS4007";
+
+    /// <summary>
+    /// <c>APS4008</c> — the restore after a change failed, so the change was undone.
+    /// </summary>
+    /// <remarks>
+    /// A warning rather than an error: undoing was the right thing and it worked. The error beside
+    /// it is the restore's own, which says what actually went wrong — a version that does not exist
+    /// reads very differently from a feed that could not be reached.
+    /// </remarks>
+    public const string ChangeUndone = "APS4008";
+
+    /// <summary>
+    /// <c>APS4009</c> — the restore failed and the change could not be undone either.
+    /// </summary>
+    /// <remarks>
+    /// The bad case, and the reason it has a code of its own: the project is left carrying a
+    /// reference that does not restore, and somebody has to be told rather than left to discover it
+    /// at the next build.
+    /// </remarks>
+    public const string ChangeNotUndone = "APS4009";
 }

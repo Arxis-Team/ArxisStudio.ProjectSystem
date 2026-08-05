@@ -78,13 +78,51 @@ public sealed class PackageBoundaryTests
     }
 
     /// <summary>The dependency runs one way, and this is the direction.</summary>
-    [Fact]
-    public void TheProvider_DependsOnTheCore()
+    [Theory]
+    [InlineData(RepositoryLayout.MSBuildPackage)]
+    [InlineData(RepositoryLayout.NuGetPackage)]
+    public void EveryPackage_DependsOnTheCore(string package)
     {
         Assert.Contains(
             RepositoryLayout.CorePackage,
+            RepositoryLayout.ProjectReferencesOf(package),
+            StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// "Restore integration without duplicating project evaluation": the package manager restores
+    /// through the core's operation boundary and reaches the MSBuild provider through nothing at
+    /// all.
+    /// </summary>
+    /// <remarks>
+    /// Checked in both directions and at both levels, because the failure it prevents is quiet. The
+    /// moment the package manager could evaluate a project, something in it would — and then two
+    /// packages would read project files, from two engines, and eventually disagree about one. The
+    /// compiled check is the one that catches it arriving transitively.
+    /// </remarks>
+    [Fact]
+    public void ThePackageManager_CannotReachTheProvider()
+    {
+        Assert.DoesNotContain(
+            RepositoryLayout.MSBuildPackage,
+            RepositoryLayout.ProjectReferencesOf(RepositoryLayout.NuGetPackage),
+            StringComparer.Ordinal);
+
+        Assert.DoesNotContain(
+            RepositoryLayout.NuGetPackage,
             RepositoryLayout.ProjectReferencesOf(RepositoryLayout.MSBuildPackage),
             StringComparer.Ordinal);
+
+        List<string> reached = RepositoryLayout.LoadAssembly(RepositoryLayout.NuGetPackage)
+            .GetReferencedAssemblies()
+            .Select(static assembly => assembly.Name!)
+            .Where(static name => name.StartsWith("Microsoft.Build", StringComparison.Ordinal)
+                || string.Equals(name, RepositoryLayout.MSBuildPackage, StringComparison.Ordinal))
+            .ToList();
+
+        Assert.True(
+            reached.Count == 0,
+            "The package manager reaches an evaluation engine: " + string.Join(", ", reached) + ".");
     }
 
     /// <summary>

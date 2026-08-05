@@ -395,6 +395,41 @@ are prereleases returns `null` rather than quietly offering an alpha to somebody
 latest". Inside, the comparison is NuGet's own — a prerelease sorts *before* the release it
 precedes, `beta.9` before `beta.10`, build metadata is ignored, and there is a fourth numeric field.
 
+### Installing and restoring as one operation
+
+`PackageEditor` writes files and stops. `PackageInstaller` is the whole thing a person means by
+"install this package":
+
+```csharp
+ProjectOperationResult result = await PackageInstaller.ApplyAndRestoreAsync(
+    new PackageEditRequest
+    {
+        Kind = PackageEditKind.Install,
+        ProjectFilePath = project.ProjectFilePath,
+        PackageId = "Serilog",
+        Version = PackageVersions.Latest(versions.Items),
+    },
+    workspace,
+    PackageVersionLayout.From(project));
+```
+
+**If the restore fails, the change is put back.** That is what `dotnet add package` does and for the
+same reason: a project carrying a reference that will not restore does not build, and whoever asked
+for the package is not better off for having half of it. The restore's own diagnostics survive the
+undo, because *why* it failed is the actionable part — a version that does not exist reads very
+differently from a feed that was unreachable. `APS4008` says the change was undone; `APS4009` is the
+bad case where it could not be.
+
+An edit that changes nothing does not restore: installing a package the project already has is a
+no-op, and a restore for a file nobody touched is a wait nobody asked for.
+
+**Nothing here evaluates a project.** The restore goes through the workspace, which routes it to
+whichever provider can run one, and this package references no build engine — an architecture test
+checks that in both directions and against the compiled assembly, because the moment the package
+manager could evaluate, something in it would, and then two packages would read project files from
+two engines and eventually disagree. Restoring is still not a mutation, so nothing is published and
+the version does not advance; call `RefreshAsync` when you want the model to catch up.
+
 `IPackageFeed` is an interface because feeds vary in ways this library should not try to contain.
 `NuGetHttpFeed` speaks enough V3 to search a public feed, and deliberately **does not read
 `NuGet.config` and does not authenticate** — discovering configured sources is hierarchical and

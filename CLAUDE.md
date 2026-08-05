@@ -9,8 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 roadmap defines what follows. `README.md` is the public statement of what the packages are. Where
 they disagree, the task specification wins and the README is what gets corrected.
 
-Development proceeds one milestone at a time. Milestones 0–5 are complete; Milestone 6 (NuGet
-management) is open, and Milestone 7 is the Markup.Xaml adapter. Do not ship placeholder API for a
+Development proceeds one milestone at a time. Milestones 0–6 are complete; Milestone 7, the
+`ArxisStudio.ProjectSystem.Markup.Xaml` adapter, is what remains. Do not ship placeholder API for a
 concept a later milestone owns.
 
 ## Build and test

@@ -290,6 +290,27 @@ Because sources are not discovered, whatever feed a host constructs is the only 
 restored from several sources will not have all of them represented in a search, and package source
 mapping is not applied.
 
+### Nothing says what a package will drag in before you install it
+
+Transitive dependencies are reported *after* a restore, from the assets file, by the MSBuild
+provider. Nothing here answers "what will installing this pull in" beforehand, because that is
+dependency resolution — NuGet's resolver, not a feed query — and the package deliberately does not
+host one.
+
+Neither is there vulnerability or deprecation metadata. Both are available from a feed's
+registration documents, and neither is read yet.
+
+### An install undoes its edit, but a restore is not itself transactional
+
+When a restore fails after a change, the project files are put back. What the restore already did to
+`obj/` and to the package cache is left as it is: those are NuGet's to manage and re-restoring is
+what fixes them. So the project returns to its previous state and the intermediate output may not
+match it until the next restore.
+
+If the undo itself fails — the file became read-only, or is now held open — that is `APS4009`, and
+the project is left carrying a reference that does not restore. Nothing can be done about it from
+here except say so loudly.
+
 ### An edit is transactional, not durable
 
 If two files must change and the second write fails, the first is put back from bytes held in
