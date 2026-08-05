@@ -50,6 +50,16 @@ public static class ProjectDiagnosticCodes
     public const string ProviderFailed = "APS1002";
 
     /// <summary>
+    /// <c>APS1004</c> — no configured provider performs the operation that was asked for.
+    /// </summary>
+    /// <remarks>
+    /// Building is an optional capability: a provider that reads projects need not be able to build
+    /// them, and one that invents projects in memory cannot. Asking for a build where nothing can
+    /// build is an ordinary situation a host has to handle, not a broken configuration.
+    /// </remarks>
+    public const string UnsupportedOperation = "APS1004";
+
+    /// <summary>
     /// <c>APS1003</c> — a provider returned a result that breaks the boundary's contract.
     /// </summary>
     /// <remarks>

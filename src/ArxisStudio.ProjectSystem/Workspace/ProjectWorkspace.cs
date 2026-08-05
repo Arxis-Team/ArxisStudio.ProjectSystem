@@ -171,6 +171,102 @@ public sealed class ProjectWorkspace : IAsyncDisposable
         MutateAsync(request: null, cancellationToken);
 
     /// <summary>
+    /// Restores, builds, rebuilds or cleans, through a provider that can.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This does not take the mutation boundary and does not publish anything.</b> An operation
+    /// changes what is on disk, not what a project says, so it neither advances the version nor
+    /// replaces the current snapshot — and it does not queue behind loads that have nothing to do
+    /// with it. A caller that wants the model to reflect a build calls <see cref="RefreshAsync"/>
+    /// afterwards.
+    /// </para>
+    /// <para>
+    /// The consequence worth knowing: an operation and a refresh may run at the same time, and
+    /// <see cref="DisposeAsync"/> does not wait for an operation in flight. Cancel one with its own
+    /// token.
+    /// </para>
+    /// <para>
+    /// Nothing here runs on its own. There is no automatic build after a change, and no coalescing
+    /// of rapid requests: only a host knows whether the user is still typing.
+    /// </para>
+    /// </remarks>
+    /// <param name="request">What to do. Its workspace identity is replaced with this workspace's.</param>
+    /// <param name="progress">Where to report what is happening, or <see langword="null"/> for nowhere.</param>
+    /// <param name="cancellationToken">A token to observe.</param>
+    /// <returns>What the operation produced.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ObjectDisposedException">The workspace was disposed.</exception>
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    public async ValueTask<ProjectOperationResult> ExecuteAsync(
+        ProjectOperationRequest request,
+        IProgress<ProjectOperationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        ObjectDisposedException.ThrowIf(Interlocked.CompareExchange(ref _disposed, 0, 0) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        ProjectOperationRequest effective = request with { Workspace = Identity };
+        IProjectOperationProvider? provider;
+
+        try
+        {
+            provider = SelectOperationProvider(effective.Kind);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return ProjectOperationResult.Failed(new ProjectDiagnostic(
+                ProjectDiagnosticCodes.ProviderFailed,
+                $"A provider failed while being asked whether it performs {effective.Kind}: " +
+                $"{exception.GetType().Name}: {exception.Message}",
+                ProjectDiagnosticSeverity.Error));
+        }
+
+        if (provider is null)
+        {
+            return ProjectOperationResult.Failed(new ProjectDiagnostic(
+                ProjectDiagnosticCodes.UnsupportedOperation,
+                $"No configured provider performs {effective.Kind}.",
+                ProjectDiagnosticSeverity.Error));
+        }
+
+        ProjectOperationResult? result;
+
+        try
+        {
+            result = await provider.ExecuteAsync(effective, progress, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is the caller's decision, not a fault, and never becomes a diagnostic.
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return ProjectOperationResult.Failed(new ProjectDiagnostic(
+                ProjectDiagnosticCodes.ProviderFailed,
+                $"Provider '{Name(provider)}' threw during {effective.Kind}: " +
+                $"{exception.GetType().Name}: {exception.Message}",
+                ProjectDiagnosticSeverity.Error)
+            {
+                FilePath = effective.EntryPointPath,
+                ProviderName = Name(provider),
+            });
+        }
+
+        return result ?? ProjectOperationResult.Failed(new ProjectDiagnostic(
+            ProjectDiagnosticCodes.InvalidProviderResult,
+            $"Provider '{Name(provider)}' returned no result for {effective.Kind}.",
+            ProjectDiagnosticSeverity.Error)
+        {
+            FilePath = effective.EntryPointPath,
+            ProviderName = Name(provider),
+        });
+    }
+
+    /// <summary>
     /// Waits for work in flight to finish, then refuses further mutations.
     /// </summary>
     /// <remarks>
@@ -379,6 +475,29 @@ public sealed class ProjectWorkspace : IAsyncDisposable
     private static WorkspaceLoadResult Failed(string code, string message, string? providerName = null) =>
         WorkspaceLoadResult.Failure(
             new ProjectDiagnostic(code, message, ProjectDiagnosticSeverity.Error) { ProviderName = providerName });
+
+    /// <summary>
+    /// The first provider that both performs operations and performs this one.
+    /// </summary>
+    /// <remarks>
+    /// The capability is discovered by asking, because it is optional: a provider that only reads
+    /// projects simply does not implement the interface.
+    /// </remarks>
+    private IProjectOperationProvider? SelectOperationProvider(ProjectOperationKind kind)
+    {
+        foreach (IProjectSystemProvider provider in Providers)
+        {
+            if (provider is IProjectOperationProvider operations && operations.CanExecute(kind))
+            {
+                return operations;
+            }
+        }
+
+        return null;
+    }
+
+    private static string Name(IProjectOperationProvider provider) =>
+        provider is IProjectSystemProvider named ? named.Name : provider.GetType().Name;
 
     private IProjectSystemProvider? SelectProvider(WorkspaceEntryPoint entryPoint)
     {
