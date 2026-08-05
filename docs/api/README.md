@@ -238,6 +238,29 @@ foreach (CanonicalPath input in project.EvaluationInputs)
 }
 ```
 
+Given a batch of changes, the snapshot works out what they mean:
+
+```csharp
+WorkspaceInvalidation invalidation = snapshot.Invalidate(changedPaths);
+
+switch (invalidation.Scope)
+{
+    case WorkspaceInvalidationScope.None:        break;                  // the common case
+    case WorkspaceInvalidationScope.Projects:    /* invalidation.Projects are stale */ break;
+    case WorkspaceInvalidationScope.EntryPoint:  /* load it again */      break;
+}
+```
+
+`Causes` carries the changes that actually mattered, so a host can say *why* it reloaded rather than
+just that it did.
+
+**Staleness does not spread along project references,** which looks like an omission and is a
+finding: evaluating a project does not read the projects it references — MSBuild resolves a
+`ProjectReference` during a build, not during an evaluation. So a change to `Library` leaves `App`'s
+snapshot correct in every field, and re-evaluating it would reproduce what it already said. Build
+freshness *is* transitive; it is a different graph over different inputs, and it is not this one.
+[ADR 0015](../adr/0015-invalidation-is-not-transitive.md) has the reasoning.
+
 `ResolvedPackages` is empty when nothing has been restored, which is not the same as a project having
 no packages. A project that declares packages and has no restore output says so with `APS2005`, as a
 warning rather than a failure.

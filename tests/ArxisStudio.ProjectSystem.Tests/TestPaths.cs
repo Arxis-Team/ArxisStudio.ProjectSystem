@@ -31,4 +31,13 @@ internal static class TestPaths
     /// <summary>A canonical path for a project file, the shape most tests need.</summary>
     internal static CanonicalPath Project(string name = "App") =>
         CanonicalPath.Create(Native("src", name, name + ".csproj"));
+
+    /// <summary>A canonical path for a solution file.</summary>
+    internal static CanonicalPath Solution(string name = "App") =>
+        CanonicalPath.Create(Native("src", name + ".sln"));
+
+    /// <summary>A canonical path for anything else. Named <c>At</c> so it does not shadow
+    /// <see cref="System.IO.Path"/> inside this class.</summary>
+    internal static CanonicalPath At(params string[] segments) =>
+        CanonicalPath.Create(Native(segments));
 }

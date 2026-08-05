@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 
 namespace ArxisStudio.ProjectSystem;
 
@@ -178,6 +180,91 @@ public sealed class SolutionSnapshot
     /// <returns><see langword="true"/> when the project sits in a folder rather than at the root.</returns>
     public bool TryGetFolder(ProjectIdentity project, [NotNullWhen(true)] out SolutionFolder? folder) =>
         _folderByProject.TryGetValue(project, out folder);
+
+    /// <summary>
+    /// Works out what a set of changed files made stale.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A change matters when it names the entry point, or when it is one of some project's
+    /// <see cref="ProjectSnapshot.EvaluationInputs"/>. Everything else is dropped, which is the
+    /// common case: most of what changes in a repository while it is open is source code, and source
+    /// code does not change what a project <em>says</em>.
+    /// </para>
+    /// <para>
+    /// <b>There is no transitive closure over project references, and that is deliberate.</b> It
+    /// looks like an omission because a build is transitive — but evaluating a project does not read
+    /// the projects it references. MSBuild resolves a <c>ProjectReference</c> during a build, not
+    /// during an evaluation, so a change to B leaves A's snapshot correct in every field: A still
+    /// references B, and a consumer that wants B's outputs follows the identity to B's own snapshot,
+    /// which is the one that was refreshed. Invalidating A as well would re-evaluate it to produce
+    /// exactly what it already said.
+    /// </para>
+    /// <para>
+    /// Build freshness — whether the assembly on disk is current — <em>is</em> transitive, and is a
+    /// different graph over different inputs. It is not this one.
+    /// </para>
+    /// </remarks>
+    /// <param name="changedPaths">The files that changed. Duplicates and empty paths are ignored.</param>
+    /// <returns>What became stale, and which of the changes caused it.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="changedPaths"/> is <see langword="null"/>.</exception>
+    public WorkspaceInvalidation Invalidate(IEnumerable<CanonicalPath> changedPaths)
+    {
+        ArgumentNullException.ThrowIfNull(changedPaths);
+
+        var changed = new HashSet<CanonicalPath>();
+        ImmutableArray<CanonicalPath>.Builder ordered = ImmutableArray.CreateBuilder<CanonicalPath>();
+
+        foreach (CanonicalPath path in changedPaths)
+        {
+            if (!path.IsEmpty && changed.Add(path))
+            {
+                ordered.Add(path);
+            }
+        }
+
+        if (changed.Count == 0)
+        {
+            return WorkspaceInvalidation.None;
+        }
+
+        // The entry point first, and it short-circuits: a solution that changed may have gained or
+        // lost projects, so which of the current ones are stale is not the question any more.
+        //
+        // A standalone project entry point is not treated this way, because a project file cannot
+        // add a project to the workspace. It is stale like any other project, through its own
+        // evaluation inputs -- where it appears, since a project is always its own input.
+        if (EntryPoint.Kind == WorkspaceEntryPointKind.Solution && changed.Contains(EntryPoint.Path))
+        {
+            return WorkspaceInvalidation.ForEntryPoint([EntryPoint.Path]);
+        }
+
+        ImmutableArray<ProjectIdentity>.Builder stale = ImmutableArray.CreateBuilder<ProjectIdentity>();
+        var causes = new HashSet<CanonicalPath>();
+
+        foreach (ProjectSnapshot project in Projects)
+        {
+            bool affected = false;
+
+            foreach (CanonicalPath input in project.EvaluationInputs)
+            {
+                if (changed.Contains(input))
+                {
+                    affected = true;
+                    causes.Add(input);
+                }
+            }
+
+            if (affected)
+            {
+                stale.Add(project.Identity);
+            }
+        }
+
+        return WorkspaceInvalidation.ForProjects(
+            stale.ToImmutable(),
+            [.. ordered.Where(causes.Contains)]);
+    }
 
     /// <summary>Returns the solution name and its project count.</summary>
     /// <returns>Something like <c>App (3 projects, version 2)</c>.</returns>

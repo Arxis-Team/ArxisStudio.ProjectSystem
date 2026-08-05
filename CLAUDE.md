@@ -198,6 +198,7 @@ What is recorded so far:
 | [0012](docs/adr/0012-restore-assets-are-read-not-resolved.md) | `project.assets.json` is read by hand, so no NuGet client library enters |
 | [0013](docs/adr/0013-a-provider-may-keep-its-engines-diagnostic-codes.md) | A provider passes its engine's codes through rather than renaming them |
 | [0014](docs/adr/0014-an-operation-is-not-a-mutation.md) | Building changes disk, not the model, so it stays outside the mutation boundary |
+| [0015](docs/adr/0015-invalidation-is-not-transitive.md) | Evaluating a project does not read its references, so staleness does not spread |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.
