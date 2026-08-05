@@ -126,6 +126,70 @@ public sealed class PackageBoundaryTests
     }
 
     /// <summary>
+    /// "No reverse dependency from either core package." The adapter joins the two families, and
+    /// nothing in either family may join it back.
+    /// </summary>
+    /// <remarks>
+    /// The direction is the whole value of having an adapter at all. A core that could see it would
+    /// make Markup a transitive dependency of anybody reading a snapshot, which is exactly the
+    /// coupling the separate package exists to avoid.
+    /// </remarks>
+    [Theory]
+    [InlineData(RepositoryLayout.CorePackage)]
+    [InlineData(RepositoryLayout.MSBuildPackage)]
+    [InlineData(RepositoryLayout.NuGetPackage)]
+    public void NoPackage_DependsOnTheAdapter(string package)
+    {
+        Assert.DoesNotContain(
+            RepositoryLayout.AdapterPackage,
+            RepositoryLayout.ProjectReferencesOf(package),
+            StringComparer.Ordinal);
+
+        Assert.DoesNotContain(
+            RepositoryLayout.AdapterPackage,
+            RepositoryLayout.LoadAssembly(package).GetReferencedAssemblies().Select(static a => a.Name!),
+            StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The adapter adapts the model to Markup, and needs neither engine to do it. A consumer that
+    /// wants XAML services should not acquire MSBuild and NuGet along the way.
+    /// </summary>
+    /// <remarks>
+    /// The declarative half is not redundant with the compiled one and is the half that catches
+    /// this. A C# assembly records only the references it actually used, so a project can declare a
+    /// dependency on an engine, carry it into every consumer's output directory, and leave no trace
+    /// in its own metadata until the day somebody writes the first line that touches it. Checking
+    /// the project file is what notices on the day the reference is added.
+    /// </remarks>
+    [Fact]
+    public void TheAdapter_ReachesNeitherEngine()
+    {
+        List<string> declared = RepositoryLayout.ProjectReferencesOf(RepositoryLayout.AdapterPackage)
+            .Where(static name => string.Equals(name, RepositoryLayout.MSBuildPackage, StringComparison.Ordinal)
+                || string.Equals(name, RepositoryLayout.NuGetPackage, StringComparison.Ordinal))
+            .ToList();
+
+        Assert.True(
+            declared.Count == 0,
+            "The adapter declares a dependency on an engine it does not need: "
+            + string.Join(", ", declared) + ".");
+
+        List<string> reached = RepositoryLayout.LoadAssembly(RepositoryLayout.AdapterPackage)
+            .GetReferencedAssemblies()
+            .Select(static assembly => assembly.Name!)
+            .Where(static name => name.StartsWith("Microsoft.Build", StringComparison.Ordinal)
+                || name.StartsWith("NuGet.", StringComparison.Ordinal)
+                || string.Equals(name, RepositoryLayout.MSBuildPackage, StringComparison.Ordinal)
+                || string.Equals(name, RepositoryLayout.NuGetPackage, StringComparison.Ordinal))
+            .ToList();
+
+        Assert.True(
+            reached.Count == 0,
+            "The adapter reaches an engine it does not need: " + string.Join(", ", reached) + ".");
+    }
+
+    /// <summary>
     /// MSBuild's assemblies must come from the SDK the locator finds, not from these packages.
     /// Shipping both copies produces a process holding two different MSBuilds, and it fails later
     /// and somewhere unrelated.

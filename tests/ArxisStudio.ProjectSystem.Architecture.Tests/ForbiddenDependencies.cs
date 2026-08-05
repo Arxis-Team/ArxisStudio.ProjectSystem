@@ -54,6 +54,11 @@ internal static class ForbiddenDependencies
     {
         [RepositoryLayout.MSBuildPackage] = ["Microsoft.Build", "MSBuild"],
         [RepositoryLayout.NuGetPackage] = ["NuGet."],
+
+        // The adapter is the exception the rule was written to make possible. Every other package
+        // is kept away from Markup and Avalonia precisely so that one package can join them
+        // deliberately, in the open, where the dependency is the point rather than an accident.
+        [RepositoryLayout.AdapterPackage] = ["ArxisStudio.Markup", "Avalonia"],
     };
 
     /// <summary>Whether a package may not reference something.</summary>
@@ -70,15 +75,34 @@ internal static class ForbiddenDependencies
     }
 
     /// <summary>
-    /// Whether something may not appear in any package's public surface.
+    /// Whether something may not appear in a package's public surface.
     /// </summary>
     /// <remarks>
-    /// Stricter than <see cref="IsForbiddenReference"/> on purpose: the MSBuild provider references
-    /// MSBuild and must still not hand a <c>ProjectInstance</c> to anybody. That is the rule that
-    /// lets a snapshot outlive the engine that produced it.
+    /// <para>
+    /// Stricter than <see cref="IsForbiddenReference"/> for the packages that read and write
+    /// projects: the MSBuild provider references MSBuild and must still not hand a
+    /// <c>ProjectInstance</c> to anybody, and the package manager must not hand out a
+    /// <c>NuGetVersion</c>. That is the rule that lets a snapshot outlive the engine that produced
+    /// it.
+    /// </para>
+    /// <para>
+    /// The adapter is the one place where it does not apply, because handing out Markup's types is
+    /// the entire reason it exists — a consumer asking it for a <c>XamlLoadEnvironment</c> is
+    /// already holding Markup. It is still kept away from MSBuild and NuGet: adapting the model to
+    /// Markup needs neither, and a consumer of the adapter should not acquire them.
+    /// </para>
     /// </remarks>
+    /// <param name="package">The shipping package whose surface is being inspected.</param>
     /// <param name="identifier">The assembly name of a type appearing in a public member.</param>
     /// <returns><see langword="true"/> when it may not be exposed.</returns>
-    public static bool IsForbiddenInPublicApi(string identifier) =>
-        Engines.Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
+    public static bool IsForbiddenInPublicApi(string package, string identifier)
+    {
+        string[] hosted = string.Equals(package, RepositoryLayout.AdapterPackage, StringComparison.Ordinal)
+            ? Hosts[RepositoryLayout.AdapterPackage]
+            : [];
+
+        return Engines
+            .Where(prefix => !hosted.Contains(prefix, StringComparer.Ordinal))
+            .Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
+    }
 }

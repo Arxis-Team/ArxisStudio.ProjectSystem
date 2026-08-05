@@ -23,9 +23,12 @@ internal static class RepositoryLayout
     /// <summary>Package management.</summary>
     public const string NuGetPackage = "ArxisStudio.ProjectSystem.NuGet";
 
+    /// <summary>The adapter onto ArxisStudio.Markup.</summary>
+    public const string AdapterPackage = "ArxisStudio.ProjectSystem.Markup.Xaml";
+
     /// <summary>The shipping packages, ordered from the bottom of the stack upwards.</summary>
     public static IReadOnlyList<string> Packages { get; } =
-        new[] { CorePackage, MSBuildPackage, NuGetPackage };
+        new[] { CorePackage, MSBuildPackage, NuGetPackage, AdapterPackage };
 
     public static string RepositoryRoot { get; } = ResolveRepositoryRoot();
 

@@ -318,6 +318,36 @@ memory. That handles the failure that actually happens — a file open in anothe
 journal: a process killed mid-write leaves what it left, and nothing defends against another process
 writing the same file at the same moment.
 
+## The Markup adapter
+
+### It needs the Markup repository beside this one
+
+`ArxisStudio.ProjectSystem.Markup.Xaml` references `ArxisStudio.Markup.Xaml.Loader` by a relative
+path into a sibling checkout, for the reasons in
+[ADR 0018](adr/0018-the-adapter-references-markup-by-source.md). Build it without that repository
+present and it fails with `APSADAPTER01` saying exactly what is missing. Nothing else in this
+repository has that requirement.
+
+### Unloading is asked for, not guaranteed
+
+`ProjectAssemblyContext.Dispose` unloads its collectible context, and the runtime frees it only once
+nothing refers to anything inside. A host still showing a control built from those assemblies keeps
+them alive, which is correct — so disposal returns immediately rather than waiting, and a host that
+leaks references leaks assemblies.
+
+### Package assemblies are loaded into the default context, and stay
+
+Only what gets rebuilt — the project's own output and its referenced projects' — goes into the
+collectible context. Package assemblies go to the default one, because they do not change between
+builds and because a second copy of a shared library produces types that are not assignable to the
+host's. The consequence is that changing a package version needs a new process, not a new context.
+
+### Assemblies are matched by file name
+
+The map from an assembly name to a file is built from the file names in the snapshot. For anything a
+build produces that is exactly the assembly's simple name, and packages lay their files out the same
+way — but a file whose contents disagree with its name resolves under the name on disk.
+
 ## Deferred by design
 
 Not limitations of the implementation so much as scope boundaries, listed so nobody looks for

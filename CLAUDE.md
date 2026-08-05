@@ -49,18 +49,26 @@ touch it.
 
 ```text
 ArxisStudio.ProjectSystem                 provider-neutral core
-        ↑                    ↑
-        │                    └── ArxisStudio.ProjectSystem.NuGet    package management
+        ↑            ↑            ↑
+        │            │            └── ArxisStudio.ProjectSystem.Markup.Xaml
+        │            │                    (also depends on ArxisStudio.Markup, in the sibling repo)
+        │            └── ArxisStudio.ProjectSystem.NuGet    package management
         │
 ArxisStudio.ProjectSystem.MSBuild         MSBuild discovery and evaluation
-
-ArxisStudio.ProjectSystem.Markup.Xaml     Milestone 7, depends on ProjectSystem *and* Markup
 ```
 
-Note that NuGet sits **beside** MSBuild rather than above it. Each package hosts exactly one engine:
-MSBuild reads projects, NuGet writes them, and neither references the other. A package manager that
-could evaluate would start to, and then two packages would read project files and eventually
-disagree.
+Note that these sit **beside** each other rather than stacking. Each package hosts exactly one
+engine: MSBuild reads projects, NuGet writes them, the adapter speaks Markup, and none references
+another's. A package manager that could evaluate would start to, and then two packages would read
+project files and eventually disagree.
+
+The adapter is the one package allowed near `ArxisStudio.Markup` and `Avalonia`, and the one whose
+public surface may expose them — see
+[ADR 0018](docs/adr/0018-the-adapter-references-markup-by-source.md). It references Markup by a
+relative `ProjectReference` into the sibling repository, so **the two repositories must sit beside
+each other**; the adapter's project file fails with a sentence saying so if they do not. Markup's own
+projects must not be added to this solution — `dotnet sln add` will pull them in, and they should be
+taken back out.
 
 Two questions hide behind "what may a package depend on", and they have different answers. **What a
 package may reference** depends on the package: the MSBuild provider exists to host MSBuild, and the
@@ -207,6 +215,7 @@ What is recorded so far:
 | [0015](docs/adr/0015-invalidation-is-not-transitive.md) | Evaluating a project does not read its references, so staleness does not spread |
 | [0016](docs/adr/0016-watching-belongs-with-the-provider.md) | Watching is composed by the host from four pieces; the workspace is not one of them |
 | [0017](docs/adr/0017-project-files-are-edited-as-xml.md) | Project files are edited as XML; each package hosts one engine and no other |
+| [0018](docs/adr/0018-the-adapter-references-markup-by-source.md) | The adapter references Markup by source, and is the one package allowed to |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

@@ -1,0 +1,304 @@
+using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.Loader;
+using System.Threading;
+using System.Threading.Tasks;
+using ArxisStudio.Markup.Xaml.Loader;
+using Xunit;
+
+namespace ArxisStudio.ProjectSystem.Markup.Xaml.Tests;
+
+/// <summary>
+/// Loading a project's assemblies so a rebuilt one can be loaded again.
+/// </summary>
+/// <remarks>
+/// <para>
+/// These load real assemblies, because that is the only way to find out whether an assembly loads.
+/// The one they load is a copy of this repository's own core, taken from the test output directory
+/// — a real assembly, present wherever the tests run, and nothing anybody has to install.
+/// </para>
+/// <para>
+/// It is copied rather than used in place on purpose: the interesting assertion is that loading does
+/// not hold the file open, and proving that means being free to overwrite it afterwards.
+/// </para>
+/// </remarks>
+public sealed class ProjectAssemblyContextTests : IDisposable
+{
+    private static WorkspaceIdentity Workspace { get; } = WorkspaceIdentity.New();
+
+    private readonly string _root = Path.Combine(
+        Path.GetTempPath(), "arxis-alc-" + Guid.NewGuid().ToString("N"));
+
+    public ProjectAssemblyContextTests() => Directory.CreateDirectory(_root);
+
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+        catch (IOException)
+        {
+            // A loaded assembly can keep its file open on some platforms, and a temporary directory
+            // left behind is not a reason to fail a passing test.
+        }
+    }
+
+    [Fact]
+    public void AProjectsOwnOutput_Loads()
+    {
+        CanonicalPath output = CopyRealAssembly("MyControls.dll");
+
+        using ProjectAssemblyContext context = Context(output);
+
+        Assembly? assembly = context.Resolve(new AssemblyName("MyControls"));
+
+        Assert.NotNull(assembly);
+
+        // Not an assertion about the assembly's own name: the fixture renames a file, and renaming
+        // a file does not rename the assembly inside it. What matters is that it came from this
+        // context rather than from the host, which is what makes it reloadable.
+        Assert.NotSame(typeof(CanonicalPath).Assembly, assembly);
+        Assert.True(AssemblyLoadContext.GetLoadContext(assembly)!.IsCollectible);
+    }
+
+    /// <summary>
+    /// The reason the bytes are read rather than the path loaded. Holding the file open means the
+    /// next build cannot write its output — so the rebuild this class exists to support would be
+    /// the thing it prevented.
+    /// </summary>
+    [Fact]
+    public void LoadingAnAssembly_DoesNotHoldItsFileOpen()
+    {
+        CanonicalPath output = CopyRealAssembly("MyControls.dll");
+
+        using ProjectAssemblyContext context = Context(output);
+
+        Assert.NotNull(context.Resolve(new AssemblyName("MyControls")));
+
+        // What the next build does. If the file were still open this throws.
+        using var rebuild = new FileStream(output.Value, FileMode.Create, FileAccess.Write, FileShare.None);
+
+        rebuild.WriteByte(0);
+    }
+
+    /// <summary>
+    /// A designer rebuilds all day, and .NET will not replace an assembly in the default context.
+    /// Being collectible is what makes the next build loadable at all.
+    /// </summary>
+    [Fact]
+    public void TheProjectsAssemblies_LoadIntoACollectibleContext()
+    {
+        CanonicalPath output = CopyRealAssembly("MyControls.dll");
+
+        using ProjectAssemblyContext context = Context(output);
+
+        Assembly assembly = context.Resolve(new AssemblyName("MyControls"))!;
+        AssemblyLoadContext? loaded = AssemblyLoadContext.GetLoadContext(assembly);
+
+        Assert.NotNull(loaded);
+        Assert.True(loaded.IsCollectible);
+        Assert.NotSame(AssemblyLoadContext.Default, loaded);
+    }
+
+    /// <summary>
+    /// Two copies of Avalonia in two contexts produce two <c>Button</c> types that are not
+    /// assignable to one another, and the failure arrives much later than the mistake. Anything the
+    /// host already has stays the host's.
+    /// </summary>
+    [Fact]
+    public void SomethingTheHostAlreadyHas_StaysTheHosts()
+    {
+        CanonicalPath output = CopyRealAssembly("MyControls.dll");
+
+        using ProjectAssemblyContext context = Context(output);
+
+        // The core is loaded in the default context already, because these tests reference it.
+        Assembly? core = context.Resolve(new AssemblyName("ArxisStudio.ProjectSystem"));
+
+        Assert.NotNull(core);
+        Assert.Same(AssemblyLoadContext.Default, AssemblyLoadContext.GetLoadContext(core));
+        Assert.Same(typeof(CanonicalPath).Assembly, core);
+    }
+
+    [Fact]
+    public void AnAssemblyNobodyMentioned_IsNotFound()
+    {
+        using ProjectAssemblyContext context = Context(CopyRealAssembly("MyControls.dll"));
+
+        Assert.Null(context.Resolve(new AssemblyName("Nothing.Like.This")));
+    }
+
+    /// <summary>
+    /// The snapshot says where a build <em>will</em> put its output; it does not promise the build
+    /// ran. A missing file is a miss, not a crash.
+    /// </summary>
+    [Fact]
+    public void AnOutputThatIsNotThere_IsAMiss()
+    {
+        using ProjectAssemblyContext context =
+            Context(CanonicalPath.Create(Path.Combine(_root, "NeverBuilt.dll")));
+
+        Assert.Null(context.Resolve(new AssemblyName("NeverBuilt")));
+    }
+
+    [Fact]
+    public void AFileThatIsNotAnAssembly_IsAMiss()
+    {
+        string path = Path.Combine(_root, "Rubbish.dll");
+
+        File.WriteAllText(path, "this is not an assembly");
+
+        using ProjectAssemblyContext context = Context(CanonicalPath.Create(path));
+
+        Assert.Null(context.Resolve(new AssemblyName("Rubbish")));
+    }
+
+    [Fact]
+    public void AContext_NamesItselfAfterTheProjectAndTheVersion()
+    {
+        using ProjectAssemblyContext context = Context(CopyRealAssembly("MyControls.dll"));
+
+        Assert.StartsWith("App", context.Name, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AfterDisposal_ResolvingThrows()
+    {
+        ProjectAssemblyContext context = Context(CopyRealAssembly("MyControls.dll"));
+
+        Assert.False(context.IsUnloaded);
+
+        context.Dispose();
+
+        Assert.True(context.IsUnloaded);
+        Assert.Throws<ObjectDisposedException>(() => context.Resolve(new AssemblyName("MyControls")));
+
+        context.Dispose();
+    }
+
+    [Fact]
+    public void NullArguments_Throw()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            ProjectAssemblyContext.Create(null!, ProjectIdentity.None));
+
+        using ProjectAssemblyContext context = Context(CopyRealAssembly("MyControls.dll"));
+
+        Assert.Throws<ArgumentNullException>(() => context.Resolve(null!));
+    }
+
+    /// <summary>The environment Markup loads a document in, built from a project.</summary>
+    [Fact]
+    public async Task AnEnvironment_ResolvesThroughTheProject()
+    {
+        CanonicalPath output = CopyRealAssembly("MyControls.dll");
+
+        (XamlLoadEnvironment environment, ProjectAssemblyContext context) =
+            ProjectXamlEnvironment.CreateFor(Snapshot(output), Identity("App"));
+
+        using (context)
+        {
+            Assembly? assembly = await environment.AssemblyResolver.ResolveAsync(
+                new AssemblyName("MyControls"), TestContext.Current.CancellationToken);
+
+            Assert.NotNull(assembly);
+            Assert.NotNull(environment.TypeResolver);
+            Assert.NotNull(environment.ResourceResolver);
+            Assert.NotNull(environment.SourceProvider);
+        }
+    }
+
+    /// <summary>
+    /// The resolver falls through to what the process already has, which is what supplies Avalonia
+    /// and everything else a document of standard controls names.
+    /// </summary>
+    [Fact]
+    public async Task AnEnvironment_FallsBackToWhatTheProcessHasLoaded()
+    {
+        (XamlLoadEnvironment environment, ProjectAssemblyContext context) =
+            ProjectXamlEnvironment.CreateFor(
+                Snapshot(CanonicalPath.Create(Path.Combine(_root, "NeverBuilt.dll"))), Identity("App"));
+
+        using (context)
+        {
+            Assembly? loader = await environment.AssemblyResolver.ResolveAsync(
+                new AssemblyName("ArxisStudio.Markup.Xaml.Loader"), TestContext.Current.CancellationToken);
+
+            Assert.NotNull(loader);
+        }
+    }
+
+    [Fact]
+    public async Task ACancelledResolve_Throws()
+    {
+        using ProjectAssemblyContext context = Context(CopyRealAssembly("MyControls.dll"));
+
+        var resolver = new ProjectAssemblyResolver(context);
+
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await resolver.ResolveAsync(new AssemblyName("MyControls"), cancellation.Token));
+    }
+
+    [Fact]
+    public void ANullContextOrSnapshot_Throws()
+    {
+        Assert.Throws<ArgumentNullException>(() => new ProjectAssemblyResolver(null!));
+        Assert.Throws<ArgumentNullException>(() => ProjectXamlEnvironment.Create(null!));
+        Assert.Throws<ArgumentNullException>(() => ProjectXamlEnvironment.CreateFor(null!, ProjectIdentity.None));
+    }
+
+    private static ProjectIdentity Identity(string name) =>
+        ProjectIdentity.Create(Workspace, CanonicalPath.Create(
+            Path.Combine(Path.GetTempPath(), "arxis-alc", name, name + ".csproj")));
+
+    /// <summary>
+    /// A real assembly under a name nothing has loaded, so resolving it can only have come from
+    /// this context.
+    /// </summary>
+    private CanonicalPath CopyRealAssembly(string name)
+    {
+        string source = typeof(CanonicalPath).Assembly.Location;
+        string destination = Path.Combine(_root, name);
+
+        File.Copy(source, destination, overwrite: true);
+
+        return CanonicalPath.Create(destination);
+    }
+
+    private ProjectAssemblyContext Context(CanonicalPath output) =>
+        ProjectAssemblyContext.Create(Snapshot(output), Identity("App"));
+
+    private SolutionSnapshot Snapshot(CanonicalPath output)
+    {
+        var project = new ProjectSnapshotBuilder
+        {
+            Identity = Identity("App"),
+            Name = "App",
+            ProjectFilePath = Identity("App").ProjectFilePath,
+        };
+
+        project.Outputs.Add(new OutputArtifact { Kind = OutputArtifactKind.Assembly, Path = output });
+
+        var solution = new SolutionSnapshotBuilder
+        {
+            Workspace = Workspace,
+            Name = "App",
+            Request = new WorkspaceLoadRequest
+            {
+                Workspace = Workspace,
+                EntryPointPath = Identity("App").ProjectFilePath,
+            },
+        };
+
+        solution.Projects.Add(project.ToSnapshot());
+
+        _ = _root;
+
+        return solution.ToSnapshot();
+    }
+}

@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ArxisStudio.ProjectSystem.Markup.Xaml</RootNamespace>
+    <Description>Connects a project model to XAML services: turns a project snapshot into the assemblies a document may name, loads them into a collectible context so a rebuilt control library can be loaded again, and builds the load environment ArxisStudio.Markup expects. An adapter over both families, depended on by neither.</Description>
+  </PropertyGroup>
+
+  <!--
+    The sibling repository, referenced by source rather than through a package. The two are
+    developed together, so a breaking change in Markup should fail here at once rather than at
+    whenever somebody next packs it.
+
+    The cost is that the repositories must sit beside each other, which the check below turns into
+    a sentence instead of an MSBuild path error forty lines long.
+  -->
+  <PropertyGroup>
+    <MarkupRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../ArxisStudio.Markup/'))</MarkupRepositoryRoot>
+    <MarkupLoaderProject>$(MarkupRepositoryRoot)src/ArxisStudio.Markup.Xaml.Loader/ArxisStudio.Markup.Xaml.Loader.csproj</MarkupLoaderProject>
+  </PropertyGroup>
+
+  <Target Name="CheckMarkupIsBesideUs" BeforeTargets="CollectPackageReferences;ResolveProjectReferences">
+    <Error
+      Condition="!Exists('$(MarkupLoaderProject)')"
+      Code="APSADAPTER01"
+      Text="ArxisStudio.ProjectSystem.Markup.Xaml is an adapter over ArxisStudio.Markup and expects that repository beside this one, at '$(MarkupRepositoryRoot)'. Clone it there, or exclude this project from the build." />
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="../ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
+    <ProjectReference Include="$(MarkupLoaderProject)" />
+  </ItemGroup>
+
+  <!--
+    Deliberately no reference to the MSBuild provider or the package manager. This package adapts
+    the model to Markup; which provider filled the model in is not its business, and a consumer
+    should be able to use it over a provider of their own.
+  -->
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ArxisStudio.ProjectSystem.Markup.Xaml.Tests" />
+  </ItemGroup>
+
+</Project>

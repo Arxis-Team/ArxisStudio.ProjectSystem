@@ -60,7 +60,7 @@ public sealed class PublicSurfaceTests
             {
                 string name = referenced.Assembly.GetName().Name ?? string.Empty;
 
-                if (ForbiddenDependencies.IsForbiddenInPublicApi(name))
+                if (ForbiddenDependencies.IsForbiddenInPublicApi(package, name))
                 {
                     offenders.Add($"{type.Name} -> {referenced.FullName}");
                 }
