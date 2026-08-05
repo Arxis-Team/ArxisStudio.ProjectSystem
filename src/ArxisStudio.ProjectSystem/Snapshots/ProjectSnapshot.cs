@@ -49,6 +49,7 @@ public sealed class ProjectSnapshot
         ImmutableArray<ResolvedPackage> resolvedPackages,
         ImmutableArray<ProjectItem> items,
         ImmutableArray<OutputArtifact> outputs,
+        ImmutableArray<CanonicalPath> evaluationInputs,
         ImmutableArray<ProjectDiagnostic> diagnostics,
         ProjectMetadata properties)
     {
@@ -77,6 +78,7 @@ public sealed class ProjectSnapshot
         ResolvedPackages = resolvedPackages;
         Items = items;
         Outputs = outputs;
+        EvaluationInputs = evaluationInputs;
         Diagnostics = diagnostics;
         Properties = properties;
     }
@@ -162,6 +164,33 @@ public sealed class ProjectSnapshot
     /// value would start ageing the moment it was taken.
     /// </remarks>
     public ImmutableArray<OutputArtifact> Outputs { get; }
+
+    /// <summary>
+    /// Gets the files whose contents produced this snapshot: the project file, everything it
+    /// imported, and any restore output that was read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the answer to "when does this snapshot stop being true", and it is what makes
+    /// watching a project possible without the watcher having to understand project files. A change
+    /// to any of these means the project must be evaluated again; a change to anything else does
+    /// not.
+    /// </para>
+    /// <para>
+    /// A provider is expected to leave out the parts of the toolchain a project imports but nobody
+    /// edits — the SDK's own targets, build logic shipped inside packages. Those are the
+    /// overwhelming majority of what a project imports and none of them change while a solution is
+    /// open, so including them would turn a handful of interesting files into hundreds of
+    /// uninteresting ones.
+    /// </para>
+    /// <para>
+    /// Some of these name files that are not there. That is deliberate and load-bearing: a project
+    /// that has not been restored still lists where its restore output would be, because a restore
+    /// creating it is exactly the change that makes the snapshot stale. A list of only the files
+    /// that already exist could never report one appearing.
+    /// </para>
+    /// </remarks>
+    public ImmutableArray<CanonicalPath> EvaluationInputs { get; }
 
     /// <summary>Gets the diagnostics raised about this project.</summary>
     public ImmutableArray<ProjectDiagnostic> Diagnostics { get; }

@@ -403,6 +403,103 @@ public sealed class MSBuildProjectTranslatorTests
     private static OutputArtifact Single(ProjectSnapshot snapshot, OutputArtifactKind kind) =>
         Assert.Single(snapshot.Outputs.Where(o => o.Kind == kind));
 
+    /// <summary>
+    /// The project file is always an input, because changing it is the most obvious way to make a
+    /// snapshot stale and a project with no imports at all is still watchable.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_AlwaysIncludeTheProjectFile()
+    {
+        ProjectSnapshot snapshot = Translate(Project());
+
+        Assert.Equal([snapshot.ProjectFilePath], snapshot.EvaluationInputs);
+    }
+
+    /// <summary>
+    /// The filter this exists for. Everything under the .NET installation or the package cache is
+    /// build logic nobody edits, and a real project imports well over a hundred of them.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_DropWhatBelongsToTheToolchain()
+    {
+        ProjectSnapshot snapshot = Translate(Project(
+            properties: Meta(
+                ("NetCoreRoot", Native("dotnet") + System.IO.Path.DirectorySeparatorChar),
+                ("NuGetPackageRoot", Native("packages") + System.IO.Path.DirectorySeparatorChar)),
+            imports:
+            [
+                CanonicalPath.Create(Native("dotnet", "sdk", "10.0.301", "Sdk.props")),
+                CanonicalPath.Create(Native("dotnet", "sdk-manifests", "10.0.100", "WorkloadManifest.targets")),
+                CanonicalPath.Create(Native("packages", "serilog", "4.1.0", "build", "Serilog.props")),
+                CanonicalPath.Create(Native("src", "Directory.Build.props")),
+            ]));
+
+        Assert.Equal(
+            [
+                CanonicalPath.Create(Native("src", "App", "App.csproj")),
+                CanonicalPath.Create(Native("src", "Directory.Build.props")),
+            ],
+            snapshot.EvaluationInputs);
+    }
+
+    /// <summary>
+    /// A sibling of the SDK directory, not a child of it. Filtering on the SDK folder would leak
+    /// every workload manifest, which is why the rule uses the installation root.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_DropWorkloadManifestsBesideTheSdk()
+    {
+        ProjectSnapshot snapshot = Translate(Project(
+            properties: Meta(("NetCoreRoot", Native("dotnet"))),
+            imports: [CanonicalPath.Create(Native("dotnet", "sdk-manifests", "Workload.targets"))]));
+
+        Assert.DoesNotContain(
+            snapshot.EvaluationInputs,
+            p => p.Value.Contains("sdk-manifests", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Restore writes these, they change when packages change, and a change to one means the project
+    /// imports something different than it did. So they stay even though nobody types in them.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_KeepTheGeneratedRestoreImports()
+    {
+        CanonicalPath generated = CanonicalPath.Create(Native("src", "App", "obj", "App.csproj.nuget.g.props"));
+
+        ProjectSnapshot snapshot = Translate(Project(
+            properties: Meta(("NetCoreRoot", Native("dotnet"))),
+            imports: [generated]));
+
+        Assert.Contains(generated, snapshot.EvaluationInputs);
+    }
+
+    [Fact]
+    public void EvaluationInputs_IncludeTheAssetsFileWhenThereIsOne()
+    {
+        CanonicalPath assets = CanonicalPath.Create(Native("src", "App", "obj", "project.assets.json"));
+
+        ProjectSnapshot snapshot = Translate(Project(properties: Meta(("ProjectAssetsFile", assets.Value))));
+
+        Assert.Contains(assets, snapshot.EvaluationInputs);
+    }
+
+    /// <summary>
+    /// The assets file is normally imported as well as named by a property, and a change to it must
+    /// cost one comparison rather than two for the rest of the session.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_ListEachFileOnce()
+    {
+        CanonicalPath shared = CanonicalPath.Create(Native("src", "Directory.Build.props"));
+
+        ProjectSnapshot snapshot = Translate(Project(
+            properties: Meta(("ProjectAssetsFile", shared.Value)),
+            imports: [shared, shared]));
+
+        Assert.Single(snapshot.EvaluationInputs.Where(p => p == shared));
+    }
+
     [Fact]
     public void Outputs_OfAProjectThatSaysNothing_AreEmpty()
     {

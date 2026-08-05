@@ -28,11 +28,13 @@ internal static class TestEvaluation
     internal static EvaluatedProject Project(
         CanonicalPath? path = null,
         ProjectMetadata? properties = null,
+        IEnumerable<CanonicalPath>? imports = null,
         params EvaluatedItem[] items) =>
         new()
         {
             FullPath = path ?? ProjectPath(),
             Properties = properties ?? ProjectMetadata.Empty,
+            Imports = imports is null ? [] : [.. imports],
             Items = [.. items],
         };
 

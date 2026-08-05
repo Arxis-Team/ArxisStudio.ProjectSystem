@@ -90,6 +90,11 @@ internal static class MSBuildProjectTranslator
             builder.Outputs.Add(artifact);
         }
 
+        foreach (CanonicalPath input in EvaluationInputs(project))
+        {
+            builder.EvaluationInputs.Add(input);
+        }
+
         if (!resolvedPackages.IsDefault)
         {
             foreach (ResolvedPackage package in resolvedPackages)
@@ -306,6 +311,57 @@ internal static class MSBuildProjectTranslator
             yield return Artifact(OutputArtifactKind.DocumentationFile, documentation, framework);
         }
     }
+
+    /// <summary>
+    /// The files whose contents produced this snapshot and whose change makes it stale.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The project file, the imports that belong to the user, and the restore output if the project
+    /// has any. The filtering is the whole point, and the numbers say why: a restored project in
+    /// this repository imports 137 files, of which 94 are under the SDK, 16 are workload manifests,
+    /// 22 are build logic inside NuGet packages, and <em>three</em> are files anybody would edit.
+    /// </para>
+    /// <para>
+    /// So the rule is to drop what belongs to the toolchain, and the two roots are read from the
+    /// evaluation rather than guessed at: <c>NetCoreRoot</c> is the .NET installation — which covers
+    /// the workload manifests beside the SDK as well as the SDK itself — and <c>NuGetPackageRoot</c>
+    /// is the package cache. Neither changes while a solution is open, and a package that does
+    /// change announces itself through the restore output, which is watched.
+    /// </para>
+    /// <para>
+    /// The generated imports under <c>obj</c> are deliberately kept. They are restore's output, they
+    /// change whenever packages change, and a change to one means the project imports something
+    /// different than it did.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<CanonicalPath> EvaluationInputs(EvaluatedProject project)
+    {
+        yield return project.FullPath;
+
+        CanonicalPath toolchain = Root(project, "NetCoreRoot");
+        CanonicalPath packages = Root(project, "NuGetPackageRoot");
+
+        foreach (CanonicalPath import in project.Imports)
+        {
+            // StartsWith is false against an absent root, so a project that names neither keeps
+            // every import rather than losing them all.
+            if (!import.StartsWith(toolchain) && !import.StartsWith(packages))
+            {
+                yield return import;
+            }
+        }
+
+        // Not an import, but read all the same, and a restore rewrites it.
+        if (CanonicalPath.TryCreate(Property(project, "ProjectAssetsFile"), out CanonicalPath assets))
+        {
+            yield return assets;
+        }
+    }
+
+    /// <summary>Reads a directory-valued property, tolerating the trailing separator MSBuild writes.</summary>
+    private static CanonicalPath Root(EvaluatedProject project, string name) =>
+        CanonicalPath.TryCreate(Property(project, name), out CanonicalPath root) ? root : CanonicalPath.None;
 
     private static OutputArtifact Artifact(OutputArtifactKind kind, CanonicalPath path, string? framework) =>
         new()

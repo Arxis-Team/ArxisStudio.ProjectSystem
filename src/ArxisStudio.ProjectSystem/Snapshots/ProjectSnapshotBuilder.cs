@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace ArxisStudio.ProjectSystem;
 
@@ -80,8 +81,18 @@ public sealed class ProjectSnapshotBuilder
     /// <summary>Gets the project's items.</summary>
     public IList<ProjectItem> Items { get; } = [];
 
-    /// <summary>Gets the artifacts a build produced.</summary>
+    /// <summary>Gets the artifacts a build produces.</summary>
     public IList<OutputArtifact> Outputs { get; } = [];
+
+    /// <summary>
+    /// Gets the files whose contents produced this snapshot, and whose change makes it stale.
+    /// </summary>
+    /// <remarks>
+    /// Duplicates are removed and empty paths dropped on the way in, because these are compared
+    /// against a stream of file-change notifications and the same file arriving twice would cost a
+    /// comparison for every change, forever.
+    /// </remarks>
+    public IList<CanonicalPath> EvaluationInputs { get; } = [];
 
     /// <summary>Gets the diagnostics raised about this project.</summary>
     public IList<ProjectDiagnostic> Diagnostics { get; } = [];
@@ -147,6 +158,7 @@ public sealed class ProjectSnapshotBuilder
             [.. ResolvedPackages],
             [.. Items],
             [.. Outputs],
+            [.. EvaluationInputs.Where(static path => !path.IsEmpty).Distinct()],
             [.. Diagnostics],
             ProjectMetadata.Create(Properties));
     }

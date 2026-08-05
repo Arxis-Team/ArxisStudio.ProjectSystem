@@ -232,6 +232,43 @@ public sealed class MSBuildProjectProviderTests
     private static OutputArtifact Single(ProjectSnapshot project, OutputArtifactKind kind) =>
         Assert.Single(project.Outputs.Where(o => o.Kind == kind));
 
+    /// <summary>
+    /// What a watcher would have to watch to know when this snapshot stops being true.
+    /// </summary>
+    /// <remarks>
+    /// End to end because the number is the point. This fixture imports well over a hundred files
+    /// and all but a few belong to the SDK, so a rule that looked right over a hand-built evaluation
+    /// could still be watching the entire toolchain in practice — which is not a subtle failure but
+    /// it is a silent one.
+    /// </remarks>
+    [Fact]
+    public async Task EvaluationInputs_AreTheFilesSomebodyMightEdit()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("Basic"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal(
+            [
+                Fixture("Basic"),
+                Directory("Directory.Build.props"),
+                Directory("Directory.Packages.props"),
+                Directory("Directory.Build.targets"),
+
+                // This fixture has never been restored, so this file is not there. It belongs in the
+                // list anyway: a restore creating it is precisely a change worth hearing about, and
+                // a list that only named files that already exist could never report one appearing.
+                CanonicalPath.Create(Path.Combine(
+                    AppContext.BaseDirectory, "Fixtures", "Basic", "obj", "project.assets.json")),
+            ],
+            project.EvaluationInputs);
+    }
+
+    /// <summary>A file directly inside the fixtures directory.</summary>
+    private static CanonicalPath Directory(string name) =>
+        CanonicalPath.Create(Path.Combine(AppContext.BaseDirectory, "Fixtures", name));
+
     [Fact]
     public async Task DeclaredReferences_ComeThroughWithoutRestoring()
     {

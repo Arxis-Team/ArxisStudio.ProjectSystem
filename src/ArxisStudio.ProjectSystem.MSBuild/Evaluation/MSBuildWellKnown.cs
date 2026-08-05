@@ -51,6 +51,11 @@ internal static class MSBuildWellKnown
         "TargetRefPath", "DebugType", "ProjectDepsFilePath", "ProjectRuntimeConfigFilePath",
         "GenerateDependencyFile", "GenerateRuntimeConfigurationFiles",
         "BaseIntermediateOutputPath", "IntermediateOutputPath", "ProjectAssetsFile",
+
+        // Not surfaced for their own sake: these name the toolchain's directories, which is how an
+        // import that nobody edits is told apart from one that matters.
+        "NetCoreRoot", "NuGetPackageRoot",
+
         "LangVersion", "Nullable", "ImplicitUsings", "TreatWarningsAsErrors",
         "UseWPF", "UseWindowsForms", "IsPackable", "IsTestProject",
         "DocumentationFile", "AssemblyVersion", "FileVersion", "Version",

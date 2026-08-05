@@ -34,6 +34,19 @@ internal sealed record EvaluatedProject
         init => field = value.IsDefault ? [] : value;
     } = [];
 
+    /// <summary>Gets every file the evaluation imported, unfiltered.</summary>
+    /// <remarks>
+    /// Unfiltered on purpose: deciding which of these are worth watching needs the evaluated
+    /// properties that name the toolchain's own directories, and that decision belongs with the rest
+    /// of the translation where it can be tested without an engine. A real project imports well over
+    /// a hundred files and fewer than five of them are the user's.
+    /// </remarks>
+    public ImmutableArray<CanonicalPath> Imports
+    {
+        get => field;
+        init => field = value.IsDefault ? [] : value;
+    } = [];
+
     /// <summary>Gets what the engine said while evaluating.</summary>
     public ImmutableArray<EngineMessage> Messages
     {

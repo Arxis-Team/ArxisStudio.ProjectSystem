@@ -100,6 +100,7 @@ internal static class MSBuildProjectEvaluator
                 FullPath = projectPath,
                 Properties = Properties(project),
                 Items = Items(project, projectPath, includeItems),
+                Imports = Imports(project),
                 Messages = listener.Messages.ToImmutable(),
             };
 
@@ -171,6 +172,29 @@ internal static class MSBuildProjectEvaluator
         }
 
         return ProjectMetadata.Create(properties);
+    }
+
+    /// <summary>Every file the evaluation imported, in the order MSBuild reports them.</summary>
+    /// <remarks>
+    /// One import element can resolve to several files — a wildcard import, an SDK that contributes
+    /// more than one — and the same file is often reached by more than one path through the graph,
+    /// so the list is deduplicated here rather than left for the translation to discover.
+    /// </remarks>
+    private static ImmutableArray<CanonicalPath> Imports(Project project)
+    {
+        var seen = new HashSet<CanonicalPath>();
+        ImmutableArray<CanonicalPath>.Builder imports = ImmutableArray.CreateBuilder<CanonicalPath>();
+
+        foreach (ResolvedImport import in project.Imports)
+        {
+            if (CanonicalPath.TryCreate(import.ImportedProject?.FullPath, out CanonicalPath path)
+                && seen.Add(path))
+            {
+                imports.Add(path);
+            }
+        }
+
+        return imports.ToImmutable();
     }
 
     private static ImmutableArray<EvaluatedItem> Items(

@@ -216,6 +216,28 @@ is absent only when the build genuinely will not emit it — an ordinary library
 Every artifact carries the `TargetFramework` it belongs to, because a cross-targeting project
 produces one set per framework and the path alone does not say which build it came from.
 
+## When does a snapshot stop being true
+
+`ProjectSnapshot.EvaluationInputs` is the answer: the project file, the imports that belong to you,
+and the restore output. A change to any of them means that project has to be evaluated again; a
+change to anything else does not.
+
+It is deliberately not "every file the project imports". A restored project in this repository
+imports 137 files — 94 under the SDK, 16 workload manifests beside it, 22 pieces of build logic
+inside NuGet packages, and **three** that anybody would edit. The provider drops the toolchain's own
+files, because none of them change while a solution is open and watching them would bury the ones
+that do.
+
+Some entries name files that are not there, and that is the point: a project with no restore output
+still lists where it would be, so a restore *creating* it registers as a change.
+
+```csharp
+foreach (CanonicalPath input in project.EvaluationInputs)
+{
+    // watch it; when it changes, refresh
+}
+```
+
 `ResolvedPackages` is empty when nothing has been restored, which is not the same as a project having
 no packages. A project that declares packages and has no restore output says so with `APS2005`, as a
 warning rather than a failure.

@@ -149,6 +149,17 @@ read by nothing here: `SolutionSnapshot.Configurations` lists what the solution 
 project reports what it was evaluated under. Joining the two is worth doing when something needs it,
 and inventing the shape before then would be guessing.
 
+### An import that does not exist yet is not an evaluation input
+
+`EvaluationInputs` lists what the evaluation actually read. A `Directory.Build.props` that *would*
+be imported if somebody created it is not in the list, because MSBuild only reports imports it
+resolved — so creating one beside a project changes how that project evaluates without appearing as
+a change to anything the project said it depended on.
+
+The restore output is the exception, and only because a property names its path whether or not the
+file is there. Closing the gap properly means watching directories for a set of well-known names,
+which belongs with the watching work rather than with the reading of a project.
+
 ### A project reference outside the solution has no identity
 
 `ProjectReferenceInfo.Project` is resolved only when the target is one of the projects being loaded.
