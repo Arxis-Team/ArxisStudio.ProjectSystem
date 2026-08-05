@@ -60,6 +60,19 @@ internal static class RepositoryLayout
             .OrderBy(static path => path, StringComparer.Ordinal)
             .ToList();
 
+    /// <summary>Every C# source file of the shipping package.</summary>
+    public static IReadOnlyList<string> CoreSourceFiles() =>
+        Directory.EnumerateFiles(
+                Path.Combine(RepositoryRoot, "src", CorePackage), "*.cs", SearchOption.AllDirectories)
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .OrderBy(static path => path, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>The XML documentation the shipping package generates, beside its assembly.</summary>
+    public static string DocumentationFileOf(string package) =>
+        Path.ChangeExtension(LoadAssembly(package).Location, ".xml");
+
     /// <summary>Reads a single MSBuild property from a project or props file.</summary>
     public static string? PropertyOf(string path, string property) =>
         !File.Exists(path)

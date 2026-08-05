@@ -163,6 +163,22 @@ a reason worth remembering. A change that departs from a recorded decision amend
 that ADR **in the same commit**. Report a required architectural deviation before implementing it,
 not after.
 
+What is recorded so far:
+
+| ADR | Decision |
+| --- | --- |
+| [0001](docs/adr/0001-core-is-provider-neutral.md) | The core references nothing; engines enter through a provider |
+| [0002](docs/adr/0002-published-state-is-immutable-snapshots.md) | Published state is immutable, and publication is one reference write |
+| [0003](docs/adr/0003-provider-types-do-not-cross-the-boundary.md) | Nothing process-bound reaches the model, which is what permits an out-of-process provider |
+| [0004](docs/adr/0004-the-solution-file-is-the-classic-format.md) | `.sln` rather than the specification's `.slnx`, for consistency with the siblings |
+| [0005](docs/adr/0005-one-path-policy-and-it-is-case-insensitive.md) | One path policy, case-insensitive on every platform, because MSBuild's is |
+| [0006](docs/adr/0006-one-fifo-mutation-boundary.md) | A FIFO queue rather than a `SemaphoreSlim`, which promises no ordering |
+| [0007](docs/adr/0007-a-throwing-subscriber-is-isolated.md) | A throwing subscriber is isolated; delivery order is not a promise |
+| [0008](docs/adr/0008-a-result-state-computed-not-declared.md) | `Status` is computed, so it cannot disagree with the evidence |
+
+Only 0004 is a deviation from the task specification. The rest record decisions the specification
+left open, or alternatives rejected for reasons worth not rediscovering.
+
 ## Conventions
 
 - `.editorconfig`: 4 spaces, LF, file-scoped namespaces, `System.*` usings first.

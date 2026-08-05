@@ -10,7 +10,7 @@ stable, immutable, and safe to read from several threads while something else re
 
 ## Status
 
-**Milestone 0 — in progress.** This is the foundation: the model, the diagnostics, the provider
+**Milestone 0 — complete.** This is the foundation: the model, the diagnostics, the provider
 boundary, and the workspace that publishes snapshots. It ships one package and no file-format
 provider at all.
 
@@ -18,6 +18,64 @@ That last point is the important one. **This package does not read `.sln`, `.sln
 files.** It models those concepts so that a provider can populate them, and the first provider —
 `ArxisStudio.ProjectSystem.MSBuild` — is Milestone 1. Until it exists, the only way to get data
 into a workspace is to write a provider yourself.
+
+## A minimal example
+
+There is no MSBuild provider yet, so this one invents a project. Writing a provider like it is also
+how a tool built on this package gets tested without an MSBuild workload on the machine.
+
+```csharp
+sealed class InMemoryProvider : IProjectSystemProvider
+{
+    public string Name => "InMemory";
+
+    public bool CanLoad(WorkspaceEntryPoint entryPoint) =>
+        entryPoint.Kind == WorkspaceEntryPointKind.Project;
+
+    public ValueTask<WorkspaceLoadResult> LoadAsync(
+        WorkspaceLoadRequest request, CancellationToken cancellationToken)
+    {
+        var project = new ProjectSnapshotBuilder
+        {
+            Identity = ProjectIdentity.Create(request.Workspace, request.EntryPointPath),
+            Name = request.EntryPointPath.FileName,
+            ProjectFilePath = request.EntryPointPath,
+            ProviderName = Name,
+        };
+
+        project.TargetFrameworks.Add("net10.0");
+
+        var solution = new SolutionSnapshotBuilder
+        {
+            Workspace = request.Workspace,
+            Name = request.EntryPointPath.FileName,
+            Request = request,
+        };
+
+        solution.Projects.Add(project.ToSnapshot());
+
+        return ValueTask.FromResult(WorkspaceLoadResult.Success(solution.ToSnapshot()));
+    }
+}
+```
+
+```csharp
+await using var workspace = new ProjectWorkspace(new InMemoryProvider());
+
+WorkspaceLoadResult result = await workspace.LoadAsync(new WorkspaceLoadRequest
+{
+    Workspace = workspace.Identity,
+    EntryPointPath = CanonicalPath.Create(@"C:\src\App\App.csproj"),
+});
+
+foreach (ProjectSnapshot project in result.Snapshot!.Projects)
+{
+    Console.WriteLine($"{project.Name} -> {string.Join(", ", project.TargetFrameworks)}");
+}
+```
+
+The [API guide](docs/api/README.md) covers the rest: paths, identity and staleness, results and
+diagnostics, ordering, and what a provider must get right.
 
 ## Packages and dependency direction
 
@@ -75,6 +133,11 @@ refresh can never overwrite a newer one because of scheduler order.
 Every asynchronous operation accepts a `CancellationToken`. Cancellation surfaces as
 `OperationCanceledException` — never as a diagnostic — and a cancelled refresh leaves the previous
 snapshot and version exactly as they were.
+
+Two properties of `SnapshotChanged` that a subscriber has to know: a **throwing handler is
+isolated**, so the others still run and nothing reports the failure; and **delivery is not ordered**,
+because the boundary is released before the event is raised. Publication order is strict; a handler
+that keeps derived state compares `e.Version` and ignores anything older.
 
 ## Diagnostics, not exceptions
 
