@@ -162,19 +162,16 @@ public sealed class OperationTests
         var workspace = new ProjectWorkspace(provider);
         var seen = new List<string>();
 
+        // Deliberately not Progress<T>, which posts to a captured context and would make this a race
+        // the test hopes to win. IProgress<T> promises nothing about threading, so an implementation
+        // that reports on the reporting thread is a legitimate one -- and the only kind that makes
+        // the assertion exact.
         await workspace.ExecuteAsync(
             Request(workspace),
-            new Progress<ProjectOperationProgress>(p => seen.Add(p.Message)),
+            new ImmediateProgress(p => seen.Add(p.Message)),
             TestContext.Current.CancellationToken);
 
-        // Progress<T> posts to the captured context, so give the posts a chance to land before
-        // asserting. The provider reported synchronously; the delivery is what is asynchronous.
-        for (int attempt = 0; attempt < 100 && seen.Count < 2; attempt++)
-        {
-            await Task.Yield();
-        }
-
-        Assert.Equal(2, seen.Count);
+        Assert.Equal(["compiling Core", "compiling App"], seen);
     }
 
     [Fact]
@@ -247,6 +244,13 @@ public sealed class OperationTests
         Assert.Null(workspace.CurrentSnapshot);
         Assert.Equal(0, raised);
         Assert.False(workspace.IsMutationHeld);
+    }
+
+    /// <summary>Reports on the thread that reported, so a test can assert without waiting.</summary>
+    private sealed class ImmediateProgress(Action<ProjectOperationProgress> onReport)
+        : IProgress<ProjectOperationProgress>
+    {
+        public void Report(ProjectOperationProgress value) => onReport(value);
     }
 
     /// <summary>A provider that reads projects and also does something to them.</summary>

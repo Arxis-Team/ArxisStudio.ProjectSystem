@@ -168,6 +168,12 @@ public sealed class MSBuildOperationTests
     }
 
     /// <summary>Project-started is the granularity a progress bar can use.</summary>
+    /// <remarks>
+    /// The engine raises its events on its own thread, so the list is guarded — but it raises them
+    /// <em>during</em> the build, and this progress implementation reports on the thread that
+    /// reported. So everything has landed by the time the operation returns, and there is nothing to
+    /// wait for.
+    /// </remarks>
     [Fact]
     public async Task Progress_ReportsWhatIsBeingBuilt()
     {
@@ -175,7 +181,7 @@ public sealed class MSBuildOperationTests
 
         ProjectOperationResult result = await new MSBuildProjectProvider().ExecuteAsync(
             Request(),
-            new Progress<ProjectOperationProgress>(p =>
+            new ImmediateProgress(p =>
             {
                 lock (seen)
                 {
@@ -186,20 +192,7 @@ public sealed class MSBuildOperationTests
 
         Assert.Equal(ProjectOperationStatus.Succeeded, result.Status);
 
-        for (int attempt = 0; attempt < 200; attempt++)
-        {
-            lock (seen)
-            {
-                if (seen.Count > 0)
-                {
-                    return;
-                }
-            }
-
-            await Task.Yield();
-        }
-
-        Assert.Fail("No progress was reported.");
+        Assert.Contains(seen, static message => message.Contains("Buildable.proj", StringComparison.Ordinal));
     }
 
     /// <summary>
