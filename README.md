@@ -10,7 +10,7 @@ stable, immutable, and safe to read from several threads while something else re
 
 ## Status
 
-**Milestone 4 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
+**Milestone 5 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
 solution or a standalone project by evaluating it, and runs restore, build, rebuild and clean over
 it.
 
@@ -50,8 +50,20 @@ does not advance the version — call `RefreshAsync` when you want the model to 
 [ADR 0014](docs/adr/0014-an-operation-is-not-a-mutation.md) says why that is the deliberate answer
 rather than an omission.
 
-What does not yet: staleness detection and file watching. Those are Milestone 5 onwards, and the
-core already models them so a provider can fill them in.
+And it knows when it has gone out of date. Each project says which files it was built from, a
+watcher observes them, a coalescer turns a burst of changes into one batch, and the snapshot works
+out whether the batch matters:
+
+```csharp
+WorkspaceInvalidation invalidation = snapshot.Invalidate(changedPaths);
+```
+
+Nothing refreshes on its own — you call `RefreshAsync`, with your own token and your own error
+handling. [ADR 0016](docs/adr/0016-watching-belongs-with-the-provider.md) says why that is the
+deliberate answer.
+
+What does not yet: staleness detection for build outputs. That is deferred with the freshness work,
+and the core already models what it needs.
 
 ## A minimal example
 
@@ -244,8 +256,8 @@ security boundary and is not offered as one.
 | 1 | `ArxisStudio.ProjectSystem.MSBuild`: locate and host MSBuild, open standalone projects |
 | 2 | Solutions and the project graph: `.sln`, `.slnx`, solution folders, configurations |
 | 3 | References and restore assets, `project.assets.json`, SDK and workload diagnostics |
-| **4** | Explicit restore and build operations with structured progress — *this one* |
-| 5 | File watching, debouncing, invalidation, incremental refresh |
+| 4 | Explicit restore and build operations with structured progress |
+| **5** | File watching, debouncing, invalidation, incremental refresh — *this one* |
 | 6 | `ArxisStudio.ProjectSystem.NuGet`: search, install, update, remove |
 | 7 | `ArxisStudio.ProjectSystem.Markup.Xaml`: optional adapter onto the Markup resolvers |
 

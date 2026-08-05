@@ -255,26 +255,12 @@ switch (invalidation.Scope)
 just that it did.
 
 A file system does not report one change per edit — a save produces two or three notifications, a
-branch switch produces thousands — so changes go through a coalescer first:
-
-```csharp
-using var coalescer = new FileChangeCoalescer(batch =>
-{
-    WorkspaceInvalidation invalidation = workspace.CurrentSnapshot?.Invalidate(batch)
-        ?? WorkspaceInvalidation.None;
-
-    if (!invalidation.IsEmpty) { /* refresh */ }
-});
-
-watcher.Changed += (_, e) => coalescer.Add(CanonicalPath.Create(e.FullPath));
-```
-
-It delivers once the changes have stopped for `QuietPeriod`, **or** once `MaximumDelay` has passed
-since the first of them — whichever comes first. Both exist because either alone misbehaves: a quiet
-period never fires during a branch switch, and a maximum delay alone fires on a fixed schedule in
-the middle of one. `Flush()` delivers immediately, for a host that knows the burst is over.
-
-The clock is a `TimeProvider`, so a test advances it by hand rather than waiting.
+branch switch produces thousands — so changes go through a coalescer first. It delivers once the
+changes have stopped for `QuietPeriod`, **or** once `MaximumDelay` has passed since the first of
+them, whichever comes first. Both exist because either alone misbehaves: a quiet period never fires
+during a branch switch, and a ceiling alone fires on a fixed schedule in the middle of one.
+`Flush()` delivers immediately, for a host that knows the burst is over. The clock is a
+`TimeProvider`, so a test advances it by hand rather than waiting.
 
 **Staleness does not spread along project references,** which looks like an omission and is a
 finding: evaluating a project does not read the projects it references — MSBuild resolves a
@@ -282,6 +268,55 @@ finding: evaluating a project does not read the projects it references — MSBui
 snapshot correct in every field, and re-evaluating it would reproduce what it already said. Build
 freshness *is* transitive; it is a different graph over different inputs, and it is not this one.
 [ADR 0015](../adr/0015-invalidation-is-not-transitive.md) has the reasoning.
+
+## Refreshing when files change
+
+Four pieces, composed by you. **Nothing refreshes on its own** — the workspace does not watch, and
+[ADR 0016](../adr/0016-watching-belongs-with-the-provider.md) says why: starting an asynchronous
+refresh from a timer callback is fire-and-forget, and a failure would have nowhere to go. You have a
+caller, a token, and a better idea of whether now is a good moment.
+
+```csharp
+var coalescer = new FileChangeCoalescer(async void (batch) =>
+{
+    SolutionSnapshot? current = workspace.CurrentSnapshot;
+
+    if (current is null || current.Invalidate(batch).IsEmpty)
+    {
+        return;                                  // the common case: source changed, nothing else
+    }
+
+    await workspace.RefreshAsync(token);         // your call, your token, your error handling
+});
+
+var watcher = new ProjectFileWatcher(coalescer.Add);
+
+// Re-arm after every publication: a refresh produces new inputs, and a project that stopped
+// importing something should stop hearing about it.
+workspace.SnapshotChanged += (_, e) =>
+    watcher.Watch(e.Snapshot.Projects.SelectMany(p => p.EvaluationInputs));
+```
+
+`ProjectFileWatcher` lives in the MSBuild package because doing it correctly needs to know how
+projects evaluate. Three things it handles that are easy to get wrong alone:
+
+- **It watches directories, not files.** A watcher bound to one file goes deaf when that file is
+  replaced rather than edited — which is what atomic saves do — and can never see it appear.
+- **A missing directory is watched through its nearest existing ancestor.** An unrestored project
+  names `obj/project.assets.json` and has no `obj`, so without this the change that most needs
+  noticing would be the one that never arrived.
+- **A buffer overflow reports everything watched.** The OS notification buffer is finite and a
+  branch switch exhausts it; the lost changes are unknowable, so assuming they all changed is the
+  only answer that cannot miss one silently.
+
+It therefore reports files nothing cares about, deliberately — filtering is `Invalidate`'s job.
+
+**A host that already observes files should use its own** and skip the watcher: feed paths straight
+to `coalescer.Add`. That is the expected case for an IDE, not a fallback, which is why the coalescer
+takes bare paths rather than any watcher's event type.
+
+Project identities survive a refresh, so anything you remember about a project — an expanded node,
+an open editor, a cached analysis — stays valid across one.
 
 `ResolvedPackages` is empty when nothing has been restored, which is not the same as a project having
 no packages. A project that declares packages and has no restore output says so with `APS2005`, as a

@@ -222,8 +222,37 @@ A project that redirects its symbols somewhere else therefore gets a `SymbolFile
 wrong. It is reported anyway because a consumer mapping a stack frame to source degrades gracefully
 when the file is not there, and reporting nothing helps nobody.
 
+## Watching
+
+### Nothing refreshes on its own
+
+The workspace does not watch files, and a change never publishes a snapshot by itself. Watching is
+four pieces a host composes — evaluation inputs, a watcher, a coalescer, an invalidation — and the
+`RefreshAsync` at the end is the host's call. [ADR 0016](adr/0016-watching-belongs-with-the-provider.md)
+says why: a refresh started from a timer callback has no caller to report a failure to.
+
+### The watcher reports files nothing cares about
+
+It watches directories rather than individual files, so every change in a watched directory is
+reported and `Invalidate` discards most of them. That is deliberate — a watcher bound to one file
+goes deaf when the file is replaced rather than edited — but it means the callback is noisier than
+the set of files that were asked for, and noisiest for a project whose `obj` does not exist yet,
+where the whole project directory is watched recursively until it does.
+
+### A notification buffer overflow costs a full re-read
+
+When the operating system's buffer overflows — a branch switch will do it — the changes are lost and
+unknowable. Every watched path is then reported as changed, which is the only answer that cannot
+silently miss one, and the result is that everything looks stale at once.
+
+### File observation is per-path, not per-change-kind
+
+The watcher reports paths. Whether a file was created, edited, renamed or deleted is not passed on,
+because nothing here needs it: any of them makes a project stale in exactly the same way. A host
+that wants to distinguish them uses its own file observation, which it probably already has.
+
 ## Deferred by design
 
 Not limitations of the implementation so much as scope boundaries, listed so nobody looks for
-them: file watching, assembly loading, `AssemblyLoadContext` management, package-manager
-operations, project-file editing, and any UI.
+them: assembly loading, `AssemblyLoadContext` management, package-manager operations, project-file
+editing, and any UI.

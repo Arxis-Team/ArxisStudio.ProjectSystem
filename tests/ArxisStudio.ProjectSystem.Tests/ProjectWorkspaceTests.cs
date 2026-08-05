@@ -79,6 +79,37 @@ public sealed class ProjectWorkspaceTests
         Assert.Same(first, events[1].Previous);
     }
 
+    /// <summary>
+    /// A project keeps its identity across a refresh, which is what makes anything a consumer
+    /// remembers about a project — expanded nodes, an open editor, a cached analysis — survive one.
+    /// </summary>
+    /// <remarks>
+    /// This falls out of identities being derived from the workspace and the canonical project path
+    /// rather than minted per load, and it is asserted because it is the kind of property that is
+    /// easy to break later while every other test still passes.
+    /// </remarks>
+    [Fact]
+    public async Task ARefresh_KeepsEveryProjectsIdentity()
+    {
+        var provider = new ControllableProvider();
+        var workspace = new ProjectWorkspace(provider);
+
+        SolutionSnapshot first = await LoadAsync(workspace, provider);
+        SolutionSnapshot second = await RefreshAsync(workspace, provider);
+
+        Assert.NotSame(first, second);
+
+        Assert.Equal(
+            first.Projects.Select(static p => p.Identity),
+            second.Projects.Select(static p => p.Identity));
+
+        foreach (ProjectSnapshot project in first.Projects)
+        {
+            Assert.True(second.TryGetProject(project.Identity, out ProjectSnapshot? refreshed));
+            Assert.Equal(project.ProjectFilePath, refreshed.ProjectFilePath);
+        }
+    }
+
     [Fact]
     public async Task AFailedRefresh_KeepsTheSnapshotAndVersion()
     {
