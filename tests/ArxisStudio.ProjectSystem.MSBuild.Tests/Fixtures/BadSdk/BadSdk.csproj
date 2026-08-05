@@ -1,0 +1,7 @@
+<Project Sdk="Definitely.Not.A.Real.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+</Project>

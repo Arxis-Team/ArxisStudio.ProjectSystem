@@ -33,6 +33,43 @@ internal sealed record EvaluatedProject
         get => field;
         init => field = value.IsDefault ? [] : value;
     } = [];
+
+    /// <summary>Gets what the engine said while evaluating.</summary>
+    public ImmutableArray<EvaluationMessage> Messages
+    {
+        get => field;
+        init => field = value.IsDefault ? [] : value;
+    } = [];
+}
+
+/// <summary>
+/// Something the engine reported while evaluating, in a shape that owes nothing to MSBuild.
+/// </summary>
+/// <remarks>
+/// An unresolvable SDK, a missing import, a workload the machine does not have: MSBuild notices all
+/// of these and names them with codes of its own that consumers already know. Those names are kept
+/// rather than replaced, because a code the caller can act on is worth more than a code that merely
+/// belongs to this library's range.
+/// </remarks>
+internal sealed record EvaluationMessage
+{
+    /// <summary>Gets the engine's own code, such as <c>MSB4236</c> or <c>NETSDK1147</c>.</summary>
+    public required string Code { get; init; }
+
+    /// <summary>Gets the engine's message.</summary>
+    public required string Message { get; init; }
+
+    /// <summary>Gets a value indicating whether the engine called it an error rather than a warning.</summary>
+    public required bool IsError { get; init; }
+
+    /// <summary>Gets the file it concerns, when the engine named one.</summary>
+    public CanonicalPath File { get; init; }
+
+    /// <summary>Gets the one-based line, or zero.</summary>
+    public int Line { get; init; }
+
+    /// <summary>Gets the one-based column, or zero.</summary>
+    public int Column { get; init; }
 }
 
 /// <summary>One evaluated item, in the same provider-neutral shape.</summary>

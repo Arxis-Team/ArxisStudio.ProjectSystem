@@ -111,6 +111,10 @@ Code ranges: `APS1xxx` core, `APS2xxx` MSBuild, `APS3xxx` restore/build, `APS4xx
 `APS5xxx` adapters. **Declare no code nothing raises** — a code with no producer is a promise the
 library has not made.
 
+A diagnostic may also carry an engine's own code — `MSB4011`, `NETSDK1147` — when the engine is what
+noticed. The split is by who noticed, not by who reported, and [ADR 0013](docs/adr/0013-a-provider-may-keep-its-engines-diagnostic-codes.md)
+says why renaming those would break the rule it appears to serve.
+
 Cancellation is `OperationCanceledException`, never a diagnostic.
 
 ### Async and cancellation are first-class
@@ -179,6 +183,7 @@ What is recorded so far:
 | [0010](docs/adr/0010-testing-a-provider-that-needs-a-real-engine.md) | The translation is tested without MSBuild; the wiring, sparingly, with it |
 | [0011](docs/adr/0011-these-libraries-are-referenced-not-published.md) | Referenced directly, not published, so the packaging apparatus is gone |
 | [0012](docs/adr/0012-restore-assets-are-read-not-resolved.md) | `project.assets.json` is read by hand, so no NuGet client library enters |
+| [0013](docs/adr/0013-a-provider-may-keep-its-engines-diagnostic-codes.md) | A provider passes its engine's codes through rather than renaming them |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Build.Definition;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Exceptions;
+using Microsoft.Build.Framework;
 
 namespace ArxisStudio.ProjectSystem.MSBuild;
 
@@ -63,10 +64,18 @@ internal static class MSBuildProjectEvaluator
         evaluated = null;
         error = null;
 
+        var listener = new EvaluationListener();
+
         // A collection of its own, disposed below. Sharing one across evaluations would share its
         // caches and its lifetime, and a stale cached project is a wrong answer that looks right.
+        //
+        // The listener hears what the engine says about a project that still evaluates -- a
+        // duplicate import is MSB4011, a workload that is missing is NETSDK1147 -- none of which
+        // reaches the exception path, because none of them stops the evaluation.
         using var collection = new ProjectCollection(
-            new Dictionary<string, string>(globalProperties, StringComparer.OrdinalIgnoreCase));
+            new Dictionary<string, string>(globalProperties, StringComparer.OrdinalIgnoreCase),
+            [listener],
+            ToolsetDefinitionLocations.Default);
 
         try
         {
@@ -75,9 +84,15 @@ internal static class MSBuildProjectEvaluator
                 new ProjectOptions
                 {
                     ProjectCollection = collection,
-                    LoadSettings = ProjectLoadSettings.IgnoreMissingImports
-                        | ProjectLoadSettings.IgnoreInvalidImports
-                        | ProjectLoadSettings.IgnoreEmptyImports,
+
+                    // Default, deliberately, after measuring the alternative. Ignoring missing and
+                    // invalid imports looks like robustness and is the opposite: MSBuild then
+                    // suppresses the report as well as the failure, so an unresolvable SDK produced
+                    // a snapshot that claimed to have evaluated cleanly while missing everything
+                    // that SDK would have contributed. Failing loudly with MSBuild's own
+                    // explanation is the honest answer, and a solution keeps loading around a
+                    // project that fails this way.
+                    LoadSettings = ProjectLoadSettings.Default,
                 });
 
             evaluated = new EvaluatedProject
@@ -85,6 +100,7 @@ internal static class MSBuildProjectEvaluator
                 FullPath = projectPath,
                 Properties = Properties(project),
                 Items = Items(project, projectPath, includeItems),
+                Messages = listener.Messages.ToImmutable(),
             };
 
             return true;
@@ -96,6 +112,47 @@ internal static class MSBuildProjectEvaluator
             error = exception.Message;
 
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Collects what the engine says while a project evaluates.
+    /// </summary>
+    /// <remarks>
+    /// The only way to hear about an unresolvable SDK or a missing import without giving up the
+    /// partial evaluation: MSBuild reports them through its logging service, and a project loaded
+    /// with the ignore-import settings otherwise looks like it evaluated cleanly.
+    /// </remarks>
+    private sealed class EvaluationListener : ILogger
+    {
+        public ImmutableArray<EvaluationMessage>.Builder Messages { get; } =
+            ImmutableArray.CreateBuilder<EvaluationMessage>();
+
+        public LoggerVerbosity Verbosity { get; set; } = LoggerVerbosity.Quiet;
+
+        public string? Parameters { get; set; }
+
+        public void Initialize(IEventSource eventSource)
+        {
+            eventSource.ErrorRaised += (_, e) => Add(e.Code, e.Message, true, e.File, e.LineNumber, e.ColumnNumber);
+            eventSource.WarningRaised += (_, e) => Add(e.Code, e.Message, false, e.File, e.LineNumber, e.ColumnNumber);
+        }
+
+        public void Shutdown()
+        {
+        }
+
+        private void Add(string? code, string? message, bool isError, string? file, int line, int column)
+        {
+            Messages.Add(new EvaluationMessage
+            {
+                Code = string.IsNullOrWhiteSpace(code) ? "MSBUILD" : code,
+                Message = message ?? string.Empty,
+                IsError = isError,
+                File = CanonicalPath.TryCreate(file, out CanonicalPath path) ? path : CanonicalPath.None,
+                Line = line,
+                Column = column,
+            });
         }
     }
 

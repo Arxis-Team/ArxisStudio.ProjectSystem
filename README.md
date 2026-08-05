@@ -182,7 +182,12 @@ codes are the contract.
 | `APS5xxx` | Integration adapters |
 
 `APS1xxx` and `APS2xxx` have implemented codes; the rest are reserved. A code with no producer is a
-promise the library has not made, so none is declared. Exceptions remain reserved for invalid API use, cancellation, disposed objects, broken
+promise the library has not made, so none is declared.
+
+A diagnostic may also carry **the engine's own code** — `MSB4011` for a duplicate import,
+`NETSDK1147` for a missing workload — when the engine is what noticed the problem. Renaming those
+would put the only useful distinction in the message text, which is exactly what routing on `Code`
+exists to avoid. `ProviderName` says which engine spoke. Exceptions remain reserved for invalid API use, cancellation, disposed objects, broken
 invariants, and unrecoverable failures.
 
 ## Security and trust

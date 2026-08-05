@@ -233,6 +233,23 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
         var diagnostics = new List<ProjectDiagnostic>();
         ImmutableArray<ResolvedPackage> resolved = [];
 
+        // What the engine said, with its own codes kept. An unresolvable SDK is MSB4236 and a
+        // missing workload is NETSDK1147 to everyone who has met them; renaming those into this
+        // library's range would leave a caller unable to act on either without reading the message
+        // text, which the diagnostics policy exists to make unnecessary.
+        foreach (EvaluationMessage message in evaluated.Messages)
+        {
+            diagnostics.Add(new ProjectDiagnostic(
+                message.Code,
+                message.Message,
+                message.IsError ? ProjectDiagnosticSeverity.Error : ProjectDiagnosticSeverity.Warning)
+            {
+                FilePath = message.File.IsEmpty ? evaluated.FullPath : message.File,
+                Span = message.Line > 0 ? FileSpan.At(message.Line, message.Column) : FileSpan.None,
+                ProviderName = Name,
+            });
+        }
+
         CanonicalPath assets = RestoreAssetsReader.Locate(evaluated);
         string? framework = evaluated.Properties.GetValueOrDefault("TargetFramework");
 

@@ -104,6 +104,17 @@ describes one of them: the references, items and outputs are the active framewor
 same project again with a different `TargetFramework` gives the other. Representing several at once
 would need a shape nothing has asked for yet.
 
+### A project whose SDK or imports cannot be resolved does not evaluate at all
+
+MSBuild can be asked to ignore missing and invalid imports, and it was — until measuring showed that
+it then suppresses the *report* as well as the failure, so a project with an unresolvable SDK
+evaluated "successfully" while missing everything that SDK contributes. Those settings are off now,
+so such a project fails with MSBuild's own explanation instead of returning a snapshot that looks
+complete.
+
+The cost is that no partial snapshot comes back for it. Inside a solution this is invisible: the
+project stays in the snapshot carrying its diagnostic and the rest of the solution loads.
+
 ### Nothing checks whether restore output is stale
 
 `ResolvedPackages` reports what the assets file says, and the assets file may be older than the
