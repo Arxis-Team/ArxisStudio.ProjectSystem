@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -71,6 +72,10 @@ public static class ProjectXamlEnvironment
     /// call and nothing here knows when it stops being looked at.
     /// </remarks>
     /// <param name="context">The project's assemblies.</param>
+    /// <param name="resources">
+    /// How <c>avares</c> URIs reach the project's own files, or <see langword="null"/> to resolve
+    /// them only out of built assemblies.
+    /// </param>
     /// <param name="sourceProvider">
     /// Where documents are read from, or <see langword="null"/> for files on disk.
     /// </param>
@@ -78,6 +83,7 @@ public static class ProjectXamlEnvironment
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
     public static XamlLoadEnvironment Create(
         ProjectAssemblyContext context,
+        ProjectResourceResolver? resources = null,
         IMarkupSourceProvider? sourceProvider = null)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -89,14 +95,25 @@ public static class ProjectXamlEnvironment
             new ProjectAssemblyResolver(context),
             LoadedAssemblyResolver.Instance);
 
+        // Same principle for resources, and it matters more: the copy embedded in the last build is
+        // precisely the version the user is editing away from, so the project's own file has to be
+        // asked first or an edit stays invisible until a rebuild.
+        var resourceResolvers = new List<IXamlResourceResolver>(3);
+
+        if (resources is not null)
+        {
+            resourceResolvers.Add(resources);
+        }
+
+        resourceResolvers.Add(new AvaloniaResourceResolver(assemblyResolver));
+        resourceResolvers.Add(FileResourceResolver.Instance);
+
         return new XamlLoadEnvironment
         {
             SourceProvider = sourceProvider ?? new FileMarkupSourceProvider(),
             AssemblyResolver = assemblyResolver,
             TypeResolver = new XamlTypeResolver(assemblyResolver),
-            ResourceResolver = new CompositeResourceResolver(
-                new AvaloniaResourceResolver(assemblyResolver),
-                FileResourceResolver.Instance),
+            ResourceResolver = new CompositeResourceResolver(resourceResolvers),
         };
     }
 
@@ -122,6 +139,6 @@ public static class ProjectXamlEnvironment
 
         ProjectAssemblyContext context = ProjectAssemblyContext.Create(snapshot, project);
 
-        return (Create(context, sourceProvider), context);
+        return (Create(context, ProjectResourceResolver.Create(snapshot), sourceProvider), context);
     }
 }

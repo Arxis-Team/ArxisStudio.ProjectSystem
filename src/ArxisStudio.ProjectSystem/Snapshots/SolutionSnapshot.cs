@@ -267,6 +267,79 @@ public sealed class SolutionSnapshot
     }
 
     /// <summary>
+    /// Finds the project a file belongs to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The question a tool asks the moment somebody opens a document: which project's settings,
+    /// references and framework apply to this file? Answered two ways, in this order.
+    /// </para>
+    /// <para>
+    /// <b>A project that declares the file as an item owns it.</b> That is the exact answer, and it
+    /// covers a file linked into a project from outside its own directory, which no amount of path
+    /// comparison would find.
+    /// </para>
+    /// <para>
+    /// <b>Otherwise, the project whose directory contains it, most specific first.</b> A file that
+    /// nothing declares is the ordinary state of one somebody just created, and refusing to answer
+    /// until the next refresh would make a new file belong to nothing. Deepest wins, so a project
+    /// nested inside another's directory takes its own files.
+    /// </para>
+    /// <para>
+    /// When two projects both declare it — which linked files make possible — the first in snapshot
+    /// order wins. That is arbitrary but stable, and a file genuinely shared by two projects has no
+    /// single right answer to give.
+    /// </para>
+    /// </remarks>
+    /// <param name="filePath">The file to place.</param>
+    /// <param name="project">The project it belongs to, when one does.</param>
+    /// <returns><see langword="true"/> when a project was found.</returns>
+    public bool TryGetProjectForFile(CanonicalPath filePath, [NotNullWhen(true)] out ProjectSnapshot? project)
+    {
+        project = null;
+
+        if (filePath.IsEmpty)
+        {
+            return false;
+        }
+
+        // A project file is its own project's, which items do not say and everybody assumes.
+        if (_byPath.TryGetValue(filePath, out ProjectSnapshot? owning))
+        {
+            project = owning;
+
+            return true;
+        }
+
+        foreach (ProjectSnapshot candidate in Projects)
+        {
+            foreach (ProjectItem item in candidate.Items)
+            {
+                if (item.FullPath == filePath)
+                {
+                    project = candidate;
+
+                    return true;
+                }
+            }
+        }
+
+        int deepest = -1;
+
+        foreach (ProjectSnapshot candidate in Projects)
+        {
+            if (filePath.StartsWith(candidate.ProjectDirectory)
+                && candidate.ProjectDirectory.Value.Length > deepest)
+            {
+                deepest = candidate.ProjectDirectory.Value.Length;
+                project = candidate;
+            }
+        }
+
+        return project is not null;
+    }
+
+    /// <summary>
     /// Works out every assembly a project needs at run time.
     /// </summary>
     /// <remarks>

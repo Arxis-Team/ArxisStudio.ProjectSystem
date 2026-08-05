@@ -342,6 +342,22 @@ collectible context. Package assemblies go to the default one, because they do n
 builds and because a second copy of a shared library produces types that are not assignable to the
 host's. The consequence is that changing a package version needs a new process, not a new context.
 
+### Only `AvaloniaResource` items get an `avares` URI
+
+The resource map is built from items of that type, because those are the ones the Avalonia SDK
+embeds. A project that arranges its resources some other way resolves nothing from the project, and
+falls through to whatever the built assemblies contain.
+
+Exposing every file under an `avares` URI would be worse than resolving none: the designer would
+then answer a question the running application answers differently, which is the one failure mode a
+designer must not have.
+
+### A resource of a project that has never been loaded is not found
+
+The map covers the projects in the snapshot. A `ResourceInclude` naming a project outside it — a
+solution opened on one project, referencing another by path — resolves out of the built assembly if
+there is one, and otherwise not at all.
+
 ### Assemblies are matched by file name
 
 The map from an assembly name to a file is built from the file names in the snapshot. For anything a
