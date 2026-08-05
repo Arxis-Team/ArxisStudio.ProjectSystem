@@ -116,6 +116,65 @@ public sealed class MSBuildProjectProviderTests
         Assert.Equal(["Debug", "Release", "Profiled"], project.Configurations);
     }
 
+    /// <summary>
+    /// A cross-targeting project's outer evaluation is not a build of anything: it says which
+    /// frameworks exist and has no output path. Answering "where is the assembly" with nothing is
+    /// no better than answering it with a guess, so the provider evaluates again inside one
+    /// framework and says which one it picked.
+    /// </summary>
+    [Fact]
+    public async Task ACrossTargetingProject_StillReportsAnOutputAndSaysWhichFrameworkItIsFor()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("CrossTargeting"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal("net10.0", project.ActiveTargetFramework);
+
+        OutputArtifact assembly = Assert.Single(
+            project.Outputs.Where(static o => o.Kind == OutputArtifactKind.Assembly));
+
+        Assert.Equal("net10.0", assembly.TargetFramework);
+        Assert.Contains("net10.0", assembly.Path.Value, StringComparison.Ordinal);
+
+        // Choosing one framework must not hide the others.
+        Assert.Equal(["net10.0", "net8.0"], project.TargetFrameworks);
+    }
+
+    [Fact]
+    public async Task ARequestedFramework_DecidesWhichOutputComesBack()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider().LoadAsync(
+            Request("CrossTargeting") with { TargetFramework = "net8.0" },
+            TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal("net8.0", project.ActiveTargetFramework);
+
+        OutputArtifact assembly = Assert.Single(
+            project.Outputs.Where(static o => o.Kind == OutputArtifactKind.Assembly));
+
+        Assert.Equal("net8.0", assembly.TargetFramework);
+        Assert.Contains("net8.0", assembly.Path.Value, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A single-target project is already an explicit context, so nothing re-evaluates it.
+    /// </summary>
+    [Fact]
+    public async Task ASingleTargetProject_IsEvaluatedOnce()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("Basic"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal("net10.0", project.ActiveTargetFramework);
+        Assert.Single(project.Outputs.Where(static o => o.Kind == OutputArtifactKind.Assembly));
+    }
+
     [Fact]
     public async Task DeclaredReferences_ComeThroughWithoutRestoring()
     {

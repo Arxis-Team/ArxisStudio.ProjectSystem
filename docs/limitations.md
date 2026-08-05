@@ -87,6 +87,23 @@ says that running several at once is safe alongside the SDK resolvers and caches
 per process. A large solution is therefore slower than it could be, and this is the first thing to
 measure when that matters — not the first thing to guess at.
 
+### A cross-targeting project is evaluated twice
+
+Its outer evaluation says which frameworks exist and has no output path, so a second evaluation runs
+inside one framework to produce a snapshot that belongs to an explicit context. When the request
+names a framework, only that one evaluation happens.
+
+The framework chosen when the caller does not name one is the first the project declares.
+`ProjectSnapshot.ActiveTargetFramework` says which it was, and `TargetFrameworks` still lists them
+all — so nothing is hidden, but a caller who cares should say which one it wants.
+
+### Only the active framework's context is reported
+
+Each framework of a cross-targeting project can resolve a different dependency graph. A snapshot
+describes one of them: the references, items and outputs are the active framework's. Loading the
+same project again with a different `TargetFramework` gives the other. Representing several at once
+would need a shape nothing has asked for yet.
+
 ### Evaluation cannot be interrupted
 
 MSBuild offers no way to abandon an evaluation part-way. The cancellation token is observed between

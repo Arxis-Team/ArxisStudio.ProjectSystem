@@ -182,9 +182,72 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
         Dictionary<string, string> globalProperties = GlobalProperties(request);
         bool includeItems = request.Options.IncludeItems;
 
+        (EvaluatedProject? evaluated, string? error) =
+            await RunAsync(path, globalProperties, includeItems, cancellationToken).ConfigureAwait(false);
+
+        if (evaluated is null)
+        {
+            return (null, Diagnostic(
+                MSBuildDiagnosticCodes.EvaluationFailed,
+                $"'{path}' could not be evaluated: {error}",
+                path));
+        }
+
+        ProjectSnapshot snapshot =
+            MSBuildProjectTranslator.Translate(evaluated, request.Workspace, Name, knownProjects);
+
+        if (ChooseTargetFramework(snapshot, request) is not { } framework)
+        {
+            return (snapshot, null);
+        }
+
+        // A cross-targeting project's outer evaluation is not a build of anything: it exists to say
+        // which frameworks there are. It has no TargetPath, so asking it where the output assembly
+        // is gets no answer -- which is the question a designer most needs answered. Evaluating
+        // again inside one framework produces a snapshot that belongs to an explicit context, which
+        // is what the architecture asks for instead of guessing at a bin directory.
+        globalProperties["TargetFramework"] = framework;
+
+        (EvaluatedProject? inner, string? innerError) =
+            await RunAsync(path, globalProperties, includeItems, cancellationToken).ConfigureAwait(false);
+
+        return inner is null
+            ? (null, Diagnostic(
+                MSBuildDiagnosticCodes.EvaluationFailed,
+                $"'{path}' could not be evaluated for '{framework}': {innerError}",
+                path))
+            : (MSBuildProjectTranslator.Translate(inner, request.Workspace, Name, knownProjects), null);
+    }
+
+    /// <summary>
+    /// The framework to evaluate inside, when the outer evaluation was not one.
+    /// </summary>
+    /// <remarks>
+    /// Only when the project cross-targets and the caller did not choose. The first declared
+    /// framework is taken, and the resulting snapshot says so in
+    /// <see cref="ProjectSnapshot.ActiveTargetFramework"/> while still listing every framework in
+    /// <see cref="ProjectSnapshot.TargetFrameworks"/> -- so a caller that cares which one it got can
+    /// see it, and a caller that cares which one it wants passes
+    /// <see cref="WorkspaceLoadRequest.TargetFramework"/>.
+    /// </remarks>
+    private static string? ChooseTargetFramework(ProjectSnapshot snapshot, WorkspaceLoadRequest request) =>
+        request.TargetFramework is null
+            && snapshot.TargetFrameworks.Length > 1
+            && snapshot.ActiveTargetFramework is null
+                ? snapshot.TargetFrameworks[0]
+                : null;
+
+    private static async ValueTask<(EvaluatedProject? Evaluated, string? Error)> RunAsync(
+        CanonicalPath path,
+        Dictionary<string, string> globalProperties,
+        bool includeItems,
+        CancellationToken cancellationToken)
+    {
+        var properties = new Dictionary<string, string>(globalProperties, StringComparer.OrdinalIgnoreCase);
+
         (EvaluatedProject? evaluated, string? error) = await Task.Run(
             () => MSBuildProjectEvaluator.TryEvaluate(
-                path, globalProperties, includeItems, out EvaluatedProject? result, out string? failure)
+                path, properties, includeItems, out EvaluatedProject? result, out string? failure)
                 ? (result, (string?)null)
                 : (null, failure),
             cancellationToken).ConfigureAwait(false);
@@ -193,12 +256,7 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
         // arrived during it takes effect.
         cancellationToken.ThrowIfCancellationRequested();
 
-        return evaluated is null
-            ? (null, Diagnostic(
-                MSBuildDiagnosticCodes.EvaluationFailed,
-                $"'{path}' could not be evaluated: {error}",
-                path))
-            : (MSBuildProjectTranslator.Translate(evaluated, request.Workspace, Name, knownProjects), null);
+        return (evaluated, error);
     }
 
     /// <summary>
