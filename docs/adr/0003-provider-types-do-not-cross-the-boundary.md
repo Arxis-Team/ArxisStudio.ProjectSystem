@@ -51,8 +51,8 @@ and it was removed.
   of transport rather than a change of model. The test above is what turns that from a hope into a
   checked claim.
 - A consumer that needs something the model does not carry cannot reach around it. That is the point,
-  and the answer is to extend the model — in the open, in `PublicAPI.Unshipped.txt`, where the
-  addition is reviewable — rather than to widen a hole nobody can later close.
+  and the answer is to extend the model deliberately rather than to widen a hole nobody can later
+  close.
 - `ProjectMetadata` is the deliberate escape hatch: provider-specific evaluated data goes in a
   read-only string map, which crosses a process boundary intact and commits the core to nothing.
 - Provider-owned objects may be as stateful and as short-lived as their engine requires, because

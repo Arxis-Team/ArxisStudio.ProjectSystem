@@ -55,29 +55,6 @@ internal static class RepositoryLayout
     public static string ProjectFileOf(string package) =>
         Path.Combine(RepositoryRoot, "src", package, package + ".csproj");
 
-    /// <summary>
-    /// Every project file in the repository that is actually a project.
-    /// </summary>
-    /// <remarks>
-    /// Test fixtures are excluded because they are data rather than projects: nothing builds them,
-    /// they are copied beside a test assembly to be evaluated, and at least one of them is
-    /// deliberately malformed so that the provider can be shown reporting a diagnostic instead of
-    /// throwing. Scanning them means asking an XML parser to read a file whose whole purpose is to
-    /// be unreadable.
-    /// </remarks>
-    public static IReadOnlyList<string> AllProjectFiles() =>
-        Directory.EnumerateFiles(RepositoryRoot, "*.csproj", SearchOption.AllDirectories)
-            .Where(static path => !Contains(path, "bin"))
-            .Where(static path => !Contains(path, "obj"))
-            .Where(static path => !Contains(path, "Fixtures"))
-            .OrderBy(static path => path, StringComparer.Ordinal)
-            .ToList();
-
-    private static bool Contains(string path, string segment) =>
-        path.Contains(
-            $"{Path.DirectorySeparatorChar}{segment}{Path.DirectorySeparatorChar}",
-            StringComparison.Ordinal);
-
     /// <summary>Every C# source file of the shipping package.</summary>
     public static IReadOnlyList<string> CoreSourceFiles() =>
         Directory.EnumerateFiles(
@@ -90,15 +67,6 @@ internal static class RepositoryLayout
     /// <summary>The XML documentation the shipping package generates, beside its assembly.</summary>
     public static string DocumentationFileOf(string package) =>
         Path.ChangeExtension(LoadAssembly(package).Location, ".xml");
-
-    /// <summary>Reads a single MSBuild property from a project or props file.</summary>
-    public static string? PropertyOf(string path, string property) =>
-        !File.Exists(path)
-            ? null
-            : XDocument.Load(path)
-                .Descendants(property)
-                .Select(static element => element.Value)
-                .FirstOrDefault();
 
     private static IReadOnlySet<string> ReadReferences(
         string package,

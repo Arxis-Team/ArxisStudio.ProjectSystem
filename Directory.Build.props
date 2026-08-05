@@ -24,6 +24,14 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
   </PropertyGroup>
 
+  <!--
+    These libraries are referenced directly, not published. Saying so here rather than nowhere stops
+    a stray `dotnet pack` producing packages nobody meant to exist.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
   <PropertyGroup>
     <Authors>ArxisStudio</Authors>
     <Company>ArxisStudio</Company>

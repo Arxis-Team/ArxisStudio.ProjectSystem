@@ -45,26 +45,12 @@ internal static class ForbiddenDependencies
         "MSBuild",
     ];
 
-    /// <summary>
-    /// Build-time-only analyzers that ship no runtime code, so they cannot bring the forbidden
-    /// capability into a package.
-    /// </summary>
-    private static readonly string[] Allowed =
-    [
-        "Microsoft.CodeAnalysis.PublicApiAnalyzers",
-    ];
-
     /// <summary>Whether a package may not reference something.</summary>
     /// <param name="package">The shipping package doing the referencing.</param>
     /// <param name="identifier">The package id or assembly name being referenced.</param>
     /// <returns><see langword="true"/> when the reference breaks the boundary.</returns>
     public static bool IsForbiddenReference(string package, string identifier)
     {
-        if (Allowed.Contains(identifier, StringComparer.Ordinal))
-        {
-            return false;
-        }
-
         IEnumerable<string> prefixes = string.Equals(package, RepositoryLayout.CorePackage, StringComparison.Ordinal)
             ? Everywhere.Concat(CoreOnly)
             : Everywhere;
@@ -83,6 +69,5 @@ internal static class ForbiddenDependencies
     /// <param name="identifier">The assembly name of a type appearing in a public member.</param>
     /// <returns><see langword="true"/> when it may not be exposed.</returns>
     public static bool IsForbiddenInPublicApi(string identifier) =>
-        !Allowed.Contains(identifier, StringComparer.Ordinal)
-        && Everywhere.Concat(CoreOnly).Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
+        Everywhere.Concat(CoreOnly).Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
 }

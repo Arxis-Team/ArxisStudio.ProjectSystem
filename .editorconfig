@@ -36,11 +36,6 @@ csharp_style_prefer_readonly_struct = true:suggestion
 # Public API must be documented.
 dotnet_diagnostic.CS1591.severity = warning
 
-# Public API surface tracking.
-dotnet_diagnostic.RS0016.severity = error
-dotnet_diagnostic.RS0017.severity = error
-dotnet_diagnostic.RS0037.severity = none
-
 [src/**/*.cs]
 # "The core has no UI-thread affinity and must not capture a synchronization context
 # accidentally." That is a property of every await in the shipping assembly, so it is

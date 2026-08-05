@@ -10,15 +10,17 @@ stable, immutable, and safe to read from several threads while something else re
 
 ## Status
 
-**Milestone 1 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` now
-opens a standalone `.csproj` by evaluating it.
+**Milestone 2 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
+solution or a standalone project by evaluating it.
 
-What works today: open one project file, and get its target frameworks, configurations, declared
-references, items, evaluated properties and output paths as an immutable snapshot. Malformed and
-missing projects come back as diagnostics.
+What works today: open a `.sln`, a `.slnx`, or a single `.csproj`, and get an immutable snapshot of
+the projects with their target frameworks, configurations, declared references, items, evaluated
+properties and output paths — plus the solution's folders and its project graph, with references
+between projects resolved to identities. Malformed and missing projects come back as diagnostics
+without taking the rest of the solution down with them.
 
-What does not yet: `.sln` and `.slnx` entry points, the project graph, resolved restore assets,
-building, and file watching. Those are Milestones 2 onwards, and the core models them so a provider
+What does not yet: resolved restore assets (`project.assets.json`), restore and build execution,
+and file watching. Those are Milestones 3 onwards, and the core already models them so a provider
 can fill them in.
 
 ## A minimal example
@@ -91,7 +93,10 @@ foreach (ProjectSnapshot project in result.Snapshot!.Projects)
 The [API guide](docs/api/README.md) covers the rest: paths, identity and staleness, results and
 diagnostics, ordering, and what a provider must get right.
 
-## Packages and dependency direction
+## Libraries and dependency direction
+
+These are referenced directly rather than published to a feed. Reference the highest one you need;
+it brings the others with it.
 
 ```text
 ArxisStudio.ProjectSystem                 provider-neutral core
@@ -103,7 +108,9 @@ ArxisStudio.ProjectSystem.NuGet           package-management operations (Milesto
 ArxisStudio.ProjectSystem.Markup.Xaml     adapter onto ArxisStudio.Markup (Milestone 7)
 ```
 
-Arrows mean "depends on". The core depends on nothing but the base class library.
+Arrows mean "depends on". The core depends on nothing but the base class library. A tool that only
+wants the model — to cache it, to render it, to write its own provider — references the core alone
+and never loads MSBuild.
 
 ### What the core is independent of, and why it matters
 
@@ -209,7 +216,6 @@ security boundary and is not offered as one.
 dotnet restore
 dotnet build -c Release --no-restore -warnaserror
 dotnet test -c Release --no-build
-dotnet pack -c Release --no-build -o artifacts
 ```
 
 A single test project:

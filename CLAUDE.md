@@ -19,7 +19,6 @@ milestone owns.
 dotnet restore
 dotnet build -c Release -warnaserror
 dotnet test -c Release
-dotnet pack -c Release -o artifacts        # one package per project in src/
 
 # one test project
 dotnet test tests/ArxisStudio.ProjectSystem.Architecture.Tests -c Release
@@ -141,21 +140,6 @@ way in is not consulted; the disposal flag is an `Interlocked` int, not a `bool`
 and the operations it races are on different threads by design; and events are raised after
 publication and **outside** the gate, because a subscriber is arbitrary user code.
 
-## Public API discipline
-
-`Microsoft.CodeAnalysis.PublicApiAnalyzers` is active and `RS0016`/`RS0017` are errors. New public
-API must be declared in the owning project's `PublicAPI.Unshipped.txt` or the build fails.
-
-There is no sync script in this repository. Populate the file from the build's own `RS0016`
-diagnostics: the quoted signature in each is language-neutral, which matters because the CLI here
-is Russian-localized. Review the resulting diff deliberately — it is the reviewable summary of
-what a change added to the public surface.
-
-`PublicAPI.Shipped.txt` stays empty until a release is intentionally being prepared. Moving
-entries into it is a separate, deliberate act.
-
-Every public member needs XML documentation; `CS1591` is a warning and warnings are errors.
-
 ## Test determinism
 
 Tests must not depend on an installed IDE, MSBuild workload, NuGet cache, network, or
@@ -193,8 +177,9 @@ What is recorded so far:
 | [0008](docs/adr/0008-a-result-state-computed-not-declared.md) | `Status` is computed, so it cannot disagree with the evidence |
 | [0009](docs/adr/0009-evaluation-happens-in-process.md) | Evaluation runs in this process; the seam a worker needs is kept clean |
 | [0010](docs/adr/0010-testing-a-provider-that-needs-a-real-engine.md) | The translation is tested without MSBuild; the wiring, sparingly, with it |
+| [0011](docs/adr/0011-these-libraries-are-referenced-not-published.md) | Referenced directly, not published, so the packaging apparatus is gone |
 
-Only 0004 is a deviation from the task specification. The rest record decisions the specification
+0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.
 
 ## Conventions
