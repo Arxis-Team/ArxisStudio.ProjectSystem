@@ -74,6 +74,9 @@ public sealed class ProjectSnapshotBuilder
     /// <summary>Gets the analyzers this project loads.</summary>
     public IList<AnalyzerReferenceInfo> AnalyzerReferences { get; } = [];
 
+    /// <summary>Gets the packages restore resolved, with the assemblies each contributes.</summary>
+    public IList<ResolvedPackage> ResolvedPackages { get; } = [];
+
     /// <summary>Gets the project's items.</summary>
     public IList<ProjectItem> Items { get; } = [];
 
@@ -141,6 +144,7 @@ public sealed class ProjectSnapshotBuilder
             [.. FrameworkReferences],
             [.. AssemblyReferences],
             [.. AnalyzerReferences],
+            [.. ResolvedPackages],
             [.. Items],
             [.. Outputs],
             [.. Diagnostics],

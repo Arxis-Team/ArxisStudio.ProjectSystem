@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 
 namespace ArxisStudio.ProjectSystem.MSBuild;
@@ -35,12 +36,20 @@ internal static class MSBuildProjectTranslator
     /// about which other projects exist, and an identity minted anyway would be one for a project
     /// nobody loaded.
     /// </param>
+    /// <param name="resolvedPackages">
+    /// What restore resolved for this framework, when the provider found and read it. Empty is the
+    /// honest answer for a project that has not been restored, and is not the same as a project
+    /// with no packages -- which is why a missing restore is also reported as a diagnostic.
+    /// </param>
+    /// <param name="diagnostics">Anything the provider noticed while gathering the above.</param>
     /// <returns>The snapshot.</returns>
     internal static ProjectSnapshot Translate(
         EvaluatedProject project,
         WorkspaceIdentity workspace,
         string providerName,
-        IReadOnlySet<CanonicalPath>? knownProjects = null)
+        IReadOnlySet<CanonicalPath>? knownProjects = null,
+        ImmutableArray<ResolvedPackage> resolvedPackages = default,
+        IReadOnlyList<ProjectDiagnostic>? diagnostics = null)
     {
         CanonicalPath directory = project.FullPath.Directory;
 
@@ -79,6 +88,22 @@ internal static class MSBuildProjectTranslator
         foreach (OutputArtifact artifact in Outputs(project, directory))
         {
             builder.Outputs.Add(artifact);
+        }
+
+        if (!resolvedPackages.IsDefault)
+        {
+            foreach (ResolvedPackage package in resolvedPackages)
+            {
+                builder.ResolvedPackages.Add(package);
+            }
+        }
+
+        if (diagnostics is not null)
+        {
+            foreach (ProjectDiagnostic diagnostic in diagnostics)
+            {
+                builder.Diagnostics.Add(diagnostic);
+            }
         }
 
         return builder.ToSnapshot();

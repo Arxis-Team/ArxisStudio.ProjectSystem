@@ -46,6 +46,7 @@ public sealed class ProjectSnapshot
         ImmutableArray<FrameworkReferenceInfo> frameworkReferences,
         ImmutableArray<AssemblyReferenceInfo> assemblyReferences,
         ImmutableArray<AnalyzerReferenceInfo> analyzerReferences,
+        ImmutableArray<ResolvedPackage> resolvedPackages,
         ImmutableArray<ProjectItem> items,
         ImmutableArray<OutputArtifact> outputs,
         ImmutableArray<ProjectDiagnostic> diagnostics,
@@ -73,6 +74,7 @@ public sealed class ProjectSnapshot
         FrameworkReferences = frameworkReferences;
         AssemblyReferences = assemblyReferences;
         AnalyzerReferences = analyzerReferences;
+        ResolvedPackages = resolvedPackages;
         Items = items;
         Outputs = outputs;
         Diagnostics = diagnostics;
@@ -132,6 +134,18 @@ public sealed class ProjectSnapshot
 
     /// <summary>Gets the analyzers this project loads.</summary>
     public ImmutableArray<AnalyzerReferenceInfo> AnalyzerReferences { get; }
+
+    /// <summary>
+    /// Gets the packages restore resolved for <see cref="ActiveTargetFramework"/>, including the
+    /// ones nothing declared directly, with the assemblies each contributes.
+    /// </summary>
+    /// <remarks>
+    /// Empty when nothing has been restored, or when the provider did not look. That is not the
+    /// same as a project having no packages, and a consumer that needs to tell the difference
+    /// should read the diagnostics: a project declaring packages whose restore output is missing
+    /// says so there.
+    /// </remarks>
+    public ImmutableArray<ResolvedPackage> ResolvedPackages { get; }
 
     /// <summary>Gets the project's items.</summary>
     public ImmutableArray<ProjectItem> Items { get; }

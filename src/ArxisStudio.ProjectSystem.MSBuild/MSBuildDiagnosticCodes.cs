@@ -37,6 +37,17 @@ public static class MSBuildDiagnosticCodes
     public const string EvaluationFailed = "APS2002";
 
     /// <summary>
+    /// <c>APS2005</c> — the project declares packages, but restore has produced nothing to read.
+    /// </summary>
+    /// <remarks>
+    /// A warning rather than an error, because it is the ordinary state of a freshly cloned
+    /// repository and the snapshot is still useful: everything the project declares is there, only
+    /// what restore resolved is missing. A consumer that needs resolved assemblies should treat it
+    /// as "run restore", not as "this project is broken".
+    /// </remarks>
+    public const string RestoreAssetsMissing = "APS2005";
+
+    /// <summary>
     /// <c>APS2004</c> — the solution file could not be read.
     /// </summary>
     /// <remarks>

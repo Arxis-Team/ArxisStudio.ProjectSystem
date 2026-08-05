@@ -104,6 +104,20 @@ describes one of them: the references, items and outputs are the active framewor
 same project again with a different `TargetFramework` gives the other. Representing several at once
 would need a shape nothing has asked for yet.
 
+### Nothing checks whether restore output is stale
+
+`ResolvedPackages` reports what the assets file says, and the assets file may be older than the
+project that produced it. A consumer that changed a `PackageReference` and has not restored will get
+the previous resolution without being told. Detecting staleness is its own problem — it needs
+timestamps or hashes over the inputs — and it belongs with the freshness work rather than smuggled
+into the reader.
+
+### Resolved packages are the active framework's only
+
+The assets file records a resolution per target framework, and a snapshot carries the one matching
+its `ActiveTargetFramework`. A cross-targeting project resolves differently per framework; loading it
+again with another `TargetFramework` gives that framework's resolution.
+
 ### Evaluation cannot be interrupted
 
 MSBuild offers no way to abandon an evaluation part-way. The cancellation token is observed between

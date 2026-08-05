@@ -25,6 +25,13 @@
     <!-- These are default None items already, so Update is the right verb and Include would be a
          duplicate-item error. -->
     <None Update="Fixtures/**/*.props;Fixtures/**/*.targets" CopyToOutputDirectory="PreserveNewest" />
+
+    <!--
+      A hand-written restore output, so that reading one can be tested without restoring anything.
+      Included rather than updated because the SDK excludes obj/ from its default globs, and an
+      Update that matches nothing fails silently.
+    -->
+    <None Include="Fixtures/**/obj/project.assets.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

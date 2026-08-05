@@ -193,8 +193,7 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
                 path));
         }
 
-        ProjectSnapshot snapshot =
-            MSBuildProjectTranslator.Translate(evaluated, request.Workspace, Name, knownProjects);
+        ProjectSnapshot snapshot = Translate(evaluated, request, knownProjects);
 
         if (ChooseTargetFramework(snapshot, request) is not { } framework)
         {
@@ -216,7 +215,65 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
                 MSBuildDiagnosticCodes.EvaluationFailed,
                 $"'{path}' could not be evaluated for '{framework}': {innerError}",
                 path))
-            : (MSBuildProjectTranslator.Translate(inner, request.Workspace, Name, knownProjects), null);
+            : (Translate(inner, request, knownProjects), null);
+    }
+
+    /// <summary>
+    /// Turns an evaluation into a snapshot, reading what restore resolved on the way.
+    /// </summary>
+    /// <remarks>
+    /// The reading happens here rather than in the translator so that the translator stays a pure
+    /// function over its input: this is the only part that touches a file.
+    /// </remarks>
+    private ProjectSnapshot Translate(
+        EvaluatedProject evaluated,
+        WorkspaceLoadRequest request,
+        IReadOnlySet<CanonicalPath>? knownProjects)
+    {
+        var diagnostics = new List<ProjectDiagnostic>();
+        ImmutableArray<ResolvedPackage> resolved = [];
+
+        CanonicalPath assets = RestoreAssetsReader.Locate(evaluated);
+        string? framework = evaluated.Properties.GetValueOrDefault("TargetFramework");
+
+        if (!assets.IsEmpty && File.Exists(assets.Value))
+        {
+            if (!RestoreAssetsReader.TryRead(assets, framework, out resolved, out string? error))
+            {
+                diagnostics.Add(Diagnostic(
+                    MSBuildDiagnosticCodes.RestoreAssetsMissing,
+                    $"'{assets}' could not be read: {error}",
+                    evaluated.FullPath,
+                    ProjectDiagnosticSeverity.Warning));
+            }
+        }
+        else if (DeclaresPackages(evaluated))
+        {
+            // Only worth saying when the project actually wants packages. A project with none is
+            // not waiting for a restore, and telling it so would be noise in every solution.
+            diagnostics.Add(Diagnostic(
+                MSBuildDiagnosticCodes.RestoreAssetsMissing,
+                $"'{evaluated.FullPath.FileName}' declares package references but has no restore output. " +
+                "Run a restore to resolve them.",
+                evaluated.FullPath,
+                ProjectDiagnosticSeverity.Warning));
+        }
+
+        return MSBuildProjectTranslator.Translate(
+            evaluated, request.Workspace, Name, knownProjects, resolved, diagnostics);
+    }
+
+    private static bool DeclaresPackages(EvaluatedProject project)
+    {
+        foreach (EvaluatedItem item in project.Items)
+        {
+            if (string.Equals(item.ItemType, MSBuildWellKnown.PackageReference, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -366,8 +423,12 @@ public sealed class MSBuildProjectProvider : IProjectSystemProvider
         }
     }
 
-    private static ProjectDiagnostic Diagnostic(string code, string message, CanonicalPath path) =>
-        ProjectDiagnostic.ForFile(code, message, ProjectDiagnosticSeverity.Error, path) with
+    private static ProjectDiagnostic Diagnostic(
+        string code,
+        string message,
+        CanonicalPath path,
+        ProjectDiagnosticSeverity severity = ProjectDiagnosticSeverity.Error) =>
+        ProjectDiagnostic.ForFile(code, message, severity, path) with
         {
             ProviderName = "MSBuild",
         };

@@ -178,6 +178,7 @@ What is recorded so far:
 | [0009](docs/adr/0009-evaluation-happens-in-process.md) | Evaluation runs in this process; the seam a worker needs is kept clean |
 | [0010](docs/adr/0010-testing-a-provider-that-needs-a-real-engine.md) | The translation is tested without MSBuild; the wiring, sparingly, with it |
 | [0011](docs/adr/0011-these-libraries-are-referenced-not-published.md) | Referenced directly, not published, so the packaging apparatus is gone |
+| [0012](docs/adr/0012-restore-assets-are-read-not-resolved.md) | `project.assets.json` is read by hand, so no NuGet client library enters |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

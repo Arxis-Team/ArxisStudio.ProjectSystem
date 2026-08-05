@@ -3,18 +3,19 @@
 A model of a .NET solution that is safe to read from any thread while something else reloads it, and
 that does not drag a build engine into your process.
 
-Written against **v0.1.0-preview.1**. Every example uses only published API.
+Every example uses only public API.
 
-## What this package is, and is not
+## Two libraries, and which one you need
 
-It defines the model, the diagnostics, the provider boundary, and the workspace that publishes
-snapshots. It **reads nothing**: there is no `.sln`, `.slnx` or `.csproj` parsing here and no MSBuild
-evaluation. Data arrives through a provider, and the first real one —
-`ArxisStudio.ProjectSystem.MSBuild` — is Milestone 1.
+`ArxisStudio.ProjectSystem` is the model: identities, snapshots, diagnostics, the provider boundary
+and the workspace. It **reads nothing** — no `.sln`, `.slnx` or `.csproj` parsing, no MSBuild — and a
+tool that only wants to hold, cache or render a solution model references it alone.
 
-Until then, the way to use this package is to implement `IProjectSystemProvider` yourself. That is
-also the way to test a tool built on it without an MSBuild workload on the machine, which is worth
-having permanently.
+`ArxisStudio.ProjectSystem.MSBuild` is what fills the model in, by evaluating real projects. Reference
+it when you want to open something on disk.
+
+Implementing `IProjectSystemProvider` yourself remains useful after that: it is how a tool built on
+this model gets tested without an SDK on the machine, and the example below is exactly that.
 
 ## The shape of it
 
@@ -161,6 +162,46 @@ if (cachedVersion != workspace.CurrentSnapshot?.Version)
 Read `snapshot.Version` rather than `workspace.CurrentVersion` when you also hold the snapshot:
 that pair comes from one publication and cannot disagree, whereas two reads of a live workspace can
 straddle one.
+
+## Which assembly holds a type
+
+The question a designer or an analyzer actually needs answered. Three places hold the pieces, and a
+snapshot has all three:
+
+```csharp
+ProjectSnapshot project = snapshot.Projects[0];
+
+// Its own build output, for the framework this snapshot was evaluated under.
+CanonicalPath? own = project.Outputs
+    .FirstOrDefault(o => o.Kind == OutputArtifactKind.Assembly)?.Path;
+
+// A referenced project's output: follow the identity, then read that project's outputs.
+foreach (ProjectReferenceInfo reference in project.ProjectReferences)
+{
+    if (snapshot.TryGetProject(reference.Project, out ProjectSnapshot? target))
+    {
+        // target.Outputs holds its assemblies
+    }
+}
+
+// Everything restore resolved, including packages nothing declared directly.
+foreach (ResolvedPackage package in project.ResolvedPackages)
+{
+    // package.RuntimeAssemblies to load; package.CompileAssemblies to compile against
+}
+```
+
+`CompileAssemblies` and `RuntimeAssemblies` are separate because a package can be compiled against a
+reference assembly and contribute nothing at run time — `ExcludeAssets="runtime"` produces exactly
+that. Use the one that matches what you are building.
+
+`ResolvedPackages` is empty when nothing has been restored, which is not the same as a project having
+no packages. A project that declares packages and has no restore output says so with `APS2005`, as a
+warning rather than a failure.
+
+Nothing here checks that the restore output is current. If a `PackageReference` changed since the
+last restore, this reports the previous resolution — see
+[known limitations](../limitations.md).
 
 ## Results and diagnostics
 

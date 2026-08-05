@@ -10,7 +10,7 @@ stable, immutable, and safe to read from several threads while something else re
 
 ## Status
 
-**Milestone 2 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
+**Milestone 3 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
 solution or a standalone project by evaluating it.
 
 What works today: open a `.sln`, a `.slnx`, or a single `.csproj`, and get an immutable snapshot of
@@ -19,9 +19,14 @@ properties and output paths — plus the solution's folders and its project grap
 between projects resolved to identities. Malformed and missing projects come back as diagnostics
 without taking the rest of the solution down with them.
 
-What does not yet: resolved restore assets (`project.assets.json`), restore and build execution,
-and file watching. Those are Milestones 3 onwards, and the core already models them so a provider
-can fill them in.
+It also reports what restore resolved for the active framework — exact package versions, the
+packages that arrived transitively, and the assemblies each contributes, kept apart as compile and
+runtime because a package can be compiled against a reference assembly and contribute nothing at run
+time. A project that declares packages and has not been restored says so as a warning rather than
+failing.
+
+What does not yet: restore and build execution, staleness detection, and file watching. Those are
+Milestones 4 onwards, and the core already models them so a provider can fill them in.
 
 ## A minimal example
 
@@ -136,6 +141,7 @@ belongs in a separate adapter package that depends on both.
 | Entry point | What the user asked to open — a solution, a solution XML file, or a project |
 | Snapshot | An immutable, complete picture of a solution and its projects at one version |
 | Reference | Project, package, framework, assembly, and analyzer references as plain data |
+| Resolved package | What restore actually chose: exact version, transitive origin, and assemblies |
 | Item | A project item: kind, include, optional canonical path, metadata |
 | Output artifact | Where a build put something — a path and a kind, never a loaded assembly |
 | Diagnostic | A stable code, a severity, and a location, in place of an exception |

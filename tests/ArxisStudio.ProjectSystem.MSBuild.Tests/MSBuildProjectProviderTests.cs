@@ -203,6 +203,73 @@ public sealed class MSBuildProjectProviderTests
         Assert.EndsWith("Legacy.dll", assembly.HintPath.Value, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The provider finds the restore output where the evaluation says it is, and what it read
+    /// reaches the snapshot. The fixture's assets file is written by hand and names no package
+    /// folder, so this asserts what restore resolved rather than where the files would be — path
+    /// resolution is covered exhaustively in <see cref="RestoreAssetsReaderTests"/>.
+    /// </summary>
+    [Fact]
+    public async Task WhatRestoreResolved_ReachesTheSnapshot()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("Restored"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal(2, project.ResolvedPackages.Length);
+
+        ResolvedPackage direct = project.ResolvedPackages.Single(static p => p.PackageId == "Serilog");
+
+        Assert.Equal("4.1.0", direct.Version);
+        Assert.True(direct.IsDirect);
+        Assert.Equal(["Serilog.Sinks.Console"], direct.Dependencies);
+
+        // The transitive one arrived on its own and the project never named it.
+        Assert.False(project.ResolvedPackages.Single(static p => p.PackageId == "Serilog.Sinks.Console").IsDirect);
+
+        // Declared and resolved are different questions, and both are answered.
+        Assert.Equal("Serilog", Assert.Single(project.PackageReferences).PackageId);
+
+        Assert.Empty(project.Diagnostics);
+    }
+
+    /// <summary>
+    /// The ordinary state of a freshly cloned repository. A warning rather than an error: everything
+    /// the project declares is there, only what restore would have resolved is missing.
+    /// </summary>
+    [Fact]
+    public async Task AProjectWithPackagesAndNoRestore_SaysSo()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("WithReferences"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        ProjectDiagnostic diagnostic = Assert.Single(project.Diagnostics);
+
+        Assert.Equal(MSBuildDiagnosticCodes.RestoreAssetsMissing, diagnostic.Code);
+        Assert.Equal(ProjectDiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.False(diagnostic.IsError);
+        Assert.Empty(project.ResolvedPackages);
+
+        // A warning is not a failure: the snapshot is published and the load succeeded.
+        Assert.Equal(WorkspaceLoadStatus.Succeeded, result.Status);
+    }
+
+    /// <summary>
+    /// A project with no packages is not waiting for a restore, and saying so would be noise in
+    /// every solution that contains one.
+    /// </summary>
+    [Fact]
+    public async Task AProjectWithoutPackages_IsNotToldToRestore()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("Basic"), TestContext.Current.CancellationToken);
+
+        Assert.Empty(Assert.Single(Succeeded(result).Projects).Diagnostics);
+    }
+
     [Fact]
     public async Task AMalformedProject_IsADiagnosticNotAnException()
     {
