@@ -266,6 +266,119 @@ public sealed class SolutionSnapshot
             [.. ordered.Where(causes.Contains)]);
     }
 
+    /// <summary>
+    /// Works out every assembly a project needs at run time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The question a designer, a plugin host or a test runner actually has: given this project,
+    /// which files must be loadable for its code to run? The answer is its own output, the outputs
+    /// of every project it reaches through references, and the runtime assemblies of the packages
+    /// restore resolved for it.
+    /// </para>
+    /// <para>
+    /// <b>This one <em>is</em> transitive over project references,</b> which looks like it
+    /// contradicts <see cref="Invalidate"/> and does not.
+    /// <see href="../../docs/adr/0015-invalidation-is-not-transitive.md">ADR 0015</see> is about
+    /// evaluation: a project's snapshot does not depend on what its references contain, because
+    /// evaluating it never reads them. Running its code very much does — if A references B and B
+    /// references C, then C's assembly has to be there when A executes. Different graph, different
+    /// question, opposite answer.
+    /// </para>
+    /// <para>
+    /// Packages are not walked, because they arrive already flattened: restore resolved the whole
+    /// transitive closure and the assets file lists all of it.
+    /// </para>
+    /// <para>
+    /// The order is deliberate and is the order a resolver should consult: the project's own output
+    /// first, then what it references, then packages. A caller's own build of a control library
+    /// should win over a copy of the same assembly that arrived some other way.
+    /// </para>
+    /// <para>
+    /// Nothing is checked for existence — a project that has not been built still says where its
+    /// output will be, for the same reason <see cref="ProjectSnapshot.Outputs"/> does.
+    /// </para>
+    /// </remarks>
+    /// <param name="project">The project to start from.</param>
+    /// <returns>
+    /// The assemblies, each listed once, or empty when the identity is not in this snapshot.
+    /// </returns>
+    public ImmutableArray<RuntimeAssemblyReference> GetRuntimeAssemblies(ProjectIdentity project)
+    {
+        if (!_byIdentity.TryGetValue(project, out ProjectSnapshot? root))
+        {
+            return [];
+        }
+
+        ImmutableArray<RuntimeAssemblyReference>.Builder assemblies =
+            ImmutableArray.CreateBuilder<RuntimeAssemblyReference>();
+
+        var seenPaths = new HashSet<CanonicalPath>();
+        var visited = new HashSet<ProjectIdentity>();
+
+        // Breadth first from the root, so a project's own output comes before what it references
+        // and a direct reference comes before something only reached through one.
+        var queue = new Queue<ProjectSnapshot>();
+
+        queue.Enqueue(root);
+        visited.Add(root.Identity);
+
+        while (queue.Count > 0)
+        {
+            ProjectSnapshot current = queue.Dequeue();
+            bool isRoot = current.Identity == root.Identity;
+
+            foreach (OutputArtifact output in current.Outputs)
+            {
+                // The assembly only. A designer loading the reference assembly would get a type with
+                // no method bodies, and the symbols and manifests are not loadable at all.
+                if (output.Kind == OutputArtifactKind.Assembly && seenPaths.Add(output.Path))
+                {
+                    assemblies.Add(new RuntimeAssemblyReference
+                    {
+                        Path = output.Path,
+                        Origin = isRoot ? RuntimeAssemblyOrigin.Project : RuntimeAssemblyOrigin.ProjectReference,
+                        Project = current.Identity,
+                    });
+                }
+            }
+
+            foreach (ProjectReferenceInfo reference in current.ProjectReferences)
+            {
+                // A reference that exists only to order the build contributes nothing to run.
+                if (reference.ReferenceOutputAssembly == false)
+                {
+                    continue;
+                }
+
+                if (!reference.Project.IsEmpty
+                    && visited.Add(reference.Project)
+                    && _byIdentity.TryGetValue(reference.Project, out ProjectSnapshot? referenced))
+                {
+                    queue.Enqueue(referenced);
+                }
+            }
+        }
+
+        foreach (ResolvedPackage package in root.ResolvedPackages)
+        {
+            foreach (CanonicalPath assembly in package.RuntimeAssemblies)
+            {
+                if (seenPaths.Add(assembly))
+                {
+                    assemblies.Add(new RuntimeAssemblyReference
+                    {
+                        Path = assembly,
+                        Origin = RuntimeAssemblyOrigin.Package,
+                        PackageId = package.PackageId,
+                    });
+                }
+            }
+        }
+
+        return assemblies.ToImmutable();
+    }
+
     /// <summary>Returns the solution name and its project count.</summary>
     /// <returns>Something like <c>App (3 projects, version 2)</c>.</returns>
     public override string ToString() =>
