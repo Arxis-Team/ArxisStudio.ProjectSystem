@@ -5,12 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## The contract
 
 `ARXISSTUDIO_PROJECTSYSTEM_INITIAL_TASK.md` (supplied with the work, currently at
-`C:\Users\Maxim\Downloads\`) is the **architectural contract** for Milestone 0. `README.md` is the
-public statement of what the package is. Where they disagree, the task specification wins and the
-README is what gets corrected.
+`C:\Users\Maxim\Downloads\`) is the **architectural contract**. Its Milestone 0 is complete and its
+roadmap defines what follows. `README.md` is the public statement of what the packages are. Where
+they disagree, the task specification wins and the README is what gets corrected.
 
-Development proceeds one milestone at a time. Do not start Milestone 1 — the MSBuild provider —
-while Milestone 0 is open, and do not ship placeholder API for a concept a later milestone owns.
+Development proceeds one milestone at a time. Milestone 1 (MSBuild, standalone projects) is open;
+Milestone 2 is solutions and the project graph. Do not ship placeholder API for a concept a later
+milestone owns.
 
 ## Build and test
 
@@ -18,7 +19,7 @@ while Milestone 0 is open, and do not ship placeholder API for a concept a later
 dotnet restore
 dotnet build -c Release -warnaserror
 dotnet test -c Release
-dotnet pack -c Release -o artifacts        # one package from src/
+dotnet pack -c Release -o artifacts        # one package per project in src/
 
 # one test project
 dotnet test tests/ArxisStudio.ProjectSystem.Architecture.Tests -c Release
@@ -26,6 +27,14 @@ dotnet test tests/ArxisStudio.ProjectSystem.Architecture.Tests -c Release
 # one test by name (xunit.v3)
 dotnet test tests/ArxisStudio.ProjectSystem.Tests -c Release --filter 'FullyQualifiedName~CanonicalPathTests'
 ```
+
+The MSBuild provider brings one rule the rest of the repository does not have. `MSBuildLocator` must
+run before any `Microsoft.Build` type is loaded, and the runtime loads an assembly when a method
+*naming* its types is first entered — not when the line executes. So those names live in
+`MSBuildProjectEvaluator` alone, `MSBuildEnvironment` names only the locator's own, and
+`MSBuildProjectProvider` names neither. Adding a `catch (InvalidProjectFileException)` to the
+provider would break it, silently, somewhere unrelated. That is why the evaluator has a `Try` shape
+rather than throwing.
 
 `global.json` pins SDK `10.0.101` with `rollForward: latestFeature`; the installed SDK is
 `10.0.301` and satisfies it. Always invoke `dotnet` from the repository root.
@@ -39,12 +48,19 @@ touch it.
 ## Package boundaries
 
 ```text
-ArxisStudio.ProjectSystem                 provider-neutral core — the only package that ships now
+ArxisStudio.ProjectSystem                 provider-neutral core
         ↑
-ArxisStudio.ProjectSystem.MSBuild         Milestone 1
+ArxisStudio.ProjectSystem.MSBuild         MSBuild discovery and evaluation
+        ↑
 ArxisStudio.ProjectSystem.NuGet           Milestone 6
 ArxisStudio.ProjectSystem.Markup.Xaml     Milestone 7, depends on ProjectSystem *and* Markup
 ```
+
+Two questions hide behind "what may a package depend on", and they have different answers. **What a
+package may reference** depends on the package: the MSBuild provider exists to host MSBuild.
+**What may appear in a public surface** does not: no consumer of any package in this family should
+need MSBuild on their compile line to read a snapshot. `ForbiddenDependencies` has a method for each
+and they are not interchangeable.
 
 **The core references nothing.** Not MSBuild, not NuGet, not Roslyn, not Avalonia, not
 `ArxisStudio.Markup`, not any UI framework, not any IDE API — and no such type may appear in its
@@ -128,7 +144,7 @@ publication and **outside** the gate, because a subscriber is arbitrary user cod
 ## Public API discipline
 
 `Microsoft.CodeAnalysis.PublicApiAnalyzers` is active and `RS0016`/`RS0017` are errors. New public
-API must be declared in `src/ArxisStudio.ProjectSystem/PublicAPI.Unshipped.txt` or the build fails.
+API must be declared in the owning project's `PublicAPI.Unshipped.txt` or the build fails.
 
 There is no sync script in this repository. Populate the file from the build's own `RS0016`
 diagnostics: the quoted signature in each is language-neutral, which matters because the CLI here
@@ -175,6 +191,8 @@ What is recorded so far:
 | [0006](docs/adr/0006-one-fifo-mutation-boundary.md) | A FIFO queue rather than a `SemaphoreSlim`, which promises no ordering |
 | [0007](docs/adr/0007-a-throwing-subscriber-is-isolated.md) | A throwing subscriber is isolated; delivery order is not a promise |
 | [0008](docs/adr/0008-a-result-state-computed-not-declared.md) | `Status` is computed, so it cannot disagree with the evidence |
+| [0009](docs/adr/0009-evaluation-happens-in-process.md) | Evaluation runs in this process; the seam a worker needs is kept clean |
+| [0010](docs/adr/0010-testing-a-provider-that-needs-a-real-engine.md) | The translation is tested without MSBuild; the wiring, sparingly, with it |
 
 Only 0004 is a deviation from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

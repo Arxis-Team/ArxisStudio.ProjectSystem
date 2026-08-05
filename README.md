@@ -10,19 +10,33 @@ stable, immutable, and safe to read from several threads while something else re
 
 ## Status
 
-**Milestone 0 — complete.** This is the foundation: the model, the diagnostics, the provider
-boundary, and the workspace that publishes snapshots. It ships one package and no file-format
-provider at all.
+**Milestone 1 in progress.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` now
+opens a standalone `.csproj` by evaluating it.
 
-That last point is the important one. **This package does not read `.sln`, `.slnx`, or `.csproj`
-files.** It models those concepts so that a provider can populate them, and the first provider —
-`ArxisStudio.ProjectSystem.MSBuild` — is Milestone 1. Until it exists, the only way to get data
-into a workspace is to write a provider yourself.
+What works today: open one project file, and get its target frameworks, configurations, declared
+references, items, evaluated properties and output paths as an immutable snapshot. Malformed and
+missing projects come back as diagnostics.
+
+What does not yet: `.sln` and `.slnx` entry points, the project graph, resolved restore assets,
+building, and file watching. Those are Milestones 2 onwards, and the core models them so a provider
+can fill them in.
 
 ## A minimal example
 
-There is no MSBuild provider yet, so this one invents a project. Writing a provider like it is also
-how a tool built on this package gets tested without an MSBuild workload on the machine.
+Opening a real project takes two objects:
+
+```csharp
+await using var workspace = new ProjectWorkspace(new MSBuildProjectProvider());
+
+WorkspaceLoadResult result = await workspace.LoadAsync(new WorkspaceLoadRequest
+{
+    Workspace = workspace.Identity,
+    EntryPointPath = CanonicalPath.Create(@"C:\src\App\App.csproj"),
+});
+```
+
+A provider of your own is the other way in, and it stays useful after the MSBuild one exists: it is
+how a tool built on this package gets tested without an SDK on the machine.
 
 ```csharp
 sealed class InMemoryProvider : IProjectSystemProvider
@@ -80,9 +94,9 @@ diagnostics, ordering, and what a provider must get right.
 ## Packages and dependency direction
 
 ```text
-ArxisStudio.ProjectSystem                 provider-neutral core — this package
+ArxisStudio.ProjectSystem                 provider-neutral core
         ↑
-ArxisStudio.ProjectSystem.MSBuild         discovery and evaluation (Milestone 1)
+ArxisStudio.ProjectSystem.MSBuild         MSBuild discovery and evaluation
 
 Later, optional:
 ArxisStudio.ProjectSystem.NuGet           package-management operations (Milestone 6)
@@ -154,21 +168,27 @@ codes are the contract.
 | `APS4xxx` | NuGet package-management operations |
 | `APS5xxx` | Integration adapters |
 
-Only the core range has implemented codes; a code with no producer is a promise the library has
-not made. Exceptions remain reserved for invalid API use, cancellation, disposed objects, broken
+`APS1xxx` and `APS2xxx` have implemented codes; the rest are reserved. A code with no producer is a
+promise the library has not made, so none is declared. Exceptions remain reserved for invalid API use, cancellation, disposed objects, broken
 invariants, and unrecoverable failures.
 
 ## Security and trust
 
-**This package executes nothing.** It does not load assemblies, evaluate MSBuild, run targets or
-tasks, restore packages, execute scripts, or instantiate project code. It has no filesystem access
-at all — paths are values it normalizes and compares, never files it opens.
+**The core executes nothing.** It does not load assemblies, evaluate MSBuild, run targets or tasks,
+restore packages, execute scripts, or instantiate project code. It has no filesystem access at all —
+paths are values it normalizes and compares, never files it opens.
 
-Future MSBuild evaluation and build operations are a different matter: they can execute SDK
-resolvers, imports, tasks, targets, and tools declared by the project being opened. Opening an
-untrusted project will therefore require an explicit trust and process-isolation design before
-those operations are implemented. Path validation in this package is *not* a security boundary and
-is not offered as one.
+**`ArxisStudio.ProjectSystem.MSBuild` does execute things**, and that difference is much of why they
+are separate packages. Evaluating a project runs SDK resolvers, imports and property functions
+declared by that project, in this process — see
+[ADR 0009](docs/adr/0009-evaluation-happens-in-process.md). Restore and build, when they arrive,
+will run tasks and tools as well.
+
+**So do not open a project you do not trust.** There is no sandbox here and none is claimed. Doing
+that safely needs an explicit trust and process-isolation design, which is why the model was built
+so evaluation can move to a worker process without any consumer-facing type changing — see
+[ADR 0003](docs/adr/0003-provider-types-do-not-cross-the-boundary.md). Path validation is *not* a
+security boundary and is not offered as one.
 
 ## Roadmap
 

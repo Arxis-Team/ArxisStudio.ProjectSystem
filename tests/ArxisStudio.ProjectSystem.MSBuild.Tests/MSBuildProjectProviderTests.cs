@@ -1,0 +1,237 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
+
+namespace ArxisStudio.ProjectSystem.MSBuild.Tests;
+
+/// <summary>
+/// The provider end to end, against project files that are evaluated for real.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Deliberately few. The mapping is covered exhaustively and without MSBuild in
+/// <see cref="MSBuildProjectTranslatorTests"/>; what is left to prove here is the wiring — that a
+/// real project evaluates, that the adapter copies the right fields out of it, and that the failures
+/// come back as diagnostics rather than exceptions.
+/// </para>
+/// <para>
+/// The fixtures declare package references and never restore them, because evaluation reads what a
+/// project says rather than what NuGet resolved. So nothing here touches the network or the package
+/// cache, and <c>Fixtures/Directory.Build.props</c> stops MSBuild's upward walk before it reaches
+/// this repository's own settings.
+/// </para>
+/// </remarks>
+public sealed class MSBuildProjectProviderTests
+{
+    private static CanonicalPath Fixture(string name) =>
+        CanonicalPath.Create(Path.Combine(AppContext.BaseDirectory, "Fixtures", name, name + ".csproj"));
+
+    private static WorkspaceLoadRequest Request(string fixture, WorkspaceIdentity? workspace = null) => new()
+    {
+        Workspace = workspace ?? WorkspaceIdentity.New(),
+        EntryPointPath = Fixture(fixture),
+    };
+
+    /// <summary>
+    /// Asserts a load succeeded, and says what went wrong when it did not.
+    /// </summary>
+    /// <remarks>
+    /// An integration test that fails with "expected Succeeded, actual Failed" has told nobody
+    /// anything. The diagnostics are the whole explanation, so they belong in the message.
+    /// </remarks>
+    private static SolutionSnapshot Succeeded(WorkspaceLoadResult result)
+    {
+        Assert.True(
+            result.Status != WorkspaceLoadStatus.Failed,
+            "The load failed:\n  " + string.Join("\n  ", result.Diagnostics));
+
+        return result.Snapshot!;
+    }
+
+    [Fact]
+    public void CanLoad_AcceptsProjectsAndDeclinesSolutions()
+    {
+        var provider = new MSBuildProjectProvider();
+
+        Assert.Equal("MSBuild", provider.Name);
+        Assert.True(provider.CanLoad(WorkspaceEntryPoint.FromPath(Fixture("Basic"))));
+        Assert.False(provider.CanLoad(WorkspaceEntryPoint.FromPath(
+            CanonicalPath.Create(Path.Combine(AppContext.BaseDirectory, "App.sln")))));
+    }
+
+    [Fact]
+    public async Task ARealProject_Evaluates()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("Basic"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal("Basic", project.Name);
+        Assert.Equal("C#", project.Language);
+        Assert.Equal("Library", project.Kind);
+        Assert.Equal(["net10.0"], project.TargetFrameworks);
+        Assert.Equal("BasicAssembly", project.Properties["AssemblyName"]);
+        Assert.Equal("Basic.Namespace", project.Properties["RootNamespace"]);
+        Assert.Equal("MSBuild", project.ProviderName);
+    }
+
+    /// <summary>
+    /// The claim ADR 0003 makes, at the one place it can actually be checked: the evaluation's
+    /// ProjectCollection is disposed before the provider returns, so a snapshot that still reads
+    /// afterwards is a snapshot that owns its data.
+    /// </summary>
+    [Fact]
+    public async Task ASnapshot_OutlivesTheEvaluationThatProducedIt()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("WithReferences"), TestContext.Current.CancellationToken);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.NotEmpty(project.Properties);
+        Assert.All(project.Items, static item => Assert.NotEmpty(item.ItemType));
+        Assert.NotEmpty(project.PackageReferences);
+    }
+
+    [Fact]
+    public async Task ACrossTargetingProject_ReportsEveryFramework()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("CrossTargeting"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal(["net10.0", "net8.0"], project.TargetFrameworks);
+        Assert.Equal(["Debug", "Release", "Profiled"], project.Configurations);
+    }
+
+    [Fact]
+    public async Task DeclaredReferences_ComeThroughWithoutRestoring()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("WithReferences"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        PackageReferenceInfo package = Assert.Single(
+            project.PackageReferences.Where(static p => p.PackageId == "Serilog"));
+
+        Assert.Equal("4.1.0", package.VersionText);
+        Assert.Equal("all", package.PrivateAssets);
+
+        ProjectReferenceInfo reference = Assert.Single(project.ProjectReferences);
+
+        Assert.Equal(Fixture("Basic"), reference.ProjectFilePath);
+        Assert.Equal(["basic"], reference.Aliases);
+        Assert.True(reference.Project.IsEmpty);
+
+        Assert.Contains(project.FrameworkReferences, static f => f.Name == "Microsoft.AspNetCore.App");
+
+        AssemblyReferenceInfo assembly = Assert.Single(
+            project.AssemblyReferences.Where(static a => a.Name == "Legacy"));
+
+        Assert.EndsWith("Legacy.dll", assembly.HintPath.Value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AMalformedProject_IsADiagnosticNotAnException()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("Malformed"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(WorkspaceLoadStatus.Failed, result.Status);
+        Assert.Null(result.Snapshot);
+
+        ProjectDiagnostic diagnostic = Assert.Single(result.Diagnostics);
+
+        Assert.Equal(MSBuildDiagnosticCodes.EvaluationFailed, diagnostic.Code);
+        Assert.Equal("MSBuild", diagnostic.ProviderName);
+        Assert.Equal(Fixture("Malformed"), diagnostic.FilePath);
+    }
+
+    [Fact]
+    public async Task AMissingProject_IsItsOwnDiagnostic()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider().LoadAsync(
+            new WorkspaceLoadRequest
+            {
+                Workspace = WorkspaceIdentity.New(),
+                EntryPointPath = CanonicalPath.Create(
+                    Path.Combine(AppContext.BaseDirectory, "Fixtures", "Nothing", "Nothing.csproj")),
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(WorkspaceLoadStatus.Failed, result.Status);
+        Assert.Equal(MSBuildDiagnosticCodes.ProjectFileNotFound, Assert.Single(result.Diagnostics).Code);
+    }
+
+    [Fact]
+    public async Task ARequestedConfiguration_ReachesTheEvaluation()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider().LoadAsync(
+            Request("Basic") with { Configuration = "Release" },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("Release", Assert.Single(Succeeded(result).Projects).ActiveConfiguration);
+    }
+
+    [Fact]
+    public async Task ExcludingItems_KeepsTheReferences()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider().LoadAsync(
+            Request("WithReferences") with
+            {
+                Options = new WorkspaceLoadOptions { IncludeItems = false },
+            },
+            TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Empty(project.Items);
+        Assert.NotEmpty(project.PackageReferences);
+        Assert.NotEmpty(project.ProjectReferences);
+    }
+
+    [Fact]
+    public async Task ACancelledLoad_Throws()
+    {
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            async () => await new MSBuildProjectProvider().LoadAsync(Request("Basic"), cancellation.Token));
+    }
+
+    /// <summary>
+    /// Through the workspace, which is the way a consumer will actually meet it: one publication,
+    /// one version, and a snapshot carrying the project.
+    /// </summary>
+    [Fact]
+    public async Task ThroughAWorkspace_TheProjectIsPublished()
+    {
+        await using var workspace = new ProjectWorkspace(new MSBuildProjectProvider());
+
+        WorkspaceLoadResult result = await workspace.LoadAsync(
+            new WorkspaceLoadRequest
+            {
+                Workspace = workspace.Identity,
+                EntryPointPath = Fixture("Basic"),
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(WorkspaceLoadStatus.Succeeded, result.Status);
+        Assert.Equal(WorkspaceVersion.Initial, workspace.CurrentVersion);
+        Assert.Same(result.Snapshot, workspace.CurrentSnapshot);
+
+        Assert.True(workspace.CurrentSnapshot!.TryGetProject(Fixture("Basic"), out ProjectSnapshot? project));
+        Assert.Equal("Basic", project.Name);
+        Assert.Equal(workspace.Identity, project.Identity.Workspace);
+    }
+}

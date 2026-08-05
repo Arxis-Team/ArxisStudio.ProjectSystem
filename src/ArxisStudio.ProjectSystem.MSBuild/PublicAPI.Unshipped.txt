@@ -1,6 +1,11 @@
 #nullable enable
 ArxisStudio.ProjectSystem.MSBuild.MSBuildDiagnosticCodes
 ArxisStudio.ProjectSystem.MSBuild.MSBuildEnvironment
+ArxisStudio.ProjectSystem.MSBuild.MSBuildProjectProvider
+ArxisStudio.ProjectSystem.MSBuild.MSBuildProjectProvider.CanLoad(ArxisStudio.ProjectSystem.WorkspaceEntryPoint entryPoint) -> bool
+ArxisStudio.ProjectSystem.MSBuild.MSBuildProjectProvider.LoadAsync(ArxisStudio.ProjectSystem.WorkspaceLoadRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<ArxisStudio.ProjectSystem.WorkspaceLoadResult!>
+ArxisStudio.ProjectSystem.MSBuild.MSBuildProjectProvider.MSBuildProjectProvider() -> void
+ArxisStudio.ProjectSystem.MSBuild.MSBuildProjectProvider.Name.get -> string!
 ArxisStudio.ProjectSystem.MSBuild.MSBuildRegistration
 ArxisStudio.ProjectSystem.MSBuild.MSBuildRegistration.<Clone>$() -> ArxisStudio.ProjectSystem.MSBuild.MSBuildRegistration!
 ArxisStudio.ProjectSystem.MSBuild.MSBuildRegistration.Equals(ArxisStudio.ProjectSystem.MSBuild.MSBuildRegistration? other) -> bool

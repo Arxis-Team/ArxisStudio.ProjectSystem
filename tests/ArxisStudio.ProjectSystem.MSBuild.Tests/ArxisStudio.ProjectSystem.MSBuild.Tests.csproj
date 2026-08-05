@@ -8,4 +8,23 @@
     <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.MSBuild/ArxisStudio.ProjectSystem.MSBuild.csproj" />
   </ItemGroup>
 
+  <!--
+    Project files that exist to be evaluated, not built. Copied beside the test assembly so the
+    tests find them without knowing where the repository is, which is also what keeps them free of
+    machine-specific paths. Fixtures/Directory.Build.props stops MSBuild's upward walk reaching
+    this repository's own settings.
+  -->
+  <ItemGroup>
+    <!--
+      Include rather than Update for the project files: the SDK's DefaultItemExcludes contains
+      **/*.*proj, so these are not default None items and an Update would match nothing. That
+      failure is silent, because the build succeeds and the fixtures simply are not there.
+    -->
+    <None Include="Fixtures/**/*.*proj" CopyToOutputDirectory="PreserveNewest" />
+
+    <!-- These are default None items already, so Update is the right verb and Include would be a
+         duplicate-item error. -->
+    <None Update="Fixtures/**/*.props;Fixtures/**/*.targets" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

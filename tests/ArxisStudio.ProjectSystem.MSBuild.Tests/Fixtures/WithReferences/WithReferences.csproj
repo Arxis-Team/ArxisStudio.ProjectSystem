@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <!-- Declared, never restored: evaluation reads what the project says, and these tests are about
+       what evaluation reads. -->
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.1.0" PrivateAssets="all" />
+    <ProjectReference Include="../Basic/Basic.csproj" Aliases="basic" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Reference Include="Legacy">
+      <HintPath>../lib/Legacy.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

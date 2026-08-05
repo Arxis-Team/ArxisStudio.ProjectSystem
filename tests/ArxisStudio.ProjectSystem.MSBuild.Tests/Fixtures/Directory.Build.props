@@ -1,0 +1,8 @@
+<!--
+  Deliberately empty, and deliberately here. MSBuild walks upwards looking for this file, and
+  without one it would find the repository's own, so every fixture evaluation would inherit
+  whatever this repository happens to configure and these tests would be asserting about the
+  repository rather than about the fixture. Stopping the walk is what makes a fixture say only
+  what it says.
+-->
+<Project />

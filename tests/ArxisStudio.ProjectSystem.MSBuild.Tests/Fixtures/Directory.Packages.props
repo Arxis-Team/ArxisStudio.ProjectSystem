@@ -1,0 +1,7 @@
+<!-- Stops the walk reaching the repository's central package management, which would refuse the
+     explicit versions these fixtures declare. -->
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
