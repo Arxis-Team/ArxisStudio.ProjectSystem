@@ -29,6 +29,16 @@
     for ordering: the tests and the sample build ArxisStudio.Markup directly and each unsets the
     configuration for itself. The same setting exists in that repository, where the references below
     the entry point lose it in turn; both halves are needed and neither is sufficient.
+
+    The property name says "AndPlatform", and it means it: the platform is forwarded as well, to
+    every reference rather than only to the cross-repository one. That is worth stating because the
+    solution spells the platform "Any CPU" and a project spells it "AnyCPU", and a forwarded
+    mismatch would move a reference's output directory. It does not happen here, and the reason is
+    measurable rather than assumed: a project built through the solution already holds the mapped
+    "AnyCPU", so that is the value the children inherit. Every project of both repositories resolves
+    Platform='AnyCPU' and OutDir='bin\$(Configuration)\net10.0\'. It would stop being true if a
+    project here declared Platforms of its own; none does, and one that did would need this read
+    again.
   -->
   <PropertyGroup>
     <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>

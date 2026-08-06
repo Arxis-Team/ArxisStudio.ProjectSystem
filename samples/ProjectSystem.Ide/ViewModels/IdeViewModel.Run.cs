@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -207,10 +208,12 @@ public sealed partial class IdeViewModel
         {
             process.Kill(entireProcessTree: true);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or SystemException)
+        catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
         {
             // It exited between the check and the kill, which is the ordinary race and not a
-            // failure: the thing being asked for has happened.
+            // failure: the thing being asked for has happened. Those are the two Kill documents --
+            // SystemException would have been almost every exception there is, swallowing a genuine
+            // fault as "already gone".
             Log($"  already gone ({exception.GetType().Name})");
         }
     }

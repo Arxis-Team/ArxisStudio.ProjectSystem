@@ -3,12 +3,15 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using ArxisStudio.ProjectSystem;
 
 namespace ProjectSystem.Ide.ViewModels;
 
 public sealed partial class IdeViewModel
 {
+    private readonly Latest _fileTree = new();
+
     /// <summary>The project as it sits on disk, rather than grouped by item type.</summary>
     public ObservableCollection<TreeNode> FileTree { get; } = [];
 
@@ -44,7 +47,9 @@ public sealed partial class IdeViewModel
     /// <para>
     /// Consulting the disk is this application's business rather than the library's: a snapshot
     /// says where things would be, and deciding whether that matters belongs to whoever is
-    /// displaying it.
+    /// displaying it. It happens <b>off the UI thread</b> — a real solution evaluates to thousands
+    /// of items, and thousands of file-system round trips between two rendered frames is how a
+    /// window stops answering while a network drive thinks about it.
     /// </para>
     /// <para>
     /// Items under <c>obj</c> and <c>bin</c> are left out as well. Those do exist, and showing them
@@ -53,6 +58,28 @@ public sealed partial class IdeViewModel
     /// </remarks>
     private void BuildFileTree(SolutionSnapshot snapshot)
     {
+        long ticket = _fileTree.Take();
+
+        RunDetached(async () =>
+        {
+            HashSet<CanonicalPath> present = await Task.Run(
+                () => Probe(snapshot),
+                _shutdown.Token);
+
+            if (!_fileTree.IsCurrent(ticket))
+            {
+                // A newer snapshot was published while this was asking the disk. Its own pass either
+                // has run or will, and either way it describes the model better than this does.
+                return;
+            }
+
+            Populate(snapshot, present);
+        });
+    }
+
+    private void Populate(SolutionSnapshot snapshot, HashSet<CanonicalPath> present)
+    {
+        // The snapshot is immutable, so what was probed and what is shown cannot have drifted apart.
         FileTree.Clear();
 
         var root = new TreeNode(
@@ -65,13 +92,37 @@ public sealed partial class IdeViewModel
 
         foreach (ProjectSnapshot project in snapshot.Projects)
         {
-            root.Children.Add(FileNodeFor(project));
+            root.Children.Add(FileNodeFor(project, present));
         }
 
         FileTree.Add(root);
     }
 
-    private static TreeNode FileNodeFor(ProjectSnapshot project)
+    /// <summary>
+    /// Asks the file system, once per distinct path, which of a snapshot's items are really there.
+    /// </summary>
+    private static HashSet<CanonicalPath> Probe(SolutionSnapshot snapshot)
+    {
+        var present = new HashSet<CanonicalPath>();
+        var asked = new HashSet<CanonicalPath>();
+
+        foreach (ProjectSnapshot project in snapshot.Projects)
+        {
+            foreach (ProjectItem item in project.Items)
+            {
+                if (!item.FullPath.IsEmpty
+                    && asked.Add(item.FullPath)
+                    && System.IO.File.Exists(item.FullPath.Value))
+                {
+                    present.Add(item.FullPath);
+                }
+            }
+        }
+
+        return present;
+    }
+
+    private static TreeNode FileNodeFor(ProjectSnapshot project, HashSet<CanonicalPath> present)
     {
         var node = new TreeNode(TreeNodeKind.Project, project.Name)
         {
@@ -96,7 +147,7 @@ public sealed partial class IdeViewModel
             if (item.FullPath.IsEmpty
                 || !item.FullPath.StartsWith(project.ProjectDirectory)
                 || !placed.Add(item.FullPath)
-                || !System.IO.File.Exists(item.FullPath.Value))
+                || !present.Contains(item.FullPath))
             {
                 continue;
             }

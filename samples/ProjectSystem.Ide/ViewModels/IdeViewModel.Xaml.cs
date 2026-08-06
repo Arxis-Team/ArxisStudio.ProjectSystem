@@ -1,17 +1,21 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using ArxisStudio.Markup;
+using ArxisStudio.Markup.Xaml;
 using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
 using ArxisStudio.ProjectSystem.Markup.Xaml;
-using Avalonia.Threading;
 
 namespace ProjectSystem.Ide.ViewModels;
 
 public sealed partial class IdeViewModel
 {
+    private readonly List<DiagnosticRow> _markupRows = [];
+    private readonly Latest _document = new();
+
     private ProjectResourceMap? _resources;
     private ProjectAssemblyContext? _assemblies;
     private XamlLoadEnvironment? _environment;
@@ -75,6 +79,10 @@ public sealed partial class IdeViewModel
             XamlFacts.Add(new Fact(assembly.Origin.ToString(), assembly.Path.FileName));
         }
 
+        // Taken even when nothing is loaded below, so a document still being read is abandoned when
+        // the selection moves to something that is not one.
+        long ticket = _document.Take();
+
         if (file.IsEmpty || !IsMarkup(file))
         {
             XamlHeader = $"Load context “{_assemblies.Name}” — "
@@ -84,14 +92,17 @@ public sealed partial class IdeViewModel
             return;
         }
 
-        Run(() => LoadDocumentAsync(snapshot, file));
+        // Detached rather than through Run: this is a consequence of a publication, and a publication
+        // arrives while a load is still awaiting the workspace. Run's busy guard dropped it exactly
+        // then, leaving one document's text under another document's header.
+        RunDetached(() => LoadDocumentAsync(snapshot, file, ticket));
     }
 
     /// <summary>
     /// Reads a document through the environment the adapter built, by the URI Avalonia would name
     /// it with rather than by its path.
     /// </summary>
-    private async Task LoadDocumentAsync(SolutionSnapshot snapshot, CanonicalPath file)
+    private async Task LoadDocumentAsync(SolutionSnapshot snapshot, CanonicalPath file, long ticket)
     {
         if (_environment is null)
         {
@@ -108,6 +119,11 @@ public sealed partial class IdeViewModel
         MarkupSource? source = await _environment.SourceProvider
             .TryGetSourceAsync(uri, _shutdown.Token);
 
+        if (!_document.IsCurrent(ticket))
+        {
+            return;
+        }
+
         if (source is null)
         {
             XamlHeader = $"{file.FileName} — owned by {owner} — the environment does not know {uri}";
@@ -118,8 +134,15 @@ public sealed partial class IdeViewModel
 
         SourceText text = await source.GetTextAsync(_shutdown.Token);
 
+        if (!_document.IsCurrent(ticket))
+        {
+            return;
+        }
+
         XamlHeader = $"{file.FileName} — owned by {owner} — resolved as {uri}";
         XamlText = text.ToString();
+
+        ShowMarkupDiagnostics(XamlDocument.Parse(text).GetDiagnostics(), XamlText, file);
     }
 
     /// <summary>The avares URI a project file is named by, when the map knows one.</summary>
@@ -144,7 +167,13 @@ public sealed partial class IdeViewModel
         }
 
         string relative = file.Value[project.ProjectDirectory.Value.Length..].Replace('\\', '/').TrimStart('/');
-        var candidate = new Uri($"avares://{assembly}/{relative}");
+
+        // Escaped per segment, because a file name is not a URI. A '#' would otherwise start a
+        // fragment and truncate the path, and a '%' would begin an escape that means something else;
+        // the map unescapes what it is given, so this round-trips.
+        string escaped = string.Join('/', relative.Split('/').Select(Uri.EscapeDataString));
+
+        var candidate = new Uri($"avares://{assembly}/{escaped}");
 
         return _resources.TryGetFile(candidate, null, out CanonicalPath mapped) && mapped == file
             ? candidate
@@ -163,21 +192,40 @@ public sealed partial class IdeViewModel
     }
 
     /// <summary>
-    /// Turns Markup's diagnostics into the project model's, so one list can show both.
+    /// Turns Markup's diagnostics into the project model's, so one list shows both.
     /// </summary>
     /// <remarks>
-    /// Unused by the panels above and kept because it is half the reason the adapter exists: a
-    /// designer produces both kinds at once and a user does not care which library noticed. The text
-    /// is passed so the position survives — Markup counts characters and the project model counts
-    /// lines, and without the text the translation drops the position rather than inventing one.
+    /// <para>
+    /// This is half the reason the adapter exists: a designer produces both kinds at once and a user
+    /// does not care which library noticed. The text is passed so the position survives — Markup
+    /// counts characters and the project model counts lines, and without the text the translation
+    /// drops the position rather than inventing one.
+    /// </para>
+    /// <para>
+    /// The rows of the previously shown document are taken out first, so selecting through a folder
+    /// does not pile one file's syntax errors on the next. Removing a row a load has already cleared
+    /// is a no-op, which is why no bookkeeping is needed beyond the list itself.
+    /// </para>
     /// </remarks>
-    private void ShowMarkupDiagnostics(System.Collections.Generic.IEnumerable<MarkupDiagnostic> diagnostics,
-        string documentText, CanonicalPath file)
+    private void ShowMarkupDiagnostics(
+        IEnumerable<MarkupDiagnostic> diagnostics,
+        string documentText,
+        CanonicalPath file)
     {
+        foreach (DiagnosticRow stale in _markupRows)
+        {
+            Diagnostics.Remove(stale);
+        }
+
+        _markupRows.Clear();
+
         foreach (ProjectDiagnostic translated in
             ProjectMarkupDiagnostics.ToProject(diagnostics, documentText, file))
         {
-            Dispatcher.UIThread.Post(() => Diagnostics.Add(DiagnosticRow.From(translated)));
+            var row = DiagnosticRow.From(translated);
+
+            _markupRows.Add(row);
+            Diagnostics.Add(row);
         }
     }
 }

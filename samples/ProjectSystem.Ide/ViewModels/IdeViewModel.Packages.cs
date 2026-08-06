@@ -21,6 +21,7 @@ public sealed record PackageRow(string Id, string Version, string Description, s
 public sealed partial class IdeViewModel
 {
     private readonly HttpClient _http = new();
+    private readonly Latest _versions = new();
 
     /// <summary>
     /// Typed as the interface on purpose, which is the seam the library exists to offer.
@@ -67,7 +68,11 @@ public sealed partial class IdeViewModel
             if (Set(ref field, value))
             {
                 RefreshAllCommands();
-                Run(LoadVersionsAsync);
+
+                // Detached: listing versions is a consequence of the selection, and a selection can
+                // move while an install is still in flight. Through Run it was dropped, leaving the
+                // version list describing the previously selected package.
+                RunDetached(LoadVersionsAsync);
             }
         }
     }
@@ -82,6 +87,18 @@ public sealed partial class IdeViewModel
                 RefreshAllCommands();
             }
         }
+    }
+
+    /// <summary>
+    /// Lets go of the feed, which holds a gate serialising the one fetch of the service index.
+    /// </summary>
+    /// <remarks>
+    /// Not the <see cref="HttpClient"/>: that is this class's, and it is disposed with it.
+    /// </remarks>
+    private void ReleaseFeed()
+    {
+        (_feed as IDisposable)?.Dispose();
+        _feed = null;
     }
 
     private ProjectSnapshot? SelectedProject =>
@@ -144,6 +161,8 @@ public sealed partial class IdeViewModel
     /// </summary>
     private async Task LoadVersionsAsync()
     {
+        long ticket = _versions.Take();
+
         AvailableVersions.Clear();
         SelectedVersion = null;
 
@@ -153,6 +172,13 @@ public sealed partial class IdeViewModel
         }
 
         FeedResult<string> versions = await _feed.GetVersionsAsync(SelectedPackage.Id, _shutdown.Token);
+
+        if (!_versions.IsCurrent(ticket))
+        {
+            // The selection moved on while the feed was answering. Filling the list now would
+            // describe a package the user is no longer looking at.
+            return;
+        }
 
         if (versions.HasErrors)
         {
@@ -170,9 +196,27 @@ public sealed partial class IdeViewModel
             ?? versions.Items.FirstOrDefault();
     }
 
-    private Task InstallPackageAsync() => ChangePackageAsync(PackageEditKind.Install);
+    /// <summary>
+    /// Installs the selected package, or changes its version when the project already has it.
+    /// </summary>
+    /// <remarks>
+    /// The kind has to be chosen rather than assumed. Install on a package the project already
+    /// references is a documented no-op: the editor returns <c>APS4004</c> as a <em>warning</em>
+    /// with a succeeded status, so a button labelled "install or update" that always installed
+    /// reported success and changed nothing whenever it was asked to update.
+    /// </remarks>
+    private Task InstallPackageAsync() => ChangePackageAsync(
+        SelectedProject is { } project && Declares(project, SelectedPackage?.Id)
+            ? PackageEditKind.Update
+            : PackageEditKind.Install);
 
     private Task UninstallPackageAsync() => ChangePackageAsync(PackageEditKind.Uninstall);
+
+    /// <summary>Whether the project already declares a package, compared the way NuGet compares.</summary>
+    private static bool Declares(ProjectSnapshot project, string? packageId) =>
+        packageId is { Length: > 0 }
+            && project.PackageReferences.Any(
+                reference => string.Equals(reference.PackageId, packageId, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Changes what the selected project references, and restores.

@@ -36,7 +36,7 @@ It needs `ArxisStudio.Markup` checked out beside this repository, because the ad
 | Outputs | `Outputs`, `GetRuntimeAssemblies`, and `EvaluationInputs` |
 | Packages | `NuGetHttpFeed`, `PackageVersions.Latest`, `PackageInstaller.ApplyAndRestoreAsync` |
 | Resolved | declared `PackageReference` items beside what restore actually resolved |
-| XAML | `ProjectXamlEnvironment`, `ProjectAssemblyContext`, `ProjectResourceMap` |
+| XAML | `ProjectXamlEnvironment`, `ProjectAssemblyContext`, `ProjectResourceMap`, and `ProjectMarkupDiagnostics` translating what the parser found into the same list as the project's own |
 | Toolbar | `LoadAsync`, `RefreshAsync`, `ExecuteAsync` for restore, build, rebuild and clean |
 | Run / Stop | `OutputArtifactKind.Assembly` and `RuntimeConfiguration`, built through `ExecuteAsync` first |
 | Status | `WorkspaceVersion`, and `Invalidate` over a watched, coalesced batch of file changes |
@@ -58,7 +58,9 @@ evaluates to more than its contents: `PotentialEditorConfigFiles` alone contribu
 `.editorconfig` and a `.globalconfig` for every directory holding source, none of which exists —
 MSBuild builds the list precisely so it can test each one. Without the check, two phantom files
 appeared in every folder. The folder structure still comes entirely from the model; nothing
-enumerates a directory, so a file no item includes is correctly absent.
+enumerates a directory, so a file no item includes is correctly absent. The asking is done off the
+UI thread and once per distinct path, because a real solution evaluates to thousands of items and
+that many file-system round trips between two frames is a window that has stopped answering.
 
 **Run never globs a directory.** Which file to start comes from `Outputs` — the `Assembly` artifact,
 and `RuntimeConfiguration` is how the project says it is startable at all. The responsibilities
@@ -78,5 +80,6 @@ to let go of them first.
 It does not render a preview. Turning a document into live Avalonia objects is `ArxisStudio.Markup`'s
 work and needs a root-instance strategy this library deliberately does not guess at — see the
 limitations. The XAML panel goes as far as the boundary honestly reaches: the assemblies the project
-resolves to, and the document's text fetched through the environment by the `avares` URI Avalonia
-would name it with.
+resolves to, the document's text fetched through the environment by the `avares` URI Avalonia would
+name it with, and whatever parsing that text finds wrong — reported beside the project's own
+diagnostics rather than in a list of its own, which is the reason the adapter translates them.

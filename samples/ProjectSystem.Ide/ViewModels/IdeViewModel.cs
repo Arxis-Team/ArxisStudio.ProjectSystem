@@ -31,6 +31,7 @@ public sealed partial class IdeViewModel : Observable, IDisposable
     private readonly CancellationTokenSource _shutdown = new();
 
     private CanonicalPath _entryPoint;
+    private bool _disposed;
 
     public IdeViewModel()
     {
@@ -188,27 +189,30 @@ public sealed partial class IdeViewModel : Observable, IDisposable
     }
 
     /// <summary>
-    /// Stops the watcher, the load context and anything still running.
+    /// Stops the watcher, the feed, the load context and anything still running.
     /// </summary>
     /// <remarks>
     /// The workspace's own disposal waits for whatever is inside the mutation boundary, which is
     /// why it is asynchronous — and why this does not block the UI thread on it. The cancellation
     /// above has already told everything in flight to stop.
     /// </remarks>
-    public void Shutdown()
+    public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
         _shutdown.Cancel();
 
         StopProject();
         StopWatching();
         ReleaseXamlEnvironment();
+        ReleaseFeed();
 
         _ = DisposeWorkspaceAsync();
-    }
-
-    public void Dispose()
-    {
-        Shutdown();
 
         _shutdown.Dispose();
         _http.Dispose();
@@ -226,11 +230,26 @@ public sealed partial class IdeViewModel : Observable, IDisposable
         }
     }
 
+    /// <summary>
+    /// Reports which MSBuild this process will use, without making it a condition of starting.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="MSBuildEnvironment.Register"/> throws when there is no SDK, and its own
+    /// documentation says why that is right: it is an environment failure, and the provider turns it
+    /// into a diagnostic so a consumer is told what is wrong rather than handed an exception. This
+    /// runs in the constructor, where an exception would take the window with it — so the sample
+    /// does what the library says a consumer should, and reports it.
+    /// </remarks>
     private static string Environment()
     {
-        MSBuildRegistration registration = MSBuildEnvironment.Register();
-
-        return $"MSBuild: {registration}";
+        try
+        {
+            return $"MSBuild: {MSBuildEnvironment.Register()}";
+        }
+        catch (InvalidOperationException exception)
+        {
+            return $"! No MSBuild: {exception.Message} Opening a project will report {MSBuildDiagnosticCodes.MSBuildNotFound}.";
+        }
     }
 
     private bool CanOperate() => IsLoaded && !IsBusy;
@@ -267,6 +286,51 @@ public sealed partial class IdeViewModel : Observable, IDisposable
         {
             IsBusy = false;
             Progress = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Runs work that keeps the display in step with the model, rather than work the user asked for.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not gated on <see cref="IsBusy"/>. Refreshing a panel is a consequence of a
+    /// publication, and a publication happens <em>while</em> a load is still in flight — the load
+    /// awaits the workspace, the UI thread goes free, and the snapshot notification arrives. Sending
+    /// those through <see cref="Run"/> meant they were dropped exactly when they mattered, leaving
+    /// one document's text beside another document's assemblies with nothing said about it.
+    /// </remarks>
+    /// <summary>
+    /// A "newest wins" ticket for detached work, so a slower older pass cannot land on top of a
+    /// newer one.
+    /// </summary>
+    /// <remarks>
+    /// The busy flag used to serialise these by accident, and dropping the older one was its only
+    /// virtue. Something has to keep the order once they are allowed to overlap: two publications,
+    /// or two selections, each start a probe, and whichever file system answers first decides what
+    /// is displayed. No interlocking — every issue and every check is on the UI thread, and only the
+    /// awaited part is not.
+    /// </remarks>
+    private sealed class Latest
+    {
+        private long _issued;
+
+        public long Take() => ++_issued;
+
+        public bool IsCurrent(long ticket) => ticket == _issued;
+    }
+
+    private async void RunDetached(Func<Task> work)
+    {
+        try
+        {
+            await work();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            Log($"! {exception.GetType().Name}: {exception.Message}");
         }
     }
 
@@ -354,7 +418,9 @@ public sealed partial class IdeViewModel : Observable, IDisposable
         BuildFileTree(snapshot);
         BuildResourceMap(snapshot);
 
-        ShowSelection();
+        // No ShowSelection here: BuildTree assigns SelectedNode, whose setter already runs it. It
+        // was called twice, and each pass rebuilds every fact about the project including the
+        // runtime assembly closure.
     }
 
     /// <summary>
@@ -397,7 +463,9 @@ public sealed partial class IdeViewModel : Observable, IDisposable
 
         Tree.Add(root);
 
-        SelectedNode = Find(root, previous) ?? root.Children.FirstOrDefault() ?? root;
+        // The first *project*, not the first child: a solution's root children are its folders, and
+        // landing on one leaves every panel empty and Run with nothing to start.
+        SelectedNode = Find(root, previous) ?? FirstProject(root) ?? root;
     }
 
     private static TreeNode ProjectNode(ProjectSnapshot project)
@@ -445,6 +513,25 @@ public sealed partial class IdeViewModel : Observable, IDisposable
         return slash > 0 && folders.TryGetValue("/" + trimmed[..slash] + "/", out TreeNode? parent)
             ? parent
             : root;
+    }
+
+    /// <summary>The first project in tree order, wherever the solution's folders put it.</summary>
+    private static TreeNode? FirstProject(TreeNode node)
+    {
+        if (node.Kind == TreeNodeKind.Project)
+        {
+            return node;
+        }
+
+        foreach (TreeNode child in node.Children)
+        {
+            if (FirstProject(child) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     private static TreeNode? Find(TreeNode node, ProjectIdentity project)

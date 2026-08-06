@@ -23,10 +23,15 @@ public sealed partial class App : Application
                 workspace.OpenAtStartup(path, System.Array.IndexOf(rest, "--run") >= 0);
             }
 
-            // The workspace owns a provider, a file watcher and a collectible load context. Letting
-            // the process exit without disposing it would leave a build running and a watcher
-            // holding directory handles.
-            desktop.ShutdownRequested += (_, _) => workspace.Shutdown();
+            // The workspace owns a provider, a file watcher, a package feed, an HttpClient and a
+            // collectible load context. Letting the process exit without disposing it would leave a
+            // build running and a watcher holding directory handles.
+            //
+            // Both events, because neither alone covers every way this ends: ShutdownRequested is
+            // the one that can be cancelled and does not arrive on an explicit Environment.Exit,
+            // and Exit is raised last. Disposal is idempotent, so arriving twice is fine.
+            desktop.ShutdownRequested += (_, _) => workspace.Dispose();
+            desktop.Exit += (_, _) => workspace.Dispose();
         }
 
         base.OnFrameworkInitializationCompleted();

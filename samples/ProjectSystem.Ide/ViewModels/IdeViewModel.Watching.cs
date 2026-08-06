@@ -52,15 +52,19 @@ public sealed partial class IdeViewModel
 
         // The entry point too: a solution file is not any project's evaluation input, and losing a
         // project from it is exactly the change worth hearing about.
-        IEnumerable<CanonicalPath> watched = snapshot.Projects
+        // Distinct, because it is what is actually watched: the SDK's own targets are an evaluation
+        // input of every project in the solution, and summing the lists counted each of them once
+        // per project. A number said out loud should be the number of files.
+        List<CanonicalPath> watched = [.. snapshot.Projects
             .SelectMany(static project => project.EvaluationInputs)
-            .Append(snapshot.EntryPoint.Path);
+            .Append(snapshot.EntryPoint.Path)
+            .Distinct()];
 
         _watcher.Watch(watched);
 
         SetStaleness(WorkspaceInvalidation.None);
 
-        Log($"  watching {Describe(snapshot.Projects.Sum(static p => p.EvaluationInputs.Length) + 1, "file")}");
+        Log($"  watching {Describe(watched.Count, "file")}");
     }
 
     private void StopWatching()
