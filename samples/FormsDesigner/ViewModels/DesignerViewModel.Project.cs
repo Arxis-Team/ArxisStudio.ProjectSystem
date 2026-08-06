@@ -324,7 +324,8 @@ public sealed partial class DesignerViewModel
         // in no position to say which. The number is still the most useful thing available about a
         // form somebody says they cannot see.
         Log($"  surface {surface.GetType().Name} measured "
-            + $"{surface.Bounds.Width:F0}×{surface.Bounds.Height:F0}");
+            + $"{surface.Bounds.Width:F0}×{surface.Bounds.Height:F0}"
+);
     }
 
     /// <summary>

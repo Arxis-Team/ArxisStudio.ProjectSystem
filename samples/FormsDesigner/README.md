@@ -88,10 +88,12 @@ The designer takes the content out of the window, shows that, and paints the tit
 at rest; the Avalonia template's window is one `TextBlock` reading `{Binding Greeting}`. Design mode
 is what applies `Design.DataContext` and the `d:` attributes the document supplies for exactly this.
 
-**Not every element reaches the map.** A freshly created `MainWindow.axaml` maps its `Window` and not
-the `TextBlock` inside it, so clicking the text selects the window. A window with the same content
-and no `x:Class` maps both, so it is something about that document — `x:Class`, `x:DataType` or the
-binding — rather than about windows. Unexplained, and stated here rather than guessed at.
+**The root of an `x:Class` document is not in the object map.** Measured: a document with five
+elements maps four, and the missing one is always the root. The cause is that `x:Class` means the
+root instance is created first and handed to Avalonia already made, so Avalonia never records where
+it built it — and the map pairs objects to elements by that recorded position. Every child is mapped
+correctly. The designer answers for the root itself, in both directions, so selecting the form works;
+closing the gap properly belongs to `XamlObjectMap`.
 
 **The toolbox is Avalonia's controls, not the project's.** Reflecting over the project's assemblies
 for placeable types is a real feature and a different one: it needs a rule for what counts as a

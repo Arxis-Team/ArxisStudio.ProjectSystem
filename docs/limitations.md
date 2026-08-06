@@ -382,6 +382,17 @@ The map covers the projects in the snapshot. A `ResourceInclude` naming a projec
 solution opened on one project, referencing another by path — resolves out of the built assembly if
 there is one, and otherwise not at all.
 
+### The root of an `x:Class` document has no entry in the object map
+
+`XamlObjectMap` pairs an object to the element that produced it by the position Avalonia records
+while building it. A document declaring an `x:Class` has its root instance created first — that is
+what the class is for — and handed to Avalonia already made, so no position is ever recorded for it
+and the pair cannot be formed. Every other element maps correctly: a five-element document maps four.
+
+A consumer that needs the root has it without the map. `XamlLoadSession.RootObject` is the object and
+`XamlDocument.Root` is the element, and pairing those two is the whole of the workaround —
+`samples/FormsDesigner` does it in both directions.
+
 ### A translated diagnostic keeps its position only when the text is supplied
 
 Markup measures a span as an offset and a length into the document; the project model measures it as
