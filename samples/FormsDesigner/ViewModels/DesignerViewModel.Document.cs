@@ -62,13 +62,10 @@ public sealed partial class DesignerViewModel
     /// is how clicking a button's label selects the button.
     /// </para>
     /// <para>
-    /// <b>The root is the one element the map may not have.</b> A document declaring an
-    /// <c>x:Class</c> has its root instance created before the markup is loaded and handed to
-    /// Avalonia already made, so Avalonia never records where it built it — and the map pairs
-    /// objects to elements by exactly that recorded position. Every child is there and the root is
-    /// not, which measured as "one element short" on every form with a code-behind class. The walk
-    /// ends at the document's root rather than at nothing, because the form as a whole is a thing
-    /// worth selecting: its Title and its size are edited there.
+    /// The walk ends at the document's root rather than at nothing. Not every control on screen has
+    /// a mapped ancestor — a part a template produced inside another part need not — and selecting
+    /// the form is a better answer than selecting nothing, because the form is a thing worth
+    /// selecting: its title and its size are edited there.
     /// </para>
     /// </remarks>
     public void SelectFromCanvas(FormViewModel form, Control? control)
@@ -96,13 +93,8 @@ public sealed partial class DesignerViewModel
     }
 
     /// <summary>Finds the live control an element produced, for the editor to select.</summary>
-    /// <remarks>
-    /// The same gap the other way round: the map has no object for the root of an <c>x:Class</c>
-    /// document, and the answer is the one thing the session names outright.
-    /// </remarks>
     public static Control? ControlFor(FormViewModel form, XamlElement element) =>
-        form.Objects?.GetObject(element) as Control
-            ?? (ReferenceEquals(element, form.Document?.Root) ? form.Root : null);
+        form.Objects?.GetObject(element) as Control;
 
     /// <summary>
     /// Applies an edit to the document and to the live objects, in that order.
