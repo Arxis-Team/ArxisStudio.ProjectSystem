@@ -1,0 +1,11 @@
+<!--
+  A package reference the project file does not contain, which is how most repositories give every
+  project its analyzers and its test framework. MSBuild stops its upward walk at the nearest of
+  these, so this one replaces Fixtures/Directory.Build.props rather than adding to it, and the
+  fixture still inherits nothing from the repository.
+-->
+<Project>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>

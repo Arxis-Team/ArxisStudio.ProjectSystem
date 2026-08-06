@@ -160,6 +160,7 @@ internal static class MSBuildProjectTranslator
                 IncludeAssets = item.Metadata.GetValueOrDefault("IncludeAssets"),
                 ExcludeAssets = item.Metadata.GetValueOrDefault("ExcludeAssets"),
                 Metadata = item.Metadata,
+                Origin = item.IsImported ? ProjectItemOrigin.Imported : ProjectItemOrigin.Declared,
             });
 
             return;

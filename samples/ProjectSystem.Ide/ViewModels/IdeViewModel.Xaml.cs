@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -142,7 +143,34 @@ public sealed partial class IdeViewModel
         XamlHeader = $"{file.FileName} — owned by {owner} — resolved as {uri}";
         XamlText = text.ToString();
 
-        ShowMarkupDiagnostics(XamlDocument.Parse(text).GetDiagnostics(), XamlText, file);
+        // Lexing and parsing a document is per-selection work and belongs where the existence probe
+        // went, for the same reason: clicking through a folder should not stall the frame.
+        ImmutableArray<MarkupDiagnostic> found = await Task.Run(
+            () => XamlDocument.Parse(text).GetDiagnostics().ToImmutableArray(),
+            _shutdown.Token);
+
+        if (!_document.IsCurrent(ticket))
+        {
+            return;
+        }
+
+        ShowMarkupDiagnostics(found, XamlText, file);
+    }
+
+    /// <summary>
+    /// Empties the panel and supersedes whatever document was being read for it.
+    /// </summary>
+    /// <remarks>
+    /// Taking a ticket is the point: a read in flight checks it after every await, so this is what
+    /// stops one landing on a selection that is no longer a document.
+    /// </remarks>
+    private void ClearXamlPanel()
+    {
+        _document.Take();
+
+        XamlFacts.Clear();
+        XamlText = string.Empty;
+        XamlHeader = "Select an AvaloniaResource item to load it through the adapter.";
     }
 
     /// <summary>The avares URI a project file is named by, when the map knows one.</summary>
@@ -203,8 +231,10 @@ public sealed partial class IdeViewModel
     /// </para>
     /// <para>
     /// The rows of the previously shown document are taken out first, so selecting through a folder
-    /// does not pile one file's syntax errors on the next. Removing a row a load has already cleared
-    /// is a no-op, which is why no bookkeeping is needed beyond the list itself.
+    /// does not pile one file's syntax errors on the next. They are taken out <b>by reference</b>:
+    /// <see cref="DiagnosticRow"/> is a record, so <c>Remove</c> would take the first row equal by
+    /// value, and a row this method did not add is not this method's to remove. A row a load has
+    /// already cleared is simply not found, which is why no other bookkeeping is needed.
     /// </para>
     /// </remarks>
     private void ShowMarkupDiagnostics(
@@ -212,9 +242,12 @@ public sealed partial class IdeViewModel
         string documentText,
         CanonicalPath file)
     {
-        foreach (DiagnosticRow stale in _markupRows)
+        for (int i = Diagnostics.Count - 1; i >= 0; i--)
         {
-            Diagnostics.Remove(stale);
+            if (_markupRows.Any(row => ReferenceEquals(row, Diagnostics[i])))
+            {
+                Diagnostics.RemoveAt(i);
+            }
         }
 
         _markupRows.Clear();

@@ -299,6 +299,21 @@ public sealed partial class IdeViewModel : Observable, IDisposable
     /// those through <see cref="Run"/> meant they were dropped exactly when they mattered, leaving
     /// one document's text beside another document's assemblies with nothing said about it.
     /// </remarks>
+    private async void RunDetached(Func<Task> work)
+    {
+        try
+        {
+            await work();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            Log($"! {exception.GetType().Name}: {exception.Message}");
+        }
+    }
+
     /// <summary>
     /// A "newest wins" ticket for detached work, so a slower older pass cannot land on top of a
     /// newer one.
@@ -317,21 +332,6 @@ public sealed partial class IdeViewModel : Observable, IDisposable
         public long Take() => ++_issued;
 
         public bool IsCurrent(long ticket) => ticket == _issued;
-    }
-
-    private async void RunDetached(Func<Task> work)
-    {
-        try
-        {
-            await work();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception exception)
-        {
-            Log($"! {exception.GetType().Name}: {exception.Message}");
-        }
     }
 
     private async Task OpenAsync()
@@ -463,9 +463,15 @@ public sealed partial class IdeViewModel : Observable, IDisposable
 
         Tree.Add(root);
 
-        // The first *project*, not the first child: a solution's root children are its folders, and
-        // landing on one leaves every panel empty and Run with nothing to start.
-        SelectedNode = Find(root, previous) ?? FirstProject(root) ?? root;
+        // Whatever was selected before if it survived, else the first *project* — not the first
+        // child, because a solution's root children are its folders and landing on one leaves every
+        // panel empty and Run with nothing to start.
+        SelectedNode =
+            (previous.IsEmpty
+                ? null
+                : Find(root, node => node.Kind == TreeNodeKind.Project && node.Project == previous))
+            ?? Find(root, static node => node.Kind == TreeNodeKind.Project)
+            ?? root;
     }
 
     private static TreeNode ProjectNode(ProjectSnapshot project)
@@ -515,35 +521,17 @@ public sealed partial class IdeViewModel : Observable, IDisposable
             : root;
     }
 
-    /// <summary>The first project in tree order, wherever the solution's folders put it.</summary>
-    private static TreeNode? FirstProject(TreeNode node)
+    /// <summary>The first node in tree order that answers to a predicate.</summary>
+    private static TreeNode? Find(TreeNode node, Func<TreeNode, bool> wanted)
     {
-        if (node.Kind == TreeNodeKind.Project)
+        if (wanted(node))
         {
             return node;
         }
 
         foreach (TreeNode child in node.Children)
         {
-            if (FirstProject(child) is { } found)
-            {
-                return found;
-            }
-        }
-
-        return null;
-    }
-
-    private static TreeNode? Find(TreeNode node, ProjectIdentity project)
-    {
-        if (!project.IsEmpty && node.Kind == TreeNodeKind.Project && node.Project == project)
-        {
-            return node;
-        }
-
-        foreach (TreeNode child in node.Children)
-        {
-            if (Find(child, project) is { } found)
+            if (Find(child, wanted) is { } found)
             {
                 return found;
             }
@@ -561,6 +549,10 @@ public sealed partial class IdeViewModel : Observable, IDisposable
         if (snapshot is null || Current is null || Current.Project.IsEmpty)
         {
             Details = null;
+
+            // Abandons a document still being read as well. Without this, selecting a solution
+            // folder mid-read left the panel to fill in afterwards with a file nobody had selected.
+            ClearXamlPanel();
 
             return;
         }

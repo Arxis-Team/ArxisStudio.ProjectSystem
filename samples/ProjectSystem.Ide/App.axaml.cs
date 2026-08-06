@@ -27,10 +27,10 @@ public sealed partial class App : Application
             // collectible load context. Letting the process exit without disposing it would leave a
             // build running and a watcher holding directory handles.
             //
-            // Both events, because neither alone covers every way this ends: ShutdownRequested is
-            // the one that can be cancelled and does not arrive on an explicit Environment.Exit,
-            // and Exit is raised last. Disposal is idempotent, so arriving twice is fine.
-            desktop.ShutdownRequested += (_, _) => workspace.Dispose();
+            // Exit and not ShutdownRequested. ShutdownRequested is a question -- a subscriber may
+            // set Cancel and the application carries on -- so disposing there would leave a live
+            // window in front of a view model whose cancellation source, feed and HttpClient are
+            // all gone. Exit is the answer, and it is raised once the decision is final.
             desktop.Exit += (_, _) => workspace.Dispose();
         }
 

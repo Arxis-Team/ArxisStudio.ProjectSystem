@@ -219,6 +219,28 @@ public sealed class MSBuildProjectTranslatorTests
             Translate(Project(items: Item("PackageReference", "Serilog"))).PackageReferences).VersionText);
     }
 
+    /// <summary>
+    /// The distinction anything that edits a project file needs, because it rewrites one file.
+    /// </summary>
+    /// <remarks>
+    /// An evaluated project lists more package references than its own file declares: a
+    /// <c>Directory.Build.props</c> or a <c>GlobalPackageReference</c> contributes them too. Asking
+    /// the editor to change the version of one of those sends it looking in a file that does not
+    /// mention it.
+    /// </remarks>
+    [Theory]
+    [InlineData(false, ProjectItemOrigin.Declared)]
+    [InlineData(true, ProjectItemOrigin.Imported)]
+    public void APackageReference_SaysWhetherTheProjectFileItselfDeclaredIt(
+        bool imported,
+        ProjectItemOrigin expected)
+    {
+        ProjectSnapshot snapshot = Translate(Project(items: Item(
+            "PackageReference", "Serilog", imported: imported)));
+
+        Assert.Equal(expected, Assert.Single(snapshot.PackageReferences).Origin);
+    }
+
     [Fact]
     public void AFrameworkReference_BecomesATypedReference()
     {

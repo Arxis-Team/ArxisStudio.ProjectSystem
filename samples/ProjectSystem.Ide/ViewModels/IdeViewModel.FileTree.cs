@@ -99,8 +99,16 @@ public sealed partial class IdeViewModel
     }
 
     /// <summary>
-    /// Asks the file system, once per distinct path, which of a snapshot's items are really there.
+    /// Asks the file system, once per distinct path, which of the items the tree would show are
+    /// really there.
     /// </summary>
+    /// <remarks>
+    /// Only the ones it would show. An item outside the project's own directory, or under
+    /// <c>obj</c> and <c>bin</c>, is discarded by <see cref="FileNodeFor"/> whatever the answer, and
+    /// a snapshot has plenty of both — every parent-directory <c>.editorconfig</c> candidate, and
+    /// everything a shared props file contributes. Asking about those is a round trip whose result
+    /// is thrown away.
+    /// </remarks>
     private static HashSet<CanonicalPath> Probe(SolutionSnapshot snapshot)
     {
         var present = new HashSet<CanonicalPath>();
@@ -110,7 +118,7 @@ public sealed partial class IdeViewModel
         {
             foreach (ProjectItem item in project.Items)
             {
-                if (!item.FullPath.IsEmpty
+                if (Shows(project, item, out _)
                     && asked.Add(item.FullPath)
                     && System.IO.File.Exists(item.FullPath.Value))
                 {
@@ -120,6 +128,30 @@ public sealed partial class IdeViewModel
         }
 
         return present;
+    }
+
+    /// <summary>
+    /// Whether an item is one the tree would place, and where under the project it would go.
+    /// </summary>
+    /// <remarks>
+    /// Shared with <see cref="Probe"/> so that the set asked about and the set displayed cannot
+    /// drift apart — one deciding to include what the other discards is either a phantom file or a
+    /// wasted round trip, depending on which way it goes.
+    /// </remarks>
+    private static bool Shows(ProjectSnapshot project, ProjectItem item, out string relative)
+    {
+        relative = string.Empty;
+
+        if (item.FullPath.IsEmpty || !item.FullPath.StartsWith(project.ProjectDirectory))
+        {
+            return false;
+        }
+
+        relative = item.FullPath.Value[project.ProjectDirectory.Value.Length..]
+            .Replace('\\', '/')
+            .TrimStart('/');
+
+        return !IsBuildOutput(relative);
     }
 
     private static TreeNode FileNodeFor(ProjectSnapshot project, HashSet<CanonicalPath> present)
@@ -144,19 +176,9 @@ public sealed partial class IdeViewModel
 
         foreach (ProjectItem item in project.Items)
         {
-            if (item.FullPath.IsEmpty
-                || !item.FullPath.StartsWith(project.ProjectDirectory)
+            if (!Shows(project, item, out string relative)
                 || !placed.Add(item.FullPath)
                 || !present.Contains(item.FullPath))
-            {
-                continue;
-            }
-
-            string relative = item.FullPath.Value[project.ProjectDirectory.Value.Length..]
-                .Replace('\\', '/')
-                .TrimStart('/');
-
-            if (IsBuildOutput(relative))
             {
                 continue;
             }

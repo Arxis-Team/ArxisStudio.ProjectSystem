@@ -104,6 +104,31 @@ public sealed class MSBuildProjectProviderTests
         Assert.NotEmpty(project.PackageReferences);
     }
 
+    /// <summary>
+    /// Run against a real MSBuild, because the translation being right is not the same as the
+    /// property being reachable.
+    /// </summary>
+    /// <remarks>
+    /// The unit tests hand the translator an item with <c>IsImported</c> already decided, so they
+    /// would pass whether or not evaluation ever sets it. This is the assertion that fails if
+    /// MSBuild stops reporting an imported <c>PackageReference</c> as imported.
+    /// </remarks>
+    [Fact]
+    public async Task PackageReferences_SayWhichOfThemTheProjectFileItselfDeclared()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("ImportedPackage"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal(ProjectItemOrigin.Declared, Origin(project, "Serilog"));
+        Assert.Equal(ProjectItemOrigin.Imported, Origin(project, "Newtonsoft.Json"));
+
+        static ProjectItemOrigin Origin(ProjectSnapshot project, string packageId) =>
+            Assert.Single(project.PackageReferences.Where(
+                reference => reference.PackageId == packageId)).Origin;
+    }
+
     [Fact]
     public async Task ACrossTargetingProject_ReportsEveryFramework()
     {

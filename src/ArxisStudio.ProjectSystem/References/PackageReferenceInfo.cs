@@ -39,6 +39,23 @@ public sealed record PackageReferenceInfo
     /// <summary>Gets any additional declared metadata.</summary>
     public ProjectMetadata Metadata { get; init; } = ProjectMetadata.Empty;
 
+    /// <summary>Gets whether the project file itself declares this, or an import does.</summary>
+    /// <remarks>
+    /// <para>
+    /// A project's evaluated package references are a superset of what is written in its own file:
+    /// a <c>Directory.Build.props</c>, a <c>GlobalPackageReference</c> or an SDK can each contribute
+    /// one, and the evaluated result does not otherwise say which. That matters to anything that
+    /// intends to <em>edit</em> the reference, because an editor rewrites one file and a reference
+    /// it did not write is not in the file it is about to open.
+    /// </para>
+    /// <para>
+    /// This is on package references and not yet on the other kinds because this is the kind the
+    /// family edits. A provider that cannot tell leaves it <see cref="ProjectItemOrigin.Unknown"/>,
+    /// which is deliberately not the same answer as <see cref="ProjectItemOrigin.Imported"/>.
+    /// </para>
+    /// </remarks>
+    public ProjectItemOrigin Origin { get; init; }
+
     /// <summary>Returns the package id and version text.</summary>
     /// <returns>Something like <c>PackageReference: Serilog 4.1.0</c>.</returns>
     public override string ToString() =>

@@ -212,11 +212,21 @@ public sealed partial class IdeViewModel
 
     private Task UninstallPackageAsync() => ChangePackageAsync(PackageEditKind.Uninstall);
 
-    /// <summary>Whether the project already declares a package, compared the way NuGet compares.</summary>
+    /// <summary>
+    /// Whether the project's own file declares a package, compared the way NuGet compares.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PackageReferenceInfo.Origin"/> and not merely the presence of the reference. The
+    /// editor rewrites one file, and an evaluated project lists more packages than that file
+    /// contains — a <c>Directory.Build.props</c> gives every test project its test framework, and
+    /// asking to update one of those would send the editor looking in a project file that does not
+    /// mention it, which it reports as <c>APS4004</c> and a succeeded no-op.
+    /// </remarks>
     private static bool Declares(ProjectSnapshot project, string? packageId) =>
         packageId is { Length: > 0 }
-            && project.PackageReferences.Any(
-                reference => string.Equals(reference.PackageId, packageId, StringComparison.OrdinalIgnoreCase));
+            && project.PackageReferences.Any(reference =>
+                reference.Origin == ProjectItemOrigin.Declared
+                    && string.Equals(reference.PackageId, packageId, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Changes what the selected project references, and restores.
