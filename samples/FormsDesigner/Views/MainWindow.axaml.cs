@@ -40,6 +40,16 @@ public sealed partial class MainWindow : Window
         // platform's and behave the way every other application does.
         toolbox.AddHandler(PointerPressedEvent, OnToolboxPressed, RoutingStrategies.Tunnel);
 
+        // The design draws its own chrome, so the toolbar has to be draggable: without this the
+        // window cannot be moved at all, which is a worse trade than a title bar.
+        this.GetControl<Border>("TitleBar").PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            {
+                BeginMoveDrag(e);
+            }
+        };
+
         DragDrop.SetAllowDrop(surface, true);
 
         surface.AddHandler(DragDrop.DragOverEvent, OnDragOver);
@@ -56,6 +66,13 @@ public sealed partial class MainWindow : Window
     }
 
     private DesignerViewModel? Designer => DataContext as DesignerViewModel;
+
+    private void OnMinimise(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void OnMaximise(object? sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void OnClose(object? sender, RoutedEventArgs e) => Close();
 
     /// <summary>
     /// Follows the editor's selection into the document.

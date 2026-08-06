@@ -273,9 +273,16 @@ public sealed partial class DesignerViewModel
     {
         IsDark = !IsDark;
 
+        ThemeVariant variant = IsDark ? ThemeVariant.Dark : ThemeVariant.Light;
+
         if (Avalonia.Application.Current is { } application)
         {
-            application.RequestedThemeVariant = IsDark ? ThemeVariant.Dark : ThemeVariant.Light;
+            application.RequestedThemeVariant = variant;
+        }
+
+        foreach (FormViewModel form in Forms)
+        {
+            form.Variant = variant;
         }
     }
 

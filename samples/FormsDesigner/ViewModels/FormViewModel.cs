@@ -53,13 +53,25 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     public double Width
     {
         get;
-        set => Set(ref field, value);
+        set
+        {
+            if (Set(ref field, value))
+            {
+                Raise(nameof(SizeText));
+            }
+        }
     } = 480;
 
     public double Height
     {
         get;
-        set => Set(ref field, value);
+        set
+        {
+            if (Set(ref field, value))
+            {
+                Raise(nameof(SizeText));
+            }
+        }
     } = 360;
 
     /// <summary>The document, which is the only thing any edit touches.</summary>
@@ -129,6 +141,42 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
 
     /// <summary>What the tab and the canvas label show.</summary>
     public string Title => IsDirty ? Name + " •" : Name;
+
+    /// <summary>
+    /// Which palette the card is drawn in.
+    /// </summary>
+    /// <remarks>
+    /// Carried rather than inherited, because the editor realises an item's content away from the
+    /// window's tree and a detached tree has no variant to inherit — it falls back to the system's,
+    /// which is how a dark designer ended up with a white form on it. Naming the variant on the card
+    /// is what puts it back under the application's own theme.
+    /// </remarks>
+    public Avalonia.Styling.ThemeVariant Variant
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                Raise(nameof(CardBackground));
+                Raise(nameof(ChromeBackground));
+                Raise(nameof(CardBorder));
+            }
+        }
+    } = Avalonia.Styling.ThemeVariant.Dark;
+
+    /// <summary>The card's own colours, resolved for <see cref="Variant"/> rather than inherited.</summary>
+    public Avalonia.Media.IBrush? CardBackground => Palette.Brush("Bg1", Variant);
+
+    public Avalonia.Media.IBrush? ChromeBackground => Palette.Brush("Bg2", Variant);
+
+    public Avalonia.Media.IBrush? CardBorder => Palette.Brush("Brd", Variant);
+
+    /// <summary>The target mark the design floats above the form's card.</summary>
+    public string Caption => "⌖ " + Name;
+
+    /// <summary>And its size beside it, in the design's dim colour.</summary>
+    public string SizeText => $"{Width:F0} × {Height:F0}";
 
     /// <summary>Why the form could not be shown, when it could not.</summary>
     public string? Problem

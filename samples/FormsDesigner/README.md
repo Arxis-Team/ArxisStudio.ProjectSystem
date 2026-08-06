@@ -34,6 +34,24 @@ The icons are the mockup's own paths, in `Glyphs`, together with the hue each ki
 drawn in — layout panels one colour, text entry another, lists a third. That is what lets a tree of
 thirty rows be read by shape and colour before any of the names are.
 
+### Checking it against the design
+
+```bash
+dotnet run --project samples/FormsDesigner -- <project> <form> --shot out.png
+```
+
+Opens, waits for the window to settle, writes exactly what is on screen, and exits. A designer is a
+thing you look at, so "does it work" and "does it look right" are different questions and only the
+first was ever answerable from a log.
+
+### One thing that does not match yet
+
+A form whose document sets no `Background` shows a light card on the dark canvas where the design
+shows a dark one. It is not the card: painting the template's own panel red fills that rectangle, so
+nothing above it is at fault, and resolving the token explicitly for the dark variant through
+`Application.TryGetResource` does not change it either. Something under the item paints it, and I
+have not identified what. Every form that sets its own background is unaffected.
+
 ## Who does what
 
 The division is the whole point, and none of the three knows about the others.

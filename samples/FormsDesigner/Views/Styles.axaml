@@ -98,6 +98,11 @@
     <Setter Property="Foreground" Value="{DynamicResource Fg}" />
   </Style>
 
+  <!-- The close button turns red under the pointer, as every window's does. -->
+  <Style Selector="Button.closeButton:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Red}" />
+  </Style>
+
   <Style Selector="TextBox">
     <Setter Property="Background" Value="{DynamicResource Inp}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Brd2}" />

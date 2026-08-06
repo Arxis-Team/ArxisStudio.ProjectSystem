@@ -147,7 +147,10 @@ public sealed partial class DesignerViewModel
             snapshot = await BuildBeforeOpeningAsync(snapshot, form.Project) ?? snapshot;
         }
 
-        var opened = new FormViewModel(form.Path, NextFreeSpot());
+        var opened = new FormViewModel(form.Path, NextFreeSpot())
+        {
+            Variant = IsDark ? Avalonia.Styling.ThemeVariant.Dark : Avalonia.Styling.ThemeVariant.Light,
+        };
 
         Forms.Add(opened);
         ActiveForm = opened;

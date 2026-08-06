@@ -8,17 +8,29 @@
         Background="{DynamicResource Bg1}"
         FontFamily="{DynamicResource UiFont}"
         MinWidth="1360"
-        Width="1600" Height="980">
+        Width="1600" Height="980"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
 
   <Window.Resources>
 
     <!-- One form on the surface: the live tree, framed the way the design frames a window. -->
     <DataTemplate x:Key="FormTemplate" DataType="vm:FormViewModel">
-      <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}" BorderThickness="1"
-              CornerRadius="10" BoxShadow="0 18 50 0 #8C000000">
+      <Panel>
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left"
+                    VerticalAlignment="Top" Margin="0,-24,0,0">
+          <TextBlock Text="{Binding Caption}" Classes="mono" FontSize="11" FontWeight="Medium"
+                     Foreground="{DynamicResource Acc}" />
+          <TextBlock Text="{Binding SizeText}" Classes="mono" FontSize="11"
+                     Foreground="{DynamicResource Fg3}" />
+          <TextBlock Text="{Binding $parent[Window].((vm:DesignerViewModel)DataContext).ZoomText}"
+                     Classes="mono" FontSize="11" Foreground="{DynamicResource Fg3}" />
+        </StackPanel>
+      <Border Background="{Binding CardBackground}" BorderBrush="{Binding CardBorder}" BorderThickness="1"
+              CornerRadius="10" BoxShadow="0 18 50 0 #8C000000" Margin="0,4,0,0">
         <Grid RowDefinitions="Auto,*">
-          <Border Grid.Row="0" Height="36" Background="{DynamicResource Bg2}" CornerRadius="10,10,0,0"
-                  BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="12,0"
+          <Border Grid.Row="0" Height="36" Background="{Binding ChromeBackground}" CornerRadius="10,10,0,0"
+                  BorderBrush="{Binding CardBorder}" BorderThickness="0,0,0,1" Padding="12,0"
                   IsVisible="{Binding WindowTitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
               <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
@@ -28,7 +40,7 @@
                          Margin="6,0,0,0" VerticalAlignment="Center" />
             </StackPanel>
           </Border>
-          <Panel Grid.Row="1">
+          <Panel Grid.Row="1" Background="{Binding CardBackground}">
             <ContentControl Content="{Binding Surface}" />
             <TextBlock Text="{Binding Problem}" TextWrapping="Wrap" Margin="14"
                        Foreground="{DynamicResource Red}" VerticalAlignment="Center"
@@ -36,6 +48,7 @@
           </Panel>
         </Grid>
       </Border>
+      </Panel>
     </DataTemplate>
 
   </Window.Resources>
@@ -56,7 +69,7 @@
   <Grid RowDefinitions="42,*,26">
 
     <!-- Toolbar -->
-    <Border Grid.Row="0" Background="{DynamicResource Bg2}"
+    <Border x:Name="TitleBar" Grid.Row="0" Background="{DynamicResource Bg2}"
             BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="10,0">
       <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto">
 
@@ -92,8 +105,9 @@
         </Border>
 
         <Button Grid.Column="5" Classes="icon" Command="{Binding NewFormCommand}" ToolTip.Tip="New form">
-          <Path Data="M8 3.5v9M3.5 8h9" Width="15" Height="15" Stretch="Uniform"
-                Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" />
+          <Path Data="M10.2 10.2L13 13M10.9 7.2a3.7 3.7 0 1 1-7.4 0 3.7 3.7 0 0 1 7.4 0z"
+                Width="15" Height="15" Stretch="Uniform"
+                Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
         </Button>
 
         <Border Grid.Column="6" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}"
@@ -107,7 +121,9 @@
               <Path Data="M13 8a5 5 0 1 1-1.6-3.7M13.3 2.9v2.7h-2.7" Width="14" Height="14" Stretch="Uniform"
                     Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" />
             </Button>
-            <Button Classes="icon" Width="30" Height="24" Command="{Binding StopCommand}" ToolTip.Tip="Stop">
+            <!-- Stop appears only while something is running, as the design has it. -->
+            <Button Classes="icon" Width="30" Height="24" Command="{Binding StopCommand}" ToolTip.Tip="Stop"
+                    IsVisible="{Binding IsRunning}">
               <Path Data="M4 4h8v8h-8z" Width="12" Height="12" Stretch="Uniform"
                     Fill="{DynamicResource Red}" />
             </Button>
@@ -135,6 +151,20 @@
           <Button Classes="tool" Height="24" Padding="11,0" FontSize="11" CornerRadius="14"
                   Command="{Binding ToggleThemeCommand}" Content="{Binding ThemeName}"
                   ToolTip.Tip="Switch between the design's two variants" />
+
+          <!-- The design's own window buttons, because it draws its own chrome. -->
+          <Button Classes="icon" Click="OnMinimise" ToolTip.Tip="Minimise">
+            <Path Data="M4 8h8" Width="13" Height="13" Stretch="Uniform"
+                  Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
+          </Button>
+          <Button Classes="icon" Click="OnMaximise" ToolTip.Tip="Maximise">
+            <Path Data="M4 4h8v8h-8z" Width="12" Height="12" Stretch="Uniform"
+                  Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
+          </Button>
+          <Button Classes="icon closeButton" Click="OnClose" ToolTip.Tip="Close">
+            <Path Data="M4.5 4.5l7 7M11.5 4.5l-7 7" Width="12" Height="12" Stretch="Uniform"
+                  Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
+          </Button>
         </StackPanel>
 
       </Grid>
@@ -157,9 +187,9 @@
                   <Path Data="M8 3.5v9M3.5 8h9" Width="13" Height="13" Stretch="Uniform"
                         Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
                 </Button>
-                <Button Grid.Column="2" Classes="icon" Width="24" Height="22"
-                        Command="{Binding DeleteSelectedCommand}" ToolTip.Tip="Delete the selection">
-                  <Path Data="M4.5 4.5l7 7M11.5 4.5l-7 7" Width="12" Height="12" Stretch="Uniform"
+                <Button Grid.Column="2" Classes="icon" Width="24" Height="22" ToolTip.Tip="Find in the tree">
+                  <Path Data="M10.2 10.2L13 13M10.9 7.2a3.7 3.7 0 1 1-7.4 0 3.7 3.7 0 0 1 7.4 0z"
+                        Width="13" Height="13" Stretch="Uniform"
                         Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
                 </Button>
               </Grid>
@@ -347,16 +377,6 @@
               </design:DesignEditor.InteractionOptions>
             </design:DesignEditor>
 
-            <!-- The label the design floats over the form, and the zoom pill opposite it. -->
-            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left"
-                        VerticalAlignment="Top" Margin="16,10,0,0"
-                        IsVisible="{Binding CanvasCaption, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-              <TextBlock Text="{Binding CanvasCaption}" Classes="mono" FontSize="11" FontWeight="Medium"
-                         Foreground="{DynamicResource Acc}" />
-              <TextBlock Text="{Binding CanvasSizeAndZoom}" Classes="mono" FontSize="11"
-                         Foreground="{DynamicResource Fg3}" />
-            </StackPanel>
-
             <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14"
                     Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Brd}"
                     BorderThickness="1" CornerRadius="7">
@@ -393,21 +413,37 @@
                         Command="{Binding ShowProjectCommand}"
                         BorderThickness="0,0,0,2"
                         BorderBrush="{Binding IsDockProject, Converter={x:Static vm:Converters.UnderlineWhenTrue}}"
-                        Foreground="{Binding IsDockProject, Converter={x:Static vm:Converters.CurrentWhenTrue}}"
-                        Content="Project" />
+                        Foreground="{Binding IsDockProject, Converter={x:Static vm:Converters.CurrentWhenTrue}}">
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Path Data="M2.5 4.8h4l1.4 1.4h5.6v6.3H2.5z" Width="12" Height="12" Stretch="Uniform"
+                          Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2"
+                          VerticalAlignment="Center" />
+                    <TextBlock Text="Project" FontSize="12" Foreground="{Binding $parent[Button].Foreground}" />
+                  </StackPanel>
+                </Button>
                 <Button Classes="tool" Height="32" CornerRadius="0" Padding="12,0" FontSize="12"
                         Command="{Binding ShowConsoleCommand}"
                         BorderThickness="0,0,0,2"
                         BorderBrush="{Binding IsDockConsole, Converter={x:Static vm:Converters.UnderlineWhenTrue}}"
-                        Foreground="{Binding IsDockConsole, Converter={x:Static vm:Converters.CurrentWhenTrue}}"
-                        Content="Console" />
+                        Foreground="{Binding IsDockConsole, Converter={x:Static vm:Converters.CurrentWhenTrue}}">
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Path Data="M3 4.5l3.5 3.5L3 11.5M8.5 11.5H13" Width="12" Height="12" Stretch="Uniform"
+                          Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.3"
+                          VerticalAlignment="Center" />
+                    <TextBlock Text="Console" FontSize="12" Foreground="{Binding $parent[Button].Foreground}" />
+                  </StackPanel>
+                </Button>
                 <Button Classes="tool" Height="32" CornerRadius="0" Padding="12,0" FontSize="12"
                         Command="{Binding ShowProblemsCommand}"
                         BorderThickness="0,0,0,2"
                         BorderBrush="{Binding IsDockProblems, Converter={x:Static vm:Converters.UnderlineWhenTrue}}"
                         Foreground="{Binding IsDockProblems, Converter={x:Static vm:Converters.CurrentWhenTrue}}">
                   <StackPanel Orientation="Horizontal" Spacing="7">
-                    <TextBlock Text="Problems" FontSize="12" />
+                    <Path Data="M8 5.5V8.5M8 10.6v.2M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"
+                          Width="12" Height="12" Stretch="Uniform"
+                          Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2"
+                          VerticalAlignment="Center" />
+                    <TextBlock Text="Problems" FontSize="12" Foreground="{Binding $parent[Button].Foreground}" />
                     <TextBlock Text="{Binding ProblemCount}" FontSize="11"
                                Foreground="{DynamicResource Fg3}" />
                   </StackPanel>
@@ -416,8 +452,14 @@
                         Command="{Binding ShowPackagesCommand}"
                         BorderThickness="0,0,0,2"
                         BorderBrush="{Binding IsDockPackages, Converter={x:Static vm:Converters.UnderlineWhenTrue}}"
-                        Foreground="{Binding IsDockPackages, Converter={x:Static vm:Converters.CurrentWhenTrue}}"
-                        Content="Packages" />
+                        Foreground="{Binding IsDockPackages, Converter={x:Static vm:Converters.CurrentWhenTrue}}">
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Path Data="M8 2.2l5 2.9v5.8l-5 2.9-5-2.9V5.1z" Width="12" Height="12" Stretch="Uniform"
+                          Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2"
+                          VerticalAlignment="Center" />
+                    <TextBlock Text="Packages" FontSize="12" Foreground="{Binding $parent[Button].Foreground}" />
+                  </StackPanel>
+                </Button>
               </StackPanel>
             </Border>
 
@@ -551,7 +593,7 @@
           <ScrollViewer Grid.Row="1">
             <StackPanel>
 
-              <Grid ColumnDefinitions="Auto,*" Margin="14,12,14,10" ColumnSpacing="9">
+              <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,12,14,10" ColumnSpacing="9">
                 <Border Width="30" Height="30" CornerRadius="7" Background="{DynamicResource Sel}">
                   <Path Data="{Binding SelectedGlyph}" Width="16" Height="16" Stretch="Uniform"
                         Stroke="{DynamicResource Acc}" StrokeThickness="1.3" />
@@ -562,6 +604,12 @@
                   <TextBlock Text="{Binding SelectedQualifier}" Classes="mono" FontSize="10.5"
                              Foreground="{DynamicResource Fg3}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
+                <Border Grid.Column="2" Width="14" Height="14" CornerRadius="3.5"
+                        Background="{DynamicResource Acc}" VerticalAlignment="Center"
+                        ToolTip.Tip="IsEnabled">
+                  <Path Data="M3.5 8.5l3 3 6-7" Width="10" Height="10" Stretch="Uniform"
+                        Stroke="White" StrokeThickness="2" />
+                </Border>
               </Grid>
 
               <!-- The chips: what the element declares beyond its properties. -->
@@ -590,15 +638,18 @@
                                      VerticalAlignment="Center" />
                         </StackPanel>
                         <ItemsControl ItemsSource="{Binding Rows}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
                           <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PropertyRow">
-                              <Grid ColumnDefinitions="92,*" Margin="0,0,0,8" ColumnSpacing="8">
-                                <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource Fg2}"
+                              <StackPanel Margin="0,0,10,8" Spacing="3">
+                                <TextBlock Text="{Binding Name}" FontSize="10.5"
+                                           Foreground="{DynamicResource Fg3}"
                                            TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
-                                <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}"
-                                         FontFamily="{DynamicResource MonoFont}" />
-                              </Grid>
+                                <TextBox Text="{Binding Value, Mode=TwoWay}" Height="26"
+                                         FontFamily="{DynamicResource MonoFont}" FontWeight="Medium" />
+                              </StackPanel>
                             </DataTemplate>
                           </ItemsControl.ItemTemplate>
                         </ItemsControl>
