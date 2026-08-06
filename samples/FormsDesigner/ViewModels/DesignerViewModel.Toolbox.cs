@@ -21,8 +21,16 @@ namespace FormsDesigner.ViewModels;
 /// </remarks>
 public sealed record ToolboxEntry(string Group, string Name, string Xaml, double Width, double Height)
 {
+    /// <summary>The design's glyph for this control, and the hue it is drawn in.</summary>
+    public Avalonia.Media.Geometry Glyph => Glyphs.For(Name);
+
+    public string Hue => Glyphs.HueOf(Name);
+
     public override string ToString() => Name;
 }
+
+/// <summary>One of the palette's headings, and what is under it.</summary>
+public sealed record ToolboxGroup(string Name, System.Collections.Generic.IReadOnlyList<ToolboxEntry> Items);
 
 public sealed partial class DesignerViewModel
 {
@@ -37,6 +45,46 @@ public sealed partial class DesignerViewModel
     /// file, which is the thing worth showing.
     /// </remarks>
     public ObservableCollection<ToolboxEntry> Toolbox { get; } = [];
+
+    /// <summary>The same entries under the design's headings, filtered by the search box.</summary>
+    public ObservableCollection<ToolboxGroup> ToolboxGroups { get; } = [];
+
+    /// <summary>
+    /// What the palette's search box holds.
+    /// </summary>
+    /// <remarks>
+    /// A filter over the names rather than a search of anything: the palette is twenty entries, and
+    /// the box exists because a person scanning for "Toggle" should not have to read all twenty.
+    /// </remarks>
+    public string ToolboxFilter
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                GroupToolbox();
+            }
+        }
+    } = string.Empty;
+
+    /// <summary>Which of the design's two variants the toggle is offering to switch to.</summary>
+    public string ThemeName => IsDark ? "Dark" : "Light";
+
+    private void GroupToolbox()
+    {
+        ToolboxGroups.Clear();
+
+        string filter = ToolboxFilter.Trim();
+
+        foreach (IGrouping<string, ToolboxEntry> group in Toolbox
+            .Where(entry => filter.Length == 0
+                || entry.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(static entry => entry.Group))
+        {
+            ToolboxGroups.Add(new ToolboxGroup(group.Key.ToUpperInvariant(), [.. group]));
+        }
+    }
 
     private void InitialiseToolbox()
     {
@@ -64,6 +112,8 @@ public sealed partial class DesignerViewModel
         Add("Layout", "Canvas", """<Canvas Width="200" Height="140" />""", 200, 140);
         Add("Layout", "DockPanel", """<DockPanel Width="200" Height="140" />""", 200, 140);
         Add("Layout", "ScrollViewer", """<ScrollViewer Width="200" Height="140" />""", 200, 140);
+
+        GroupToolbox();
 
         void Add(string group, string name, string xaml, double width, double height) =>
             Toolbox.Add(new ToolboxEntry(group, name, xaml, width, height));

@@ -20,6 +20,8 @@ public sealed partial class DesignerViewModel
             if (Set(ref field, value))
             {
                 Selected = null;
+                RebuildHierarchy();
+                Raise(nameof(CanvasCaption));
                 RefreshAllCommands();
             }
         }
@@ -39,6 +41,8 @@ public sealed partial class DesignerViewModel
             {
                 Raise(nameof(SelectedName));
                 BuildInspector();
+                SyncHierarchySelection();
+                ShowBreadcrumb();
                 RefreshAllCommands();
             }
         }
@@ -134,6 +138,8 @@ public sealed partial class DesignerViewModel
 
         form.Adopt(session.Document);
         form.IsDirty = true;
+
+        RebuildHierarchy();
 
         // The root object can be replaced outright when a change reaches far enough, and the canvas
         // is holding the old one until it is told.

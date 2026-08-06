@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using ArxisStudio.Markup.Xaml;
+using Avalonia.Media;
 
 namespace FormsDesigner.ViewModels;
 
@@ -46,10 +47,53 @@ public sealed class PropertyRow : Observable
     }
 }
 
+/// <summary>One of the inspector's headings, and the rows under it.</summary>
+public sealed record PropertyGroup(string Name, System.Collections.Generic.IReadOnlyList<PropertyRow> Rows);
+
 public sealed partial class DesignerViewModel
 {
     /// <summary>What the selected element sets, and nothing it does not.</summary>
     public ObservableCollection<PropertyRow> Properties { get; } = [];
+
+    /// <summary>The same rows under the design's headings.</summary>
+    public ObservableCollection<PropertyGroup> PropertyGroups { get; } = [];
+
+    /// <summary>The selected element's type, for the inspector's header.</summary>
+    public string SelectedType => Selected is null ? string.Empty : Selected.Name.LocalName;
+
+    public string SelectedQualifier => Selected is null
+        ? "nothing selected"
+        : Selected.Name.Prefix is { Length: > 0 } prefix
+            ? $"{Selected.Name.LocalName} · {prefix}"
+            : $"{Selected.Name.LocalName} · Avalonia.Controls";
+
+    public Geometry SelectedGlyph => Glyphs.For(Selected?.Name.LocalName);
+
+    /// <summary>
+    /// Which of the design's three sections a property belongs to.
+    /// </summary>
+    /// <remarks>
+    /// A lookup rather than reflection over the type. The inspector lists what the document sets, and
+    /// what the document sets is a name — so the grouping is a fact about the name, and a property
+    /// this table has never heard of goes to Content rather than being hidden.
+    /// </remarks>
+    private static string GroupOf(string name) => name switch
+    {
+        "Width" or "Height" or "MinWidth" or "MinHeight" or "MaxWidth" or "MaxHeight"
+            or "Margin" or "Padding" or "HorizontalAlignment" or "VerticalAlignment"
+            or "HorizontalContentAlignment" or "VerticalContentAlignment"
+            or "Dock" or "Spacing" or "Orientation" or "ZIndex" => "Layout",
+
+        "Background" or "Foreground" or "BorderBrush" or "BorderThickness" or "CornerRadius"
+            or "FontSize" or "FontWeight" or "FontFamily" or "FontStyle" or "Opacity"
+            or "BoxShadow" or "Classes" => "Appearance",
+
+        _ when name.StartsWith("Canvas.", StringComparison.Ordinal)
+            || name.StartsWith("Grid.", StringComparison.Ordinal)
+            || name.StartsWith("DockPanel.", StringComparison.Ordinal) => "Layout",
+
+        _ => "Content & Interaction",
+    };
 
     /// <summary>The property to add, typed by hand, because a full member list needs reflection.</summary>
     /// <remarks>
@@ -94,6 +138,11 @@ public sealed partial class DesignerViewModel
     private void BuildInspector()
     {
         Properties.Clear();
+        PropertyGroups.Clear();
+
+        Raise(nameof(SelectedType));
+        Raise(nameof(SelectedQualifier));
+        Raise(nameof(SelectedGlyph));
 
         if (Selected is not { } element)
         {
@@ -116,6 +165,19 @@ public sealed partial class DesignerViewModel
                 attribute.GetValueText(),
                 attribute.IsDirective,
                 (_, value) => RunDetached(() => SetPropertyAsync(element, name, value))));
+        }
+
+        // Grouped in the design's order, and a section with nothing in it is not drawn: an inspector
+        // showing three empty headings tells somebody the control has no properties, which is the
+        // opposite of what it means.
+        foreach (string heading in new[] { "Layout", "Appearance", "Content & Interaction" })
+        {
+            PropertyRow[] rows = [.. Properties.Where(row => GroupOf(row.Name) == heading)];
+
+            if (rows.Length > 0)
+            {
+                PropertyGroups.Add(new PropertyGroup(heading, rows));
+            }
         }
     }
 

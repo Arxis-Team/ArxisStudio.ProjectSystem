@@ -12,6 +12,10 @@
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
 
+        <!-- The design's own tokens, and they come first so the editor's theme below can be
+             overridden by them where the two describe the same thing. -->
+        <ResourceInclude Source="avares://FormsDesigner/Views/Theme.axaml" />
+
         <!--
           The editor's own theme, and without it there is no editor. DesignEditor ships its
           template, its grid, its selection adorners and its resources in one dictionary that an

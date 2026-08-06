@@ -28,7 +28,7 @@ public sealed partial class MainWindow : Window
         AvaloniaXamlLoader.Load(this);
 
         DesignEditor surface = this.GetControl<DesignEditor>("Surface");
-        ListBox toolbox = this.GetControl<ListBox>("ToolboxList");
+        ItemsControl toolbox = this.GetControl<ItemsControl>("ToolboxList");
 
         surface.DesignSelectionChanged += OnDesignSelectionChanged;
         surface.EditCompleted += OnEditCompleted;
@@ -162,7 +162,7 @@ public sealed partial class MainWindow : Window
 
     private async void OnToolboxPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is not ListBox toolbox
+        if (sender is not ItemsControl toolbox
             || !e.GetCurrentPoint(toolbox).Properties.IsLeftButtonPressed
             || (e.Source as Control)?.DataContext is not ToolboxEntry entry)
         {

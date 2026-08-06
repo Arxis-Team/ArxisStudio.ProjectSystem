@@ -19,6 +19,21 @@ It needs **both** `ArxisStudio.Markup` and `ArxisStudio.DesignEditor` checked ou
 repository. The project file fails with `APSSAMPLE01` and a sentence saying so if the second is
 missing.
 
+## The design
+
+The window follows the ArxisStudio UI mockup: its palette, its type, its measurements, and its
+arrangement — a 42px toolbar with Run centred, a 262px column of Hierarchy over Toolbox, the canvas
+under a breadcrumb and a Design/XAML/Split switch, a 212px dock of Project, Console, Problems and
+Packages, a 302px Inspector grouped into Layout, Appearance and Content, and a 26px status bar.
+
+Both variants of the palette ship, keyed by `ThemeVariant`, and the toolbar switches between them —
+including the canvas grid, whose colours are the same tokens under the keys `ArxisStudio.DesignEditor`
+reads. Every colour in the window is a token; there is no literal outside `Views/Theme.axaml`.
+
+The icons are the mockup's own paths, in `Glyphs`, together with the hue each kind of control is
+drawn in — layout panels one colour, text entry another, lists a third. That is what lets a tree of
+thirty rows be read by shape and colour before any of the names are.
+
 ## Who does what
 
 The division is the whole point, and none of the three knows about the others.

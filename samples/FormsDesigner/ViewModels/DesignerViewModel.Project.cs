@@ -292,6 +292,8 @@ public sealed partial class DesignerViewModel
         await form.AdoptAsync(session);
 
         SizeToContent(form);
+        RebuildHierarchy();
+        Raise(nameof(CanvasCaption));
 
         Log($"  {form.Name} loaded, {Describe(session.Objects.MappedElements.Count, "element")} mapped");
 

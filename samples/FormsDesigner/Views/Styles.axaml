@@ -1,16 +1,183 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+  <!--
+    The design's control styles. Sizes, radii and weights are the mockup's numbers rather than
+    approximations of them: a 28px control among 26px controls is the difference between a window
+    that looks designed and one that looks assembled.
+  -->
+
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+  </Style>
+
   <Style Selector="TextBlock.caption">
-    <Setter Property="Foreground" Value="#9AA4B2" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg3}" />
     <Setter Property="FontSize" Value="11" />
   </Style>
 
-  <Style Selector="Border.panel">
-    <Setter Property="Background" Value="#1B1D23" />
-    <Setter Property="BorderBrush" Value="#2E3440" />
+  <Style Selector="TextBlock.dim">
+    <Setter Property="Foreground" Value="{DynamicResource Fg2}" />
+    <Setter Property="FontSize" Value="11.5" />
+  </Style>
+
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource MonoFont}" />
+    <Setter Property="FontSize" Value="11.5" />
+  </Style>
+
+  <!-- A section label: uppercase, tracked out, quiet. -->
+  <Style Selector="TextBlock.section">
+    <Setter Property="Foreground" Value="{DynamicResource Fg3}" />
+    <Setter Property="FontSize" Value="10.5" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="0.5" />
+  </Style>
+
+  <Style Selector="TextBlock.panelTitle">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <!-- A toolbar button: flat until it is pointed at. -->
+  <Style Selector="Button.tool">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg2}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.tool:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Bg3}" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+  </Style>
+
+  <Style Selector="Button.tool:disabled /template/ ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource Fg3}" />
+  </Style>
+
+  <!-- The accented one, for the single action a screen is about. -->
+  <Style Selector="Button.accent">
+    <Setter Property="Background" Value="{DynamicResource Acc}" />
+    <Setter Property="Foreground" Value="{DynamicResource OnAcc}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="14,0" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccH}" />
+  </Style>
+
+  <!-- An icon square in the toolbar. -->
+  <Style Selector="Button.icon">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="Width" Value="30" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg2}" />
+  </Style>
+
+  <Style Selector="Button.icon:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Bg3}" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+  </Style>
+
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource Inp}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brd2}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="MinHeight" Value="26" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{DynamicResource Acc}" />
+  </Style>
+
+  <Style Selector="ComboBox">
+    <Setter Property="Background" Value="{DynamicResource Inp}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brd2}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="MinHeight" Value="26" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style Selector="CheckBox">
+    <Setter Property="FontSize" Value="11.5" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg2}" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+
+  <!-- Panels: one border colour, one radius, nothing else. -->
+  <Style Selector="Border.panel">
+    <Setter Property="Background" Value="{DynamicResource Bg2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brd}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="Border.panelHeader">
+    <Setter Property="Height" Value="34" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brd}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="12,0,8,0" />
+  </Style>
+
+  <Style Selector="ListBox">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+
+  <Style Selector="ListBoxItem">
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="FontSize" Value="12.5" />
+  </Style>
+
+  <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Sel}" />
+  </Style>
+
+  <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Bg3}" />
+  </Style>
+
+  <Style Selector="TreeViewItem">
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="FontSize" Value="12.5" />
+  </Style>
+
+  <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot">
+    <Setter Property="Background" Value="{DynamicResource Sel}" />
+  </Style>
+
+  <Style Selector="GridSplitter">
+    <Setter Property="Background" Value="Transparent" />
   </Style>
 
 </Styles>

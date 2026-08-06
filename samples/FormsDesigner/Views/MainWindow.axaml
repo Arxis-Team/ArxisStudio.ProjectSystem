@@ -5,297 +5,505 @@
         x:Class="FormsDesigner.Views.MainWindow"
         x:DataType="vm:DesignerViewModel"
         Title="ArxisStudio — Forms Designer"
-        Background="#141417"
-        Width="1560" Height="960">
+        Background="{DynamicResource Bg1}"
+        FontFamily="{DynamicResource UiFont}"
+        MinWidth="1360"
+        Width="1600" Height="980">
 
   <Window.Resources>
 
-    <!-- One form on the surface: the live control tree, with a title strip above it. -->
+    <!-- One form on the surface: the live tree, framed the way the design frames a window. -->
     <DataTemplate x:Key="FormTemplate" DataType="vm:FormViewModel">
-      <Grid RowDefinitions="Auto,*">
-        <TextBlock Grid.Row="0" Text="{Binding Title}" Classes="caption" Margin="2,0,0,3" />
-        <Border Grid.Row="1" Background="#22262E" BorderBrush="#3A4152" BorderThickness="1">
-          <Grid RowDefinitions="Auto,*">
+      <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}" BorderThickness="1"
+              CornerRadius="10" BoxShadow="0 18 50 0 #8C000000">
+        <Grid RowDefinitions="Auto,*">
 
-            <!--
-              Drawn, not hosted. A Window cannot be a child of anything, so the designer shows what
-              is inside it and paints the frame itself; without this the canvas was empty and
-              Avalonia threw during layout where nothing could report it.
-            -->
-            <Border Grid.Row="0" Background="#2C3140" Padding="8,4"
-                    IsVisible="{Binding WindowTitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-              <TextBlock Text="{Binding WindowTitle}" FontSize="11" Foreground="#C8D2E4" />
-            </Border>
+          <!-- The window chrome, drawn rather than hosted: three dots and a title, as designed. -->
+          <Border Grid.Row="0" Height="36" Background="{DynamicResource Bg2}" CornerRadius="10,10,0,0"
+                  BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="12,0"
+                  IsVisible="{Binding WindowTitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
+              <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
+              <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
+              <TextBlock Text="{Binding WindowTitle}" FontWeight="SemiBold" FontSize="12"
+                         Margin="6,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+          </Border>
 
-            <Panel Grid.Row="1">
-              <ContentControl Content="{Binding Surface}" />
-              <TextBlock Text="{Binding Problem}" TextWrapping="Wrap" Margin="12"
-                         Foreground="#FF6B6B" VerticalAlignment="Center"
-                         IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-            </Panel>
+          <Panel Grid.Row="1">
+            <ContentControl Content="{Binding Surface}" />
+            <TextBlock Text="{Binding Problem}" TextWrapping="Wrap" Margin="14"
+                       Foreground="{DynamicResource Red}" VerticalAlignment="Center"
+                       IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </Panel>
 
-          </Grid>
-        </Border>
-      </Grid>
+        </Grid>
+      </Border>
     </DataTemplate>
 
   </Window.Resources>
 
   <Window.Styles>
-
-    <!--
-      The container binds its geometry to the form view model, which is what lets the editor move
-      and resize a form on the surface and have the view model know about it.
-    -->
     <Style Selector="design|DesignEditorItem" x:DataType="vm:FormViewModel">
       <Setter Property="ContentMode" Value="Loaded" />
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#4A5468" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brd2}" />
       <Setter Property="Location" Value="{Binding Location, Mode=TwoWay}" />
       <Setter Property="Width" Value="{Binding Width, Mode=TwoWay}" />
       <Setter Property="Height" Value="{Binding Height, Mode=TwoWay}" />
       <Setter Property="HorizontalAlignment" Value="Left" />
       <Setter Property="VerticalAlignment" Value="Top" />
     </Style>
-
   </Window.Styles>
 
-  <Grid RowDefinitions="Auto,*,Auto">
+  <Grid RowDefinitions="42,*,26">
 
-    <!-- Toolbar. Play and Stop sit in the middle, which is where Unity puts them. -->
-    <Border Grid.Row="0" Padding="8,6" Background="#1B1D23" BorderBrush="#2E3440" BorderThickness="0,0,0,1">
+    <!-- Toolbar -->
+    <Border Grid.Row="0" Background="{DynamicResource Bg2}"
+            BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="10,0">
       <Grid ColumnDefinitions="Auto,*,Auto,*,Auto">
 
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-          <Button Content="Open…" Command="{Binding OpenCommand}" />
-          <Button Content="New form" Command="{Binding NewFormCommand}" />
-          <Button Content="Save" Command="{Binding SaveCommand}" />
-          <Rectangle Width="1" Fill="#33FFFFFF" Margin="4,2" />
-          <Button Content="Restore" Command="{Binding RestoreCommand}" />
-          <Button Content="Build" Command="{Binding BuildCommand}" />
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Border Width="24" Height="24" CornerRadius="6" Background="{DynamicResource Acc}">
+            <TextBlock Text="Ax" Foreground="White" FontWeight="Bold" FontSize="10.5"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <Button Classes="tool" Command="{Binding OpenCommand}" FontWeight="SemiBold" FontSize="12.5"
+                  Foreground="{DynamicResource Fg}" Content="{Binding Status}" />
+          <Button Classes="tool" Content="New form" Command="{Binding NewFormCommand}" />
+          <Button Classes="tool" Content="Save" Command="{Binding SaveCommand}" />
+          <Rectangle Width="1" Height="18" Fill="{DynamicResource Brd}" Margin="2,0" />
+          <Button Classes="tool" Content="Restore" Command="{Binding RestoreCommand}" />
+          <Button Classes="tool" Content="Build" Command="{Binding BuildCommand}" />
         </StackPanel>
 
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
-          <Button Content="▶" Width="40" Command="{Binding RunCommand}" ToolTip.Tip="Build and run" />
-          <Button Content="■" Width="40" Command="{Binding StopCommand}" ToolTip.Tip="Stop" />
-          <Rectangle Width="1" Fill="#33FFFFFF" Margin="4,2" />
-          <CheckBox Content="grid" IsChecked="{Binding SnapToGrid, Mode=TwoWay}"
-                    ToolTip.Tip="Snap to the grid. Hold Alt to bypass." />
-          <CheckBox Content="guides" IsChecked="{Binding SnapToGuides, Mode=TwoWay}"
-                    ToolTip.Tip="Align to neighbours. Hold Alt to bypass." />
-          <TextBlock VerticalAlignment="Center" Classes="caption" Text="{Binding ZoomText}" />
-        </StackPanel>
+        <!-- Run and stop, in a bezel, centred: where an IDE puts the thing you press most. -->
+        <Border Grid.Column="2" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}"
+                BorderThickness="1" CornerRadius="7" Padding="2" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button Classes="icon" Command="{Binding RunCommand}" ToolTip.Tip="Build and run"
+                    Foreground="{DynamicResource Grn}">
+              <Path Data="M5.2 3.4v9.2L13 8z" Width="14" Height="14" Stretch="Uniform"
+                    Fill="{DynamicResource Grn}" />
+            </Button>
+            <Button Classes="icon" Command="{Binding StopCommand}" ToolTip.Tip="Stop">
+              <Path Data="M4 4h8v8h-8z" Width="12" Height="12" Stretch="Uniform"
+                    Fill="{DynamicResource Red}" />
+            </Button>
+            <Rectangle Width="1" Fill="{DynamicResource Brd}" Margin="3,4" />
+            <CheckBox Content="grid" IsChecked="{Binding SnapToGrid, Mode=TwoWay}" Margin="5,0,0,0"
+                      ToolTip.Tip="Snap to the grid. Hold Alt to bypass." />
+            <CheckBox Content="guides" IsChecked="{Binding SnapToGuides, Mode=TwoWay}" Margin="4,0,8,0"
+                      ToolTip.Tip="Align to neighbours' edges and centres. Hold Alt to bypass." />
+          </StackPanel>
+        </Border>
 
-        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8">
-          <TextBlock VerticalAlignment="Center" Text="{Binding Status}" />
-          <ProgressBar IsIndeterminate="True" Width="90" Height="4"
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <ProgressBar IsIndeterminate="True" Width="80" Height="3"
                        VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
-          <TextBlock VerticalAlignment="Center" Classes="caption" Text="{Binding Progress}" />
+          <TextBlock Classes="caption" Text="{Binding Progress}" VerticalAlignment="Center" />
+          <Button Classes="tool" Height="24" Padding="12,0" FontSize="11" CornerRadius="14"
+                  Command="{Binding ToggleThemeCommand}" Content="{Binding ThemeName}"
+                  ToolTip.Tip="Switch between the design's two variants" />
         </StackPanel>
 
       </Grid>
     </Border>
 
-    <!-- Body: project and toolbox, the surface, the inspector. -->
-    <Grid Grid.Row="1" ColumnDefinitions="280,4,*,4,320" Margin="8,8,8,0">
+    <!-- Body -->
+    <Grid Grid.Row="1" ColumnDefinitions="262,4,*,4,302">
 
-      <Border Grid.Column="0" Classes="panel">
-        <TabControl>
+      <!-- Left: hierarchy over palette -->
+      <Border Grid.Column="0" Background="{DynamicResource Bg2}"
+              BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="1.15*,1,*">
 
-          <TabItem Header="Project">
-            <ListBox ItemsSource="{Binding ProjectForms}"
-                     SelectedItem="{Binding SelectedProjectForm, Mode=TwoWay}">
+          <Grid Grid.Row="0" RowDefinitions="34,*">
+            <Border Grid.Row="0" Classes="panelHeader">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="panelTitle" Text="Hierarchy" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Classes="caption" VerticalAlignment="Center"
+                           Text="{Binding Hierarchy.Count, StringFormat='{}{0} elements'}" />
+              </Grid>
+            </Border>
+            <ListBox Grid.Row="1" ItemsSource="{Binding Hierarchy}"
+                     SelectedItem="{Binding SelectedHierarchyRow, Mode=TwoWay}">
               <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:FormFile">
-                  <StackPanel Margin="0,1">
-                    <TextBlock Text="{Binding Name}" />
-                    <TextBlock Text="{Binding Folder}" Classes="caption" />
-                  </StackPanel>
+                <DataTemplate x:DataType="vm:HierarchyRow">
+                  <Grid ColumnDefinitions="Auto,Auto,Auto,*" Height="24">
+                    <Border Width="{Binding Indent}" />
+                    <Path Grid.Column="1" Data="M4.2 6L8 9.8 11.8 6" Width="13" Height="13"
+                          Stretch="Uniform" Opacity="{Binding ChevronOpacity}"
+                          Stroke="{DynamicResource Fg3}" StrokeThickness="1.4"
+                          VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <Path Grid.Column="2" Data="{Binding Glyph}" Width="14" Height="14"
+                          Stretch="Uniform" StrokeThickness="1.2" VerticalAlignment="Center"
+                          Stroke="{Binding Hue, Converter={x:Static vm:Converters.Hue}}"
+                          Margin="0,0,6,0" />
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption" Text="{Binding TypeLabel}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                  </Grid>
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
-          </TabItem>
+          </Grid>
 
-          <TabItem Header="Toolbox">
-            <ListBox x:Name="ToolboxList" ItemsSource="{Binding Toolbox}">
-              <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:ToolboxEntry">
-                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2">
-                    <TextBlock Text="{Binding Name}" Width="120" />
-                    <TextBlock Text="{Binding Group}" Classes="caption" />
+          <Border Grid.Row="1" Background="{DynamicResource Brd}" />
+
+          <Grid Grid.Row="2" RowDefinitions="34,*">
+            <Border Grid.Row="0" Classes="panelHeader">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="panelTitle" Text="Toolbox" VerticalAlignment="Center" />
+                <TextBox Grid.Column="1" Width="104" Height="22" PlaceholderText="Search"
+                         Text="{Binding ToolboxFilter, Mode=TwoWay}" FontSize="11" VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+            <ScrollViewer Grid.Row="1">
+              <ItemsControl x:Name="ToolboxList" ItemsSource="{Binding ToolboxGroups}" Margin="0,6">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ToolboxGroup">
+                    <StackPanel Margin="0,0,0,6">
+                      <TextBlock Classes="section" Text="{Binding Name}" Margin="12,0,0,3" Height="20" />
+                      <ItemsControl ItemsSource="{Binding Items}" Margin="8,0">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <UniformGrid Columns="2" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:ToolboxEntry">
+                            <Border Height="26" CornerRadius="5" Padding="7,0" Background="Transparent"
+                                    Cursor="Hand" ToolTip.Tip="{Binding Xaml}">
+                              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                <Path Data="{Binding Glyph}" Width="14" Height="14" Stretch="Uniform"
+                                      StrokeThickness="1.2"
+                                      Stroke="{Binding Hue, Converter={x:Static vm:Converters.Hue}}" />
+                                <TextBlock Text="{Binding Name}" FontSize="12"
+                                           TextTrimming="CharacterEllipsis" />
+                              </StackPanel>
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Grid>
+
+        </Grid>
+      </Border>
+
+      <GridSplitter Grid.Column="1" />
+
+      <!-- Centre: tabs, breadcrumb, canvas, bottom panel -->
+      <Grid Grid.Column="2" RowDefinitions="36,32,*,4,212" Background="{DynamicResource Bg1}">
+
+        <Border Grid.Row="0" Background="{DynamicResource Bg2}"
+                BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="6,0">
+          <ItemsControl ItemsSource="{Binding Forms}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:FormViewModel">
+                <Border Height="36" Padding="12,0" Background="Transparent">
+                  <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                    <Path Data="M2.5 3h11v10h-11zM2.5 6h11" Width="13" Height="13" Stretch="Uniform"
+                          Stroke="{DynamicResource Acc}" StrokeThickness="1.2" />
+                    <TextBlock Text="{Binding Title}" FontSize="12.5" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+
+        <Border Grid.Row="1" Background="{DynamicResource Bg2}"
+                BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="12,0">
+          <Grid ColumnDefinitions="*,Auto,Auto">
+
+            <ItemsControl ItemsSource="{Binding Breadcrumb}" VerticalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding}" FontSize="11.5" Foreground="{DynamicResource Fg2}" />
+                    <TextBlock Text="›" FontSize="11.5" Foreground="{DynamicResource Fg3}" />
                   </StackPanel>
                 </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-          </TabItem>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
-          <TabItem Header="Packages">
-            <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="4">
-              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="0,0,0,6">
-                <TextBox Width="130" Text="{Binding PackageQuery, Mode=TwoWay}" PlaceholderText="search" />
-                <Button Content="Find" Command="{Binding SearchPackagesCommand}" />
+            <Border Grid.Column="1" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}"
+                    BorderThickness="1" CornerRadius="6" Padding="2" VerticalAlignment="Center" Margin="0,0,8,0">
+              <StackPanel Orientation="Horizontal">
+                <Button Classes="tool" Height="20" Padding="10,0" FontSize="11" Content="Design"
+                        Command="{Binding ShowDesignCommand}"
+                        Background="{Binding IsDesignView, Converter={x:Static vm:Converters.AccentWhenTrue}}"
+                        Foreground="{Binding IsDesignView, Converter={x:Static vm:Converters.OnAccentWhenTrue}}" />
+                <Button Classes="tool" Height="20" Padding="10,0" FontSize="11" Content="XAML"
+                        Command="{Binding ShowXamlCommand}"
+                        Background="{Binding IsXamlView, Converter={x:Static vm:Converters.AccentWhenTrue}}"
+                        Foreground="{Binding IsXamlView, Converter={x:Static vm:Converters.OnAccentWhenTrue}}" />
+                <Button Classes="tool" Height="20" Padding="10,0" FontSize="11" Content="Split"
+                        Command="{Binding ShowSplitCommand}"
+                        Background="{Binding IsSplitView, Converter={x:Static vm:Converters.AccentWhenTrue}}"
+                        Foreground="{Binding IsSplitView, Converter={x:Static vm:Converters.OnAccentWhenTrue}}" />
               </StackPanel>
-              <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,6">
-                <ComboBox Width="150" ItemsSource="{Binding AvailableVersions}"
-                          SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" />
-                <Button Content="Add" Command="{Binding InstallPackageCommand}" />
+            </Border>
+
+            <Border Grid.Column="2" BorderBrush="{DynamicResource Brd}" BorderThickness="1"
+                    CornerRadius="6" Padding="9,3" VerticalAlignment="Center">
+              <TextBlock FontSize="11" Foreground="{DynamicResource Fg2}" Text="{Binding CanvasCaption}" />
+            </Border>
+
+          </Grid>
+        </Border>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto">
+
+          <Panel Grid.Column="0" IsVisible="{Binding IsDesignVisible}">
+            <design:DesignEditor x:Name="Surface"
+                                 ItemsSource="{Binding Forms}"
+                                 SelectedItems="{Binding SelectedForms}"
+                                 SelectionMode="Multiple"
+                                 ItemTemplate="{StaticResource FormTemplate}"
+                                 ViewportZoom="{Binding Zoom, Mode=TwoWay}">
+              <design:DesignEditor.InputGestures>
+                <design:DesignEditorInputGestures PanButton="Middle"
+                                                  PanModifiers="None"
+                                                  MarqueeButton="Left"
+                                                  MarqueeModifiers="None"
+                                                  ZoomModifiers="None"
+                                                  ContainerInteractionModifiers="Control"
+                                                  AdditiveSelectionModifiers="Shift"
+                                                  LargeNudgeModifiers="Shift"
+                                                  SnapBypassModifiers="Alt"
+                                                  ContainerEmptyAreaDrag="Marquee" />
+              </design:DesignEditor.InputGestures>
+              <design:DesignEditor.InteractionOptions>
+                <design:DesignEditorInteractionOptions ZoomStep="1.1"
+                                                       DragStartThreshold="3"
+                                                       ResizeMinSize="8"
+                                                       IsResizeContainedToParent="True"
+                                                       IsSnapToGridEnabled="{Binding SnapToGrid}"
+                                                       IsSnapToGuidesEnabled="{Binding SnapToGuides}"
+                                                       SnapGuideTolerance="6"
+                                                       NudgeStep="1"
+                                                       LargeNudgeStep="10" />
+              </design:DesignEditor.InteractionOptions>
+            </design:DesignEditor>
+
+            <!-- Zoom, bottom right, as designed. -->
+            <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14"
+                    Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Brd}"
+                    BorderThickness="1" CornerRadius="7">
+              <StackPanel Orientation="Horizontal">
+                <Button Classes="icon" Width="28" Height="26" Content="−" Command="{Binding ZoomOutCommand}" />
+                <Button Classes="tool" Height="26" Padding="4,0" FontSize="11.5"
+                        Content="{Binding ZoomText}" Command="{Binding ZoomResetCommand}" />
+                <Button Classes="icon" Width="28" Height="26" Content="+" Command="{Binding ZoomInCommand}" />
               </StackPanel>
-              <TextBlock Grid.Row="2" Text="{Binding PackageAdvice}" TextWrapping="Wrap" Margin="0,0,0,6"
-                         IsVisible="{Binding PackageAdvice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                         Foreground="{Binding PackageAdviceSeverity, Converter={x:Static vm:Converters.SeverityBrush}}" />
-              <ListBox Grid.Row="3" ItemsSource="{Binding FoundPackages}"
-                       SelectedItem="{Binding SelectedPackage, Mode=TwoWay}">
+            </Border>
+
+            <!-- The gestures, where somebody will find them. -->
+            <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="14"
+                    Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Brd}"
+                    BorderThickness="1" CornerRadius="7" Padding="10,8" Opacity="0.92">
+              <StackPanel Spacing="2">
+                <TextBlock Classes="section" Text="GESTURES" Margin="0,0,0,3" />
+                <TextBlock Classes="caption" Text="drag — the control under the pointer" />
+                <TextBlock Classes="caption" Text="Ctrl + drag — the form itself" />
+                <TextBlock Classes="caption" Text="middle — pan     wheel — zoom" />
+                <TextBlock Classes="caption" Text="arrows — 1px     Shift — 10px     Alt — no snap" />
+                <TextBlock Classes="caption" Text="Delete — remove     Ctrl+A — all forms" />
+              </StackPanel>
+            </Border>
+          </Panel>
+
+          <GridSplitter Grid.Column="1" Width="4" IsVisible="{Binding IsSplitView}" />
+
+          <Border Grid.Column="2" IsVisible="{Binding IsXamlVisible}" Width="520"
+                  Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}" BorderThickness="1,0,0,0">
+            <ScrollViewer>
+              <TextBlock Text="{Binding DocumentText}" Classes="mono" TextWrapping="NoWrap" Margin="14,10" />
+            </ScrollViewer>
+          </Border>
+
+        </Grid>
+
+        <GridSplitter Grid.Row="3" Height="4" />
+
+        <Border Grid.Row="4" Background="{DynamicResource Bg2}"
+                BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0">
+          <TabControl Padding="0">
+
+            <TabItem Header="Project">
+              <ListBox ItemsSource="{Binding ProjectForms}"
+                       SelectedItem="{Binding SelectedProjectForm, Mode=TwoWay}">
                 <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="vm:PackageRow">
-                    <StackPanel Margin="0,2">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding Id}" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding Version}" Classes="caption" />
-                      </StackPanel>
-                      <TextBlock Text="{Binding Description}" Classes="caption"
-                                 TextTrimming="CharacterEllipsis" />
+                  <DataTemplate x:DataType="vm:FormFile">
+                    <StackPanel Orientation="Horizontal" Spacing="8" Height="24" VerticalAlignment="Center">
+                      <Path Data="M4 2.5h5.5L12.5 6v7.5H4zM9.5 2.5V6h3" Width="13" Height="13"
+                            Stretch="Uniform" Stroke="{DynamicResource Acc}" StrokeThickness="1.2" />
+                      <TextBlock Text="{Binding Name}" />
+                      <TextBlock Classes="caption" Text="{Binding Folder}" />
                     </StackPanel>
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
-            </Grid>
-          </TabItem>
+            </TabItem>
 
-        </TabControl>
-      </Border>
+            <TabItem Header="Console">
+              <ListBox ItemsSource="{Binding Output}" FontFamily="{DynamicResource MonoFont}" FontSize="11.5" />
+            </TabItem>
 
-      <GridSplitter Grid.Column="1" Background="Transparent" />
+            <TabItem Header="Problems">
+              <ListBox ItemsSource="{Binding Diagnostics}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:DiagnosticRow">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Code}" Classes="mono"
+                                 Foreground="{Binding Severity, Converter={x:Static vm:Converters.SeverityBrush}}" />
+                      <TextBlock Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption" Text="{Binding Where}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </TabItem>
 
-      <!-- The surface, with the gestures listed over it: an editor whose gestures are undiscoverable
-           is an editor most people use one gesture of. -->
-      <Border Grid.Column="2" Classes="panel" ClipToBounds="True">
-        <Panel>
-        <design:DesignEditor x:Name="Surface"
-                             ItemsSource="{Binding Forms}"
-                             SelectedItems="{Binding SelectedForms}"
-                             SelectionMode="Multiple"
-                             ItemTemplate="{StaticResource FormTemplate}"
-                             ViewportZoom="{Binding Zoom, Mode=TwoWay}">
-          <!--
-            The mapping a form designer wants. Without a modifier every gesture reaches the control
-            inside the form, which is what somebody is here to move; Ctrl switches the whole
-            interaction to the form itself, for arranging forms on the surface. That is what
-            ContainerInteractionModifiers means, and leaving it at None said "nothing ever reaches
-            the form", which is a designer that cannot move its own windows.
-          -->
-          <design:DesignEditor.InputGestures>
-            <design:DesignEditorInputGestures PanButton="Middle"
-                                              PanModifiers="None"
-                                              MarqueeButton="Left"
-                                              MarqueeModifiers="None"
-                                              ZoomModifiers="None"
-                                              ContainerInteractionModifiers="Control"
-                                              AdditiveSelectionModifiers="Shift"
-                                              LargeNudgeModifiers="Shift"
-                                              SnapBypassModifiers="Alt"
-                                              ContainerEmptyAreaDrag="Marquee" />
-          </design:DesignEditor.InputGestures>
+            <TabItem Header="Packages">
+              <Grid RowDefinitions="Auto,*" Margin="10,8">
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
+                  <TextBox Width="180" PlaceholderText="search nuget.org" Text="{Binding PackageQuery, Mode=TwoWay}" />
+                  <Button Classes="tool" Content="Find" Command="{Binding SearchPackagesCommand}" />
+                  <ComboBox Width="150" ItemsSource="{Binding AvailableVersions}"
+                            SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" />
+                  <Button Classes="accent" Content="Add" Command="{Binding InstallPackageCommand}" />
+                  <TextBlock VerticalAlignment="Center" Text="{Binding PackageAdvice}"
+                             Foreground="{Binding PackageAdviceSeverity, Converter={x:Static vm:Converters.SeverityBrush}}" />
+                </StackPanel>
+                <ListBox Grid.Row="1" ItemsSource="{Binding FoundPackages}"
+                         SelectedItem="{Binding SelectedPackage, Mode=TwoWay}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PackageRow">
+                      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Id}" FontWeight="SemiBold" />
+                        <TextBlock Classes="caption" Text="{Binding Version}" />
+                        <TextBlock Classes="caption" Text="{Binding Description}"
+                                   TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </Grid>
+            </TabItem>
 
-          <!--
-            Snapping on, to the grid and to the neighbours, because a form laid out by eye is a form
-            laid out crookedly — and Alt turns both off for the one control that has to sit at 37.
-            Resize is contained to the form: a button hanging outside the window it belongs to is a
-            picture of something that cannot happen at runtime.
-          -->
-          <design:DesignEditor.InteractionOptions>
-            <design:DesignEditorInteractionOptions ZoomStep="1.1"
-                                                   DragStartThreshold="3"
-                                                   ResizeMinSize="8"
-                                                   IsResizeContainedToParent="True"
-                                                   IsSnapToGridEnabled="{Binding SnapToGrid}"
-                                                   IsSnapToGuidesEnabled="{Binding SnapToGuides}"
-                                                   SnapGuideTolerance="6"
-                                                   NudgeStep="1"
-                                                   LargeNudgeStep="10" />
-          </design:DesignEditor.InteractionOptions>
-        </design:DesignEditor>
-
-        <Border VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="10"
-                Background="#E0171B22" BorderBrush="#3E4655" BorderThickness="1"
-                CornerRadius="6" Padding="10,8">
-          <StackPanel Spacing="3">
-            <TextBlock Text="Gestures" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,3" />
-            <TextBlock Classes="caption" Text="drag — move the control under the pointer" />
-            <TextBlock Classes="caption" Text="Ctrl + drag — move or resize the form itself" />
-            <TextBlock Classes="caption" Text="drag on empty space — marquee select" />
-            <TextBlock Classes="caption" Text="Shift + click — add to the selection" />
-            <TextBlock Classes="caption" Text="middle drag — pan     wheel — zoom" />
-            <TextBlock Classes="caption" Text="arrows — nudge 1px     Shift + arrows — 10px" />
-            <TextBlock Classes="caption" Text="Alt — bypass snapping for one gesture" />
-            <TextBlock Classes="caption" Text="Delete — remove     Esc — deselect     Ctrl+A — all forms" />
-          </StackPanel>
+          </TabControl>
         </Border>
 
-        </Panel>
-      </Border>
+      </Grid>
 
-      <GridSplitter Grid.Column="3" Background="Transparent" />
+      <GridSplitter Grid.Column="3" />
 
-      <!-- Inspector. -->
-      <Border Grid.Column="4" Classes="panel">
-        <Grid RowDefinitions="Auto,*,Auto" Margin="6">
+      <!-- Right: inspector -->
+      <Border Grid.Column="4" Background="{DynamicResource Bg2}"
+              BorderBrush="{DynamicResource Brd}" BorderThickness="1,0,0,0">
+        <Grid RowDefinitions="34,*">
 
-          <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,8">
-            <TextBlock Text="Inspector" FontWeight="SemiBold" />
-            <TextBlock Text="{Binding SelectedName}" Classes="caption" TextWrapping="Wrap" />
-            <Button Content="Delete" Command="{Binding DeleteSelectedCommand}" HorizontalAlignment="Left" />
-          </StackPanel>
+          <Border Grid.Row="0" Classes="panelHeader">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="panelTitle" Text="Inspector" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Classes="icon" Width="24" Height="22"
+                      Command="{Binding DeleteSelectedCommand}" ToolTip.Tip="Delete the selection">
+                <Path Data="M4.5 4.5l7 7M11.5 4.5l-7 7" Width="12" Height="12" Stretch="Uniform"
+                      Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
+              </Button>
+            </Grid>
+          </Border>
 
           <ScrollViewer Grid.Row="1">
-            <ItemsControl ItemsSource="{Binding Properties}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:PropertyRow">
-                  <Grid ColumnDefinitions="130,*" Margin="0,2">
-                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="caption"
-                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                    <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
+            <StackPanel>
 
-          <StackPanel Grid.Row="2" Spacing="4" Margin="0,8,0,0">
-            <TextBlock Text="Add a property" Classes="caption" />
-            <Grid ColumnDefinitions="130,*,Auto" ColumnSpacing="4">
-              <TextBox Grid.Column="0" Text="{Binding NewPropertyName, Mode=TwoWay}" PlaceholderText="Name" />
-              <TextBox Grid.Column="1" Text="{Binding NewPropertyValue, Mode=TwoWay}" PlaceholderText="Value" />
-              <Button Grid.Column="2" Content="+" Command="{Binding AddPropertyCommand}" />
-            </Grid>
-          </StackPanel>
+              <Grid ColumnDefinitions="Auto,*" Margin="14,12,14,10" ColumnSpacing="9">
+                <Border Width="30" Height="30" CornerRadius="7" Background="{DynamicResource Sel}">
+                  <Path Data="{Binding SelectedGlyph}" Width="16" Height="16" Stretch="Uniform"
+                        Stroke="{DynamicResource Acc}" StrokeThickness="1.3" />
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding SelectedName}" FontWeight="SemiBold" FontSize="13"
+                             TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding SelectedQualifier}" Classes="mono" FontSize="10.5"
+                             Foreground="{DynamicResource Fg3}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </Grid>
+
+              <ItemsControl ItemsSource="{Binding PropertyGroups}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PropertyGroup">
+                    <Border BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0" Padding="14,8,14,12">
+                      <StackPanel>
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" Height="26" />
+                        <ItemsControl ItemsSource="{Binding Rows}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PropertyRow">
+                              <Grid ColumnDefinitions="92,*" Margin="0,0,0,8" ColumnSpacing="8">
+                                <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Fg2}"
+                                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                                <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" />
+                              </Grid>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <Border BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0" Padding="14,10,14,16">
+                <StackPanel Spacing="6">
+                  <TextBlock Classes="section" Text="ADD A PROPERTY" />
+                  <Grid ColumnDefinitions="92,*,Auto" ColumnSpacing="6">
+                    <TextBox Text="{Binding NewPropertyName, Mode=TwoWay}" PlaceholderText="Name" />
+                    <TextBox Grid.Column="1" Text="{Binding NewPropertyValue, Mode=TwoWay}" PlaceholderText="Value" />
+                    <Button Grid.Column="2" Classes="accent" Height="26" Padding="10,0" Content="+"
+                            Command="{Binding AddPropertyCommand}" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+            </StackPanel>
+          </ScrollViewer>
 
         </Grid>
       </Border>
 
     </Grid>
 
-    <!-- Console and diagnostics. -->
-    <Border Grid.Row="2" Classes="panel" Margin="8" Height="180">
-      <Grid ColumnDefinitions="*,4,420">
-
-        <ListBox Grid.Column="0" ItemsSource="{Binding Output}"
-                 FontFamily="Cascadia Code,Consolas,monospace" FontSize="11" Background="Transparent" />
-
-        <GridSplitter Grid.Column="1" Background="Transparent" />
-
-        <ListBox Grid.Column="2" ItemsSource="{Binding Diagnostics}" Background="Transparent">
-          <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="vm:DiagnosticRow">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="{Binding Code}"
-                           Foreground="{Binding Severity, Converter={x:Static vm:Converters.SeverityBrush}}" />
-                <TextBlock Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding Where}" Classes="caption" />
-              </StackPanel>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
-
+    <!-- Status bar -->
+    <Border Grid.Row="2" Background="{DynamicResource Bg2}"
+            BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0" Padding="12,0">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Classes="dim" Text="{Binding StatusLeft}" VerticalAlignment="Center" FontSize="11" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <TextBlock Classes="dim" FontSize="11" Text="Avalonia 12.1.1" />
+          <TextBlock Classes="caption" Text="·" />
+          <TextBlock Classes="dim" FontSize="11" Text="net10.0" />
+          <TextBlock Classes="caption" Text="·" />
+          <TextBlock Classes="dim" FontSize="11" Text="UTF-8" />
+          <TextBlock Classes="caption" Text="·" />
+          <TextBlock Classes="dim" FontSize="11" Text="{Binding ZoomText}" />
+        </StackPanel>
       </Grid>
     </Border>
 

@@ -55,6 +55,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         RestoreCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Restore)), CanOperate);
         BuildCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Build)), CanOperate);
 
+        InitialiseShell();
         InitialiseRun();
         InitialisePackages();
         InitialiseToolbox();
@@ -133,6 +134,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
             if (Set(ref field, value))
             {
                 Raise(nameof(ZoomText));
+                Raise(nameof(CanvasCaption));
             }
         }
     } = 1.0;
@@ -312,6 +314,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
 
         IsLoaded = result.Snapshot is not null;
 
+        Raise(nameof(StatusLeft));
         ShowDiagnostics(result.Diagnostics);
         RefreshAllCommands();
     }
@@ -325,6 +328,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
             + (snapshot.HasErrors ? ", with errors" : string.Empty);
 
         BuildProjectTree(snapshot);
+        Raise(nameof(StatusLeft));
         RefreshAllCommands();
     }
 
