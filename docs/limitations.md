@@ -358,6 +358,27 @@ The map covers the projects in the snapshot. A `ResourceInclude` naming a projec
 solution opened on one project, referencing another by path — resolves out of the built assembly if
 there is one, and otherwise not at all.
 
+### A translated diagnostic keeps its position only when the text is supplied
+
+Markup measures a span as an offset and a length into the document; the project model measures it as
+lines and columns, because that is what a compiler and MSBuild report. Neither converts into the
+other without the text, so `ProjectMarkupDiagnostics` asks for it — and translates without a position
+rather than with a wrong one when it is not given. A diagnostic pointing at the wrong line is worse
+than one pointing nowhere, because somebody will act on it.
+
+An `avares` document URI yields no file path either. It addresses a resource inside an assembly, and
+which file it came from is a question only a project model can answer.
+
+### No root-instance factory is supplied
+
+A generated `x:Class` partial usually calls `InitializeComponent()` from its constructor, so
+constructing one and then populating it loads the document twice. Markup's own default says as much
+and offers `IXamlRootInstanceFactory` for a caller that knows better.
+
+This adapter does not implement one, because it knows no better: whether a constructor initialises
+itself is a fact about code neither library has seen, and a factory here would be guessing on the
+host's behalf. A host that controls the generated types supplies one.
+
 ### Assemblies are matched by file name
 
 The map from an assembly name to a file is built from the file names in the snapshot. For anything a

@@ -48,11 +48,15 @@ public sealed class ProjectAssemblyContext : IDisposable
 
     private ProjectAssemblyContext(
         string name,
+        ProjectIdentity project,
+        WorkspaceVersion version,
         ImmutableArray<RuntimeAssemblyReference> assemblies,
         Dictionary<string, CanonicalPath> rebuildable,
         Dictionary<string, CanonicalPath> stable)
     {
         Name = name;
+        Project = project;
+        Version = version;
         Assemblies = assemblies;
 
         _rebuildable = rebuildable;
@@ -66,6 +70,21 @@ public sealed class ProjectAssemblyContext : IDisposable
 
     /// <summary>Gets the name this context was created with, which shows up in diagnostics.</summary>
     public string Name { get; }
+
+    /// <summary>Gets the project these assemblies belong to.</summary>
+    public ProjectIdentity Project { get; }
+
+    /// <summary>
+    /// Gets the workspace version this context was built from.
+    /// </summary>
+    /// <remarks>
+    /// What makes a stale result rejectable. A designer builds, loads, and shows — and by the time
+    /// the showing happens the model may have moved on twice. Comparing this against the current
+    /// snapshot's version says whether what is about to be displayed describes the project as it is
+    /// now, and the comparison is one integer rather than a walk over everything that might have
+    /// changed. See <see cref="IsCurrentFor"/>.
+    /// </remarks>
+    public WorkspaceVersion Version { get; }
 
     /// <summary>Gets what the project needs, in the order a resolver should consult it.</summary>
     public ImmutableArray<RuntimeAssemblyReference> Assemblies { get; }
@@ -118,7 +137,29 @@ public sealed class ProjectAssemblyContext : IDisposable
 
         string label = name ?? Describe(snapshot, project);
 
-        return new ProjectAssemblyContext(label, assemblies, rebuildable, stable);
+        return new ProjectAssemblyContext(
+            label, project, snapshot.Version, assemblies, rebuildable, stable);
+    }
+
+    /// <summary>
+    /// Whether this context still describes the project as a snapshot has it.
+    /// </summary>
+    /// <remarks>
+    /// The stale check, and it is deliberately about the whole workspace rather than the one
+    /// project. A version advances on every publication, so this says "nothing has been re-read
+    /// since" — which is the only thing that can be known cheaply and the only thing that is safe
+    /// to act on. A host that wants to know whether <em>this project in particular</em> changed
+    /// compares what it cares about itself; erring towards rebuilding a context is cheap, and
+    /// showing a control built from a model two refreshes old is not.
+    /// </remarks>
+    /// <param name="snapshot">The snapshot to compare against.</param>
+    /// <returns><see langword="true"/> when nothing has been published since this was built.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
+    public bool IsCurrentFor(SolutionSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        return snapshot.Version == Version;
     }
 
     /// <summary>

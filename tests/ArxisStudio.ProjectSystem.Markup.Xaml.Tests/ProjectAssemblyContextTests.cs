@@ -163,6 +163,50 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         Assert.StartsWith("App", context.Name, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A designer builds, loads and shows, and by the time the showing happens the model may have
+    /// moved on twice. Comparing one integer is what makes the stale result rejectable.
+    /// </summary>
+    [Fact]
+    public async Task AContext_KnowsWhichVersionItWasBuiltFrom()
+    {
+        CanonicalPath output = CopyRealAssembly("MyControls.dll");
+
+        // Through a workspace, because only publication stamps a version and a hand-built pair of
+        // snapshots would both carry None and compare equal whatever this did.
+        await using var workspace = new ProjectWorkspace(new SnapshotProvider(output));
+
+        CanonicalPath projectFile = Identity("App").ProjectFilePath;
+
+        WorkspaceLoadResult loaded = await workspace.LoadAsync(
+            new WorkspaceLoadRequest { Workspace = workspace.Identity, EntryPointPath = projectFile },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(WorkspaceLoadStatus.Succeeded, loaded.Status);
+
+        SolutionSnapshot first = workspace.CurrentSnapshot!;
+        ProjectIdentity project = ProjectIdentity.Create(workspace.Identity, projectFile);
+
+        using ProjectAssemblyContext context = ProjectAssemblyContext.Create(first, project);
+
+        Assert.Equal(project, context.Project);
+        Assert.True(context.IsCurrentFor(first));
+
+        await workspace.RefreshAsync(TestContext.Current.CancellationToken);
+
+        // Nothing about this project need have changed for the context to be worth rebuilding.
+        // Rebuilding one is cheap; showing a control built from a model two refreshes old is not.
+        Assert.False(context.IsCurrentFor(workspace.CurrentSnapshot!));
+    }
+
+    [Fact]
+    public void ComparingAgainstNothing_Throws()
+    {
+        using ProjectAssemblyContext context = Context(CopyRealAssembly("MyControls.dll"));
+
+        Assert.Throws<ArgumentNullException>(() => context.IsCurrentFor(null!));
+    }
+
     [Fact]
     public void AfterDisposal_ResolvingThrows()
     {
@@ -250,6 +294,46 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         Assert.Throws<ArgumentNullException>(() => new ProjectAssemblyResolver(null!));
         Assert.Throws<ArgumentNullException>(() => ProjectXamlEnvironment.Create(null!));
         Assert.Throws<ArgumentNullException>(() => ProjectXamlEnvironment.CreateFor(null!, ProjectIdentity.None));
+    }
+
+    /// <summary>
+    /// Publishes one project whose output is the file the test prepared.
+    /// </summary>
+    /// <remarks>
+    /// Identities are minted from <c>request.Workspace</c> rather than from the test's own, because
+    /// a workspace refuses a snapshot carrying somebody else's identity — which is the check that
+    /// keeps two workspaces from sharing a project by accident, and which this fake tripped over
+    /// the first time.
+    /// </remarks>
+    private sealed class SnapshotProvider(CanonicalPath output) : IProjectSystemProvider
+    {
+        public string Name => "Snapshot";
+
+        public bool CanLoad(WorkspaceEntryPoint entryPoint) => true;
+
+        public ValueTask<WorkspaceLoadResult> LoadAsync(
+            WorkspaceLoadRequest request, CancellationToken cancellationToken)
+        {
+            var project = new ProjectSnapshotBuilder
+            {
+                Identity = ProjectIdentity.Create(request.Workspace, request.EntryPointPath),
+                Name = "App",
+                ProjectFilePath = request.EntryPointPath,
+            };
+
+            project.Outputs.Add(new OutputArtifact { Kind = OutputArtifactKind.Assembly, Path = output });
+
+            var solution = new SolutionSnapshotBuilder
+            {
+                Workspace = request.Workspace,
+                Name = "App",
+                Request = request,
+            };
+
+            solution.Projects.Add(project.ToSnapshot());
+
+            return ValueTask.FromResult(WorkspaceLoadResult.Success(solution.ToSnapshot()));
+        }
     }
 
     private static ProjectIdentity Identity(string name) =>

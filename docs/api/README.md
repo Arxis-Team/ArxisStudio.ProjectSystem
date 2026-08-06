@@ -586,6 +586,47 @@ diagnostics rather than exceptions, and let cancellation through. Two more are s
 failure a caller cannot interpret; and **never return `null`**, which is `APS1003` like any other
 broken result.
 
+## Loading XAML against a project
+
+`ArxisStudio.ProjectSystem.Markup.Xaml` is the adapter onto `ArxisStudio.Markup`. It is the one
+package in this family allowed near Markup and Avalonia, and nothing in the family depends on it —
+[ADR 0018](../adr/0018-the-adapter-references-markup-by-source.md).
+
+```csharp
+(XamlLoadEnvironment environment, ProjectAssemblyContext assemblies) =
+    ProjectXamlEnvironment.CreateFor(snapshot, project);
+```
+
+That gives Markup everything it needs: the assemblies the project's documents may name, the types
+behind them, and `avares://` resolved to **the project's own files rather than the last build** —
+which is what makes an edit visible without rebuilding.
+
+The reload cycle is the reason `ProjectAssemblyContext` exists:
+
+```csharp
+if (!assemblies.IsCurrentFor(workspace.CurrentSnapshot!))
+{
+    assemblies.Dispose();                       // asks; the runtime frees it when nothing refers in
+    (environment, assemblies) = ProjectXamlEnvironment.CreateFor(workspace.CurrentSnapshot!, project);
+}
+```
+
+Only what gets rebuilt goes into that collectible context. Packages and anything the host already
+loaded stay with the host, because two copies of Avalonia produce two `Button` types that are not
+assignable to one another. And assemblies are read into memory rather than loaded from their path,
+so the next build can overwrite the file it just loaded.
+
+`ProjectMarkupDiagnostics` carries diagnostics across, so a tool shows one list:
+
+```csharp
+ImmutableArray<ProjectDiagnostic> shown =
+    ProjectMarkupDiagnostics.ToProject(markupDiagnostics, documentText, filePath);
+```
+
+Supply the text. Markup measures a span as an offset; the project model measures it as lines and
+columns; neither converts without it, and without it the translation drops the position rather than
+inventing one.
+
 ## Further reading
 
 - [Known limitations](../limitations.md) — the honest list; read it before promising anything.
