@@ -93,6 +93,19 @@ it — [ADR 0018](docs/adr/0018-the-adapter-references-markup-by-source.md).
 What does not yet: reading `NuGet.config` to discover configured sources, authenticating to private
 feeds, dependency resolution before an install, and staleness detection for build outputs.
 
+## Seeing it work
+
+`samples/ProjectSystem.Ide` is an Avalonia window that uses every package at once — solution
+explorer, evaluated project details, references, outputs, diagnostics, restore and build with
+progress, NuGet search and install, file watching with staleness, and the XAML load environment.
+
+```bash
+dotnet run --project samples/ProjectSystem.Ide -- C:\src\App\App.sln
+```
+
+It is also a smoke test: pass a path and the output pane is mirrored to standard output.
+[Its README](samples/ProjectSystem.Ide/README.md) maps each panel to the API behind it.
+
 ## A minimal example
 
 Opening a real project takes two objects:

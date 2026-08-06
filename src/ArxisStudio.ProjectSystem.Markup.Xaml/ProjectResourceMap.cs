@@ -22,16 +22,22 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// one. That mapping is reversed here, once.
 /// </para>
 /// <para>
-/// Only <c>AvaloniaResource</c> items are mapped, because those are the ones that become
-/// <c>avares</c> resources. Exposing every file in the project under an <c>avares</c> URI would
+/// Only the two item types that become <c>avares</c> resources are mapped, and it takes both.
+/// <c>AvaloniaXaml</c> is what the Avalonia SDK makes of a <c>.axaml</c> document — the thing a
+/// designer is actually opening — and <c>AvaloniaResource</c> is what it makes of an asset. Mapping
+/// only the second finds no documents at all in a real application, which is how this was found:
+/// the sample IDE reported zero resources for a project full of them.
+/// </para>
+/// <para>
+/// Nothing else is mapped. Exposing every file in the project under an <c>avares</c> URI would
 /// answer questions the runtime would answer differently, and a designer that disagrees with the
 /// running application about what a URI means is worse than one that cannot resolve it.
 /// </para>
 /// </remarks>
 public sealed class ProjectResourceMap
 {
-    /// <summary>The item type the Avalonia SDK turns into an embedded resource.</summary>
-    private const string AvaloniaResource = "AvaloniaResource";
+    /// <summary>The item types the Avalonia SDK turns into embedded resources.</summary>
+    private static readonly string[] ResourceItemTypes = ["AvaloniaXaml", "AvaloniaResource"];
 
     internal const string Scheme = "avares";
 
@@ -69,8 +75,7 @@ public sealed class ProjectResourceMap
 
             foreach (ProjectItem item in project.Items)
             {
-                if (!string.Equals(item.ItemType, AvaloniaResource, StringComparison.OrdinalIgnoreCase)
-                    || item.FullPath.IsEmpty)
+                if (item.FullPath.IsEmpty || !IsResource(item.ItemType))
                 {
                     continue;
                 }
@@ -176,6 +181,19 @@ public sealed class ProjectResourceMap
         int end = original.IndexOf('/', start + 2);
 
         return end < 0 ? original[(start + 2)..] : original[(start + 2)..end];
+    }
+
+    private static bool IsResource(string itemType)
+    {
+        foreach (string candidate in ResourceItemTypes)
+        {
+            if (string.Equals(itemType, candidate, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The name of the assembly a project produces, which is what an avares host is.</summary>

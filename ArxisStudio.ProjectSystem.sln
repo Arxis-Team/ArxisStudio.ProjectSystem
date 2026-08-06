@@ -25,6 +25,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArxisStudio.ProjectSystem.M
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArxisStudio.ProjectSystem.Markup.Xaml.Tests", "tests\ArxisStudio.ProjectSystem.Markup.Xaml.Tests\ArxisStudio.ProjectSystem.Markup.Xaml.Tests.csproj", "{DBE836F5-A2A4-4C92-8621-A395806CA4CC}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5D20AA90-6969-D8BD-9DCD-8634F4692FDA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectSystem.Ide", "samples\ProjectSystem.Ide\ProjectSystem.Ide.csproj", "{58DE740B-9CB5-46BC-8891-C77DBA1486F5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -143,6 +147,18 @@ Global
 		{DBE836F5-A2A4-4C92-8621-A395806CA4CC}.Release|x64.Build.0 = Release|Any CPU
 		{DBE836F5-A2A4-4C92-8621-A395806CA4CC}.Release|x86.ActiveCfg = Release|Any CPU
 		{DBE836F5-A2A4-4C92-8621-A395806CA4CC}.Release|x86.Build.0 = Release|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Debug|x64.Build.0 = Debug|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Debug|x86.Build.0 = Debug|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Release|x64.ActiveCfg = Release|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Release|x64.Build.0 = Release|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Release|x86.ActiveCfg = Release|Any CPU
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -157,5 +173,6 @@ Global
 		{FCDD765F-1202-45F1-9D12-B00795B706CF} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{F0B932A8-22A2-40E7-A893-132E2FBC6504} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{DBE836F5-A2A4-4C92-8621-A395806CA4CC} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{58DE740B-9CB5-46BC-8891-C77DBA1486F5} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 	EndGlobalSection
 EndGlobal

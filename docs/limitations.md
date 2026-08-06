@@ -344,11 +344,11 @@ collectible context. Package assemblies go to the default one, because they do n
 builds and because a second copy of a shared library produces types that are not assignable to the
 host's. The consequence is that changing a package version needs a new process, not a new context.
 
-### Only `AvaloniaResource` items get an `avares` URI
+### Only `AvaloniaXaml` and `AvaloniaResource` items get an `avares` URI
 
-The resource map is built from items of that type, because those are the ones the Avalonia SDK
-embeds. A project that arranges its resources some other way resolves nothing from the project, and
-falls through to whatever the built assemblies contain.
+Those are the two item types the Avalonia SDK embeds: the first is what it makes of a `.axaml`
+document, the second of an asset. A project that arranges its resources some other way resolves
+nothing from the project, and falls through to whatever the built assemblies contain.
 
 Exposing every file under an `avares` URI would be worse than resolving none: the designer would
 then answer a question the running application answers differently, which is the one failure mode a
@@ -401,5 +401,11 @@ Not limitations of the implementation so much as scope boundaries, listed so nob
 - **Publishing.** These are referenced by source, not packed to a feed —
   [ADR 0011](adr/0011-these-libraries-are-referenced-not-published.md). There is no versioning
   ceremony, no release process and no `dotnet pack` output.
-- **Benchmarks and samples.** Nothing here has been measured for speed, and the correctness-first
-  choices say so where they were made.
+- **Benchmarks.** Nothing here has been measured for speed, and the correctness-first choices say so
+  where they were made.
+
+There is one sample, `samples/ProjectSystem.Ide`, and it is the exception that earned its place: it
+uses every package at once and found a real defect in the adapter within minutes of first running —
+the resource map accepted only `AvaloniaResource`, so it saw none of the `.axaml` documents in a
+real Avalonia project. No unit test had noticed, because every fixture used the item type the code
+happened to accept.

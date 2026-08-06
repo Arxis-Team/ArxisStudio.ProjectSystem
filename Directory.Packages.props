@@ -75,4 +75,19 @@
     <PackageVersion Include="NuGet.Versioning" Version="7.6.0" />
   </ItemGroup>
 
+  <!--
+    For the sample IDE under samples/ only. No shipping package references any of this, and the
+    architecture tests check that against both the project files and the compiled assemblies.
+
+    Pinned to the same 12.1.1 as ArxisStudio.Markup, deliberately: the adapter hands Markup
+    assemblies loaded out of a project, and two Avalonia versions in one process produce two
+    Avalonia.Controls.Button types that are not assignable to one another.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="Avalonia" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+  </ItemGroup>
+
 </Project>

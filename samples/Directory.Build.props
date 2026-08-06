@@ -1,0 +1,20 @@
+<Project>
+
+  <!--
+    MSBuild stops at the first Directory.Build.props it finds walking up, so the repository's own
+    settings have to be asked for by name.
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      A sample is read, not consumed. Warnings stay errors, because a sample that compiles with
+      warnings teaches the wrong thing, but nobody wants XML documentation on a view model.
+    -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

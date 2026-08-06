@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>ProjectSystem.Ide</RootNamespace>
+    <AssemblyName>ProjectSystem.Ide</AssemblyName>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <!--
+    Every shipping package, because the point of this sample is to use all of them: the model, the
+    provider that fills it in, the package manager that changes it, and the adapter that hands it to
+    a XAML loader.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.MSBuild/ArxisStudio.ProjectSystem.MSBuild.csproj" />
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.NuGet/ArxisStudio.ProjectSystem.NuGet.csproj" />
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.Markup.Xaml/ArxisStudio.ProjectSystem.Markup.Xaml.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+  </ItemGroup>
+
+</Project>

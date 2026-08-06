@@ -1,0 +1,193 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:ProjectSystem.Ide.ViewModels"
+        x:Class="ProjectSystem.Ide.Views.MainWindow"
+        x:DataType="vm:IdeViewModel"
+        Title="ArxisStudio.ProjectSystem — sample IDE"
+        Width="1360" Height="880">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- Toolbar -->
+    <Border Grid.Row="0" Padding="8,6" Background="#1A000000">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button Content="Open…" Command="{Binding OpenCommand}" />
+        <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+        <Rectangle Width="1" Fill="#33FFFFFF" Margin="4,2" />
+        <Button Content="Restore" Command="{Binding RestoreCommand}" />
+        <Button Content="Build" Command="{Binding BuildCommand}" />
+        <Button Content="Rebuild" Command="{Binding RebuildCommand}" />
+        <Button Content="Clean" Command="{Binding CleanCommand}" />
+        <Rectangle Width="1" Fill="#33FFFFFF" Margin="4,2" />
+        <TextBlock VerticalAlignment="Center" Text="{Binding Status}" />
+        <TextBlock VerticalAlignment="Center" Classes="caption" Text="{Binding VersionText}" />
+        <ProgressBar IsIndeterminate="True" Width="90" Height="4"
+                     VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
+        <TextBlock VerticalAlignment="Center" Classes="caption" Text="{Binding Progress}" />
+      </StackPanel>
+    </Border>
+
+    <!-- Body -->
+    <Grid Grid.Row="1" ColumnDefinitions="320,4,*" Margin="8">
+
+      <!-- Solution explorer -->
+      <Border Grid.Column="0" Classes="panel">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Text="Solution explorer" Classes="caption" Margin="0,0,0,6" />
+          <TreeView ItemsSource="{Binding Tree}"
+                    SelectedItem="{Binding SelectedNode, Mode=TwoWay}">
+            <TreeView.ItemTemplate>
+              <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:TreeNode">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="{Binding Glyph}" Opacity="0.5" />
+                  <TextBlock Text="{Binding Title}"
+                             Foreground="{Binding HasErrors, Converter={x:Static vm:Converters.ErrorBrush}}" />
+                  <TextBlock Text="{Binding Detail}" Classes="caption" VerticalAlignment="Center" />
+                </StackPanel>
+              </TreeDataTemplate>
+            </TreeView.ItemTemplate>
+          </TreeView>
+        </DockPanel>
+      </Border>
+
+      <GridSplitter Grid.Column="1" Background="Transparent" />
+
+      <!-- Detail tabs -->
+      <TabControl Grid.Column="2">
+
+        <TabItem Header="Project">
+          <ScrollViewer>
+            <StackPanel Spacing="10" Margin="4">
+              <TextBlock Text="{Binding Details.Title}" FontSize="18" />
+              <ItemsControl ItemsSource="{Binding Details.Identity}" ItemTemplate="{StaticResource FactRow}" />
+              <TextBlock Text="Evaluated context" Classes="caption" />
+              <ItemsControl ItemsSource="{Binding Details.Context}" ItemTemplate="{StaticResource FactRow}" />
+              <TextBlock Text="Surfaced properties" Classes="caption" />
+              <ItemsControl ItemsSource="{Binding Details.Properties}" ItemTemplate="{StaticResource FactRow}" />
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="References">
+          <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Details.References}" ItemTemplate="{StaticResource FactRow}" Margin="4" />
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="Outputs">
+          <ScrollViewer>
+            <StackPanel Spacing="10" Margin="4">
+              <TextBlock Text="Build outputs" Classes="caption" />
+              <ItemsControl ItemsSource="{Binding Details.Outputs}" ItemTemplate="{StaticResource FactRow}" />
+              <TextBlock Text="Runtime assembly closure" Classes="caption" />
+              <ItemsControl ItemsSource="{Binding Details.RuntimeAssemblies}" ItemTemplate="{StaticResource FactRow}" />
+              <TextBlock Text="Evaluation inputs (what a change would invalidate)" Classes="caption" />
+              <ItemsControl ItemsSource="{Binding Details.Inputs}" ItemTemplate="{StaticResource FactRow}" />
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="Packages">
+          <Grid RowDefinitions="Auto,*,Auto" Margin="4">
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
+              <TextBox Width="240" PlaceholderText="search nuget.org" Text="{Binding PackageQuery, Mode=TwoWay}" />
+              <CheckBox Content="prerelease" IsChecked="{Binding IncludePrerelease, Mode=TwoWay}" />
+              <Button Content="Search" Command="{Binding SearchPackagesCommand}" />
+              <ComboBox Width="150" ItemsSource="{Binding AvailableVersions}"
+                        SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" />
+              <Button Content="Install / update" Command="{Binding InstallPackageCommand}" />
+              <Button Content="Uninstall" Command="{Binding UninstallPackageCommand}" />
+            </StackPanel>
+
+            <ListBox Grid.Row="1" ItemsSource="{Binding FoundPackages}"
+                     SelectedItem="{Binding SelectedPackage, Mode=TwoWay}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:PackageRow">
+                  <StackPanel Margin="0,2">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding Id}" FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding Version}" Classes="caption" />
+                      <TextBlock Text="{Binding Authors}" Classes="caption" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Description}" Classes="caption" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <TextBlock Grid.Row="2" Classes="caption" Margin="0,6,0,0"
+                       Text="Declared and resolved packages for the selected project:" />
+          </Grid>
+        </TabItem>
+
+        <TabItem Header="Resolved">
+          <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Details.Packages}" ItemTemplate="{StaticResource FactRow}" Margin="4" />
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="XAML">
+          <Grid RowDefinitions="Auto,Auto,*" Margin="4">
+            <TextBlock Grid.Row="0" Text="{Binding XamlHeader}" TextWrapping="Wrap" Margin="0,0,0,6" />
+            <ItemsControl Grid.Row="1" ItemsSource="{Binding XamlFacts}" ItemTemplate="{StaticResource FactRow}"
+                          MaxHeight="180" />
+            <ScrollViewer Grid.Row="2" Margin="0,8,0,0">
+              <TextBlock Text="{Binding XamlText}" Classes="mono" TextWrapping="NoWrap" />
+            </ScrollViewer>
+          </Grid>
+        </TabItem>
+
+      </TabControl>
+    </Grid>
+
+    <!-- Diagnostics and output -->
+    <Border Grid.Row="2" Classes="panel" Margin="8,0,8,8" Height="220">
+      <Grid ColumnDefinitions="*,4,380">
+        <DockPanel Grid.Column="0">
+          <TextBlock DockPanel.Dock="Top" Text="Diagnostics" Classes="caption" Margin="0,0,0,6" />
+          <ListBox ItemsSource="{Binding Diagnostics}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:DiagnosticRow">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="{Binding Severity}" Width="60"
+                             Foreground="{Binding Severity, Converter={x:Static vm:Converters.SeverityBrush}}" />
+                  <TextBlock Text="{Binding Code}" Width="80" Classes="mono" />
+                  <TextBlock Text="{Binding Where}" Width="180" Classes="caption" />
+                  <TextBlock Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Source}" Classes="caption" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+
+        <GridSplitter Grid.Column="1" Background="Transparent" />
+
+        <DockPanel Grid.Column="2">
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,6">
+            <TextBlock Text="Output" Classes="caption" />
+            <TextBlock Text="{Binding Staleness}"
+                       Foreground="{Binding IsStale, Converter={x:Static vm:Converters.ErrorBrush}}" />
+          </StackPanel>
+          <ListBox ItemsSource="{Binding Output}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Text="{Binding}" Classes="mono" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Grid>
+    </Border>
+  </Grid>
+
+  <Window.Resources>
+    <DataTemplate x:Key="FactRow" x:DataType="vm:Fact">
+      <Grid ColumnDefinitions="220,*" Margin="0,1">
+        <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="caption" TextTrimming="CharacterEllipsis" />
+        <TextBlock Grid.Column="1" Text="{Binding Value}" Classes="mono" TextWrapping="Wrap" />
+      </Grid>
+    </DataTemplate>
+  </Window.Resources>
+
+</Window>

@@ -22,6 +22,11 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// Composed ahead of the file provider rather than instead of it: a document a user opened by path
 /// is a <c>file:</c> URI, and both kinds turn up in the same session.
 /// </para>
+/// <para>
+/// What it can open is whatever <see cref="ProjectResourceMap"/> knows, which is the project's
+/// <c>AvaloniaXaml</c> and <c>AvaloniaResource</c> items — the documents and the assets that end up
+/// embedded under <c>avares</c>.
+/// </para>
 /// </remarks>
 public sealed class ProjectMarkupSourceProvider : IMarkupSourceProvider
 {

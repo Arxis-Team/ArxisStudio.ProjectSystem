@@ -75,6 +75,26 @@ public sealed class ProjectResourceResolverTests : IDisposable
     }
 
     /// <summary>
+    /// The item type an <c>.axaml</c> document actually has. <c>AvaloniaResource</c> is what the
+    /// SDK makes of an asset; <c>AvaloniaXaml</c> is what it makes of the documents a designer
+    /// opens, and both are embedded under <c>avares</c>.
+    /// </summary>
+    /// <remarks>
+    /// Mapping only <c>AvaloniaResource</c> found no documents at all in a real Avalonia project —
+    /// which the sample IDE reported as zero resources for a project full of them, and which no
+    /// test here noticed because every fixture used the item type the code happened to accept.
+    /// </remarks>
+    [Fact]
+    public async Task AnAvaloniaXamlDocument_ResolvesToo()
+    {
+        ProjectResourceResolver resolver = Resolver(
+            ("AvaloniaXaml", WriteResource("Views/Main.axaml", "<UserControl />")));
+
+        Assert.NotNull(await resolver.ResolveAsync(
+            new Uri("avares://MyApp/Views/Main.axaml"), null, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
     /// Exposing every file under an avares URI would answer questions the runtime answers
     /// differently, and a designer that disagrees with the running application is worse than one
     /// that says it does not know.
