@@ -73,17 +73,18 @@ public static class ProjectXamlEnvironment
     /// </remarks>
     /// <param name="context">The project's assemblies.</param>
     /// <param name="resources">
-    /// How <c>avares</c> URIs reach the project's own files, or <see langword="null"/> to resolve
-    /// them only out of built assemblies.
+    /// Which file each <c>avares</c> URI names, or <see langword="null"/> to resolve them only out
+    /// of built assemblies.
     /// </param>
     /// <param name="sourceProvider">
-    /// Where documents are read from, or <see langword="null"/> for files on disk.
+    /// Where documents are read from beyond the project's own, or <see langword="null"/> for files
+    /// on disk.
     /// </param>
     /// <returns>The environment.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
     public static XamlLoadEnvironment Create(
         ProjectAssemblyContext context,
-        ProjectResourceResolver? resources = null,
+        ProjectResourceMap? resources = null,
         IMarkupSourceProvider? sourceProvider = null)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -102,15 +103,26 @@ public static class ProjectXamlEnvironment
 
         if (resources is not null)
         {
-            resourceResolvers.Add(resources);
+            resourceResolvers.Add(new ProjectResourceResolver(resources));
         }
 
         resourceResolvers.Add(new AvaloniaResourceResolver(assemblyResolver));
         resourceResolvers.Add(FileResourceResolver.Instance);
 
+        // Documents arrive both ways in one session: opened by path, and followed to by the avares
+        // URI a StyleInclude names them with. Markup's file provider answers only the first, which
+        // is correct for it and is the gap this adapter exists to close.
+        IMarkupSourceProvider sources = sourceProvider ?? new FileMarkupSourceProvider();
+
+        if (resources is not null)
+        {
+            sources = new CompositeMarkupSourceProvider(
+                new ProjectMarkupSourceProvider(resources), sources);
+        }
+
         return new XamlLoadEnvironment
         {
-            SourceProvider = sourceProvider ?? new FileMarkupSourceProvider(),
+            SourceProvider = sources,
             AssemblyResolver = assemblyResolver,
             TypeResolver = new XamlTypeResolver(assemblyResolver),
             ResourceResolver = new CompositeResourceResolver(resourceResolvers),
@@ -139,6 +151,8 @@ public static class ProjectXamlEnvironment
 
         ProjectAssemblyContext context = ProjectAssemblyContext.Create(snapshot, project);
 
-        return (Create(context, ProjectResourceResolver.Create(snapshot), sourceProvider), context);
+        // One map, shared by the resource resolver and the source provider, so the two cannot
+        // disagree about which file a URI names.
+        return (Create(context, ProjectResourceMap.Create(snapshot), sourceProvider), context);
     }
 }

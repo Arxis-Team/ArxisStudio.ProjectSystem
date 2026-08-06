@@ -10,9 +10,8 @@ stable, immutable, and safe to read from several threads while something else re
 
 ## Status
 
-**Milestones 0-6 complete.** The core is complete, and `ArxisStudio.ProjectSystem.MSBuild` opens a
-solution or a standalone project by evaluating it, and runs restore, build, rebuild and clean over
-it.
+**All seven milestones complete.** `ArxisStudio.ProjectSystem.MSBuild` opens a solution or a
+standalone project by evaluating it, and runs restore, build, rebuild and clean over it.
 
 What works today: open a `.sln`, a `.slnx`, or a single `.csproj`, and get an immutable snapshot of
 the projects with their target frameworks, configurations, declared references, items, evaluated
@@ -76,6 +75,20 @@ ProjectOperationResult result = await PackageInstaller.ApplyAndRestoreAsync(
 If the restore fails, the change is put back — a project carrying a reference that will not restore
 does not build. The restore itself goes through the workspace, because this package hosts no build
 engine and must not: two packages able to read project files would eventually disagree about one.
+
+And `ArxisStudio.ProjectSystem.Markup.Xaml` connects all of that to a XAML designer. It turns a
+snapshot into the load environment `ArxisStudio.Markup` expects — the assemblies a document may
+name, loaded into a collectible context so a rebuilt control library can be loaded again;
+`avares://` resolved to the project's own files rather than to the last build; and diagnostics
+carried between the two families so a tool shows one list.
+
+```csharp
+(XamlLoadEnvironment environment, ProjectAssemblyContext assemblies) =
+    ProjectXamlEnvironment.CreateFor(snapshot, project);
+```
+
+It is the one package here allowed near Markup and Avalonia, and nothing in this family depends on
+it — [ADR 0018](docs/adr/0018-the-adapter-references-markup-by-source.md).
 
 What does not yet: reading `NuGet.config` to discover configured sources, authenticating to private
 feeds, dependency resolution before an install, and staleness detection for build outputs.
@@ -280,7 +293,7 @@ security boundary and is not offered as one.
 | 4 | Explicit restore and build operations with structured progress |
 | 5 | File watching, debouncing, invalidation, incremental refresh |
 | 6 | `ArxisStudio.ProjectSystem.NuGet`: search, install, update, remove, restore |
-| **7** | `ArxisStudio.ProjectSystem.Markup.Xaml`: optional adapter onto the Markup resolvers — *next* |
+| 7 | `ArxisStudio.ProjectSystem.Markup.Xaml`: optional adapter onto the Markup resolvers |
 
 ## Build and test
 

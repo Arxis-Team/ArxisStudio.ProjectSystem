@@ -9,9 +9,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 roadmap defines what follows. `README.md` is the public statement of what the packages are. Where
 they disagree, the task specification wins and the README is what gets corrected.
 
-Development proceeds one milestone at a time. Milestones 0–6 are complete; Milestone 7, the
-`ArxisStudio.ProjectSystem.Markup.Xaml` adapter, is what remains. Do not ship placeholder API for a
-concept a later milestone owns.
+Development proceeds one milestone at a time. **All seven milestones are complete.** Further work
+extends what is there rather than filling in a roadmap, so the discipline that matters now is the
+one that always did: do not ship API for a concept nothing implements, and record a decision that
+constrains future work. `docs/limitations.md` is the honest list of what was deliberately left
+undone and why — read it before adding something it already argues against.
 
 ## Build and test
 

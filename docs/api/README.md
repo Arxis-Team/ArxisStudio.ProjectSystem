@@ -598,8 +598,13 @@ package in this family allowed near Markup and Avalonia, and nothing in the fami
 ```
 
 That gives Markup everything it needs: the assemblies the project's documents may name, the types
-behind them, and `avares://` resolved to **the project's own files rather than the last build** —
-which is what makes an edit visible without rebuilding.
+behind them, `avares://` resolved to **the project's own files rather than the last build** — which
+is what makes an edit visible without rebuilding — and documents openable by the `avares` URI a
+`StyleInclude` names them with, which Markup's own file provider cannot do because it answers
+`file:` and nothing else.
+
+Both come from one `ProjectResourceMap`, so resolving a resource and opening a document cannot
+disagree about which file a URI means.
 
 The reload cycle is the reason `ProjectAssemblyContext` exists:
 
