@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
+using ArxisStudio.Markup.Xaml;
 using ArxisStudio.Markup.Xaml.Loader;
 using Xunit;
 
@@ -356,6 +357,52 @@ public sealed class ProjectAssemblyContextTests : IDisposable
 
     private ProjectAssemblyContext Context(CanonicalPath output) =>
         ProjectAssemblyContext.Create(Snapshot(output), Identity("App"));
+
+    /// <summary>
+    /// A type in the project's own output, named by a bare <c>using:</c> with no assembly.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is how every <c>x:Class</c> is resolved and how Avalonia's own convention names a local
+    /// control, so it is the single most important thing the environment has to be able to do — and
+    /// it was the one thing it could not. The type resolver searches a list, and the adapter built
+    /// one that held only the resolver: a resolver answers a name, it does not enumerate, so the
+    /// project's assemblies were reachable by <c>;assembly=</c> and invisible to everything else.
+    /// </para>
+    /// <para>
+    /// Found by running the forms designer against a real project, where every form with an
+    /// <c>x:Class</c> failed with "not found in any assembly supplied to the environment" while the
+    /// assembly that held the class sat in the context.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnEnvironment_ResolvesATypeInTheProjectsOwnOutput_WithoutBeingToldTheAssembly()
+    {
+        (XamlLoadEnvironment environment, ProjectAssemblyContext context) =
+            ProjectXamlEnvironment.CreateFor(Snapshot(CopyRealAssembly("MyControls.dll")), Identity("App"));
+
+        using (context)
+        {
+            XamlTypeResolution resolution = await environment.TypeResolver.ResolveAsync(
+                new XamlTypeName("using:ArxisStudio.ProjectSystem", nameof(CanonicalPath)),
+                XamlNamespaceContext.Empty,
+                TestContext.Current.CancellationToken);
+
+            Assert.True(
+                resolution.Type is not null,
+                "The project's own assembly was not searched: "
+                    + string.Join("; ", resolution.Diagnostics));
+
+            // Reference equality against what the context loaded, not merely the type's name. The
+            // copy carries the same assembly identity as the original this process already has
+            // loaded, so a resolver that only swept the AppDomain would find a type of the right
+            // name from the wrong assembly and look exactly like success.
+            Assembly? loaded = context.Resolve(new AssemblyName("MyControls"));
+
+            Assert.NotNull(loaded);
+            Assert.Same(loaded, resolution.Type!.Assembly);
+        }
+    }
 
     private SolutionSnapshot Snapshot(CanonicalPath output)
     {

@@ -433,6 +433,18 @@ lists what it does not do; the one worth repeating here is that a form whose `x:
 the project has not compiled cannot be shown at all, which is a fact about loading a document rather
 than about this designer.
 
+### A bare `using:` finds the projects, not the packages
+
+`ProjectXamlEnvironment` hands the type resolver the assemblies the projects *build* — the project's
+own output and its referenced projects' — and not the restored packages. That is what makes
+`x:Class` and a locally defined control resolve, since both are written as a bare `using:` with no
+assembly named.
+
+A type in a package named the same way is not found unless the host has already loaded that package
+for its own reasons. Write `clr-namespace:Ns;assembly=ThePackage` for it, which resolves by name and
+always worked. Searching the packages too would mean loading every restored assembly before anything
+asked for one, into the default context where they stay for the life of the process.
+
 `samples/ProjectSystem.Ide` is the other, and it is the one that earned its place twice over: it
 uses every package at once and found a real defect in the adapter within minutes of first running —
 the resource map accepted only `AvaloniaResource`, so it saw none of the `.axaml` documents in a

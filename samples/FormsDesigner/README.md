@@ -71,10 +71,9 @@ works out what actually changed, so setting one property does not tear down the 
 ## What it is not
 
 **A form with an uncompiled `x:Class` cannot be shown.** The document names a type, and a type that
-has not been built does not exist. The designer says exactly that, naming the type and listing what
-the load context did hold — but a form whose `x:Class` is already compiled into the project's output
-was still not resolving in testing, and that is an open question in the type resolution rather than
-something this sample works around.
+has not been built does not exist. Build the project and the form opens. The designer says exactly
+which type was missing and lists what the load context held, because "did not load" on its own tells
+nobody anything.
 
 **The toolbox is Avalonia's controls, not the project's.** Reflecting over the project's assemblies
 for placeable types is a real feature and a different one: it needs a rule for what counts as a

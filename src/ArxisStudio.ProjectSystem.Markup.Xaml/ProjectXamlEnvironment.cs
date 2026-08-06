@@ -124,9 +124,56 @@ public static class ProjectXamlEnvironment
         {
             SourceProvider = sources,
             AssemblyResolver = assemblyResolver,
-            TypeResolver = new XamlTypeResolver(assemblyResolver),
+            TypeResolver = new XamlTypeResolver(assemblyResolver, Searchable(context)),
             ResourceResolver = new CompositeResourceResolver(resourceResolvers),
         };
+    }
+
+    /// <summary>
+    /// The project's own assemblies, as assemblies, for the type resolver to search.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without this the project is invisible to every name written the way people write them. A
+    /// resolver answers a name; it does not enumerate — so <c>clr-namespace:Ns;assembly=App</c>
+    /// worked and a bare <c>using:Ns</c> did not, and <c>x:Class</c> is resolved as a bare
+    /// <c>using:</c>. Every form with a code-behind class failed to load, and the assembly holding
+    /// the class was sitting in the context at the time.
+    /// </para>
+    /// <para>
+    /// Only what the projects build, not the packages. Those are the few the collectible context
+    /// owns and the ones a rebuild changes, and they are where an <c>x:Class</c> and a project's own
+    /// controls live. Loading every restored package eagerly would be a great deal of work done
+    /// before anything asked for it, and — because package assemblies go to the default context and
+    /// stay — an irreversible one. A type in a package is still reached by naming its assembly, and
+    /// a package the host has already loaded is found anyway.
+    /// </para>
+    /// <para>
+    /// An assembly that will not load is skipped rather than reported. It is not this method's
+    /// question: the document that names a type from it produces the diagnostic that matters, and it
+    /// says which type could not be found rather than which file could not be read.
+    /// </para>
+    /// </remarks>
+    private static List<Assembly> Searchable(ProjectAssemblyContext context)
+    {
+        var searchable = new List<Assembly>();
+
+        foreach (RuntimeAssemblyReference reference in context.Assemblies)
+        {
+            if (reference.Origin is not (RuntimeAssemblyOrigin.Project or RuntimeAssemblyOrigin.ProjectReference))
+            {
+                continue;
+            }
+
+            string simpleName = System.IO.Path.GetFileNameWithoutExtension(reference.Path.FileName);
+
+            if (simpleName.Length > 0 && context.Resolve(new AssemblyName(simpleName)) is { } assembly)
+            {
+                searchable.Add(assembly);
+            }
+        }
+
+        return searchable;
     }
 
     /// <summary>
