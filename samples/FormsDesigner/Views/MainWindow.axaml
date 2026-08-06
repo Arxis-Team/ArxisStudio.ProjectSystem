@@ -78,6 +78,12 @@
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
           <Button Content="▶" Width="40" Command="{Binding RunCommand}" ToolTip.Tip="Build and run" />
           <Button Content="■" Width="40" Command="{Binding StopCommand}" ToolTip.Tip="Stop" />
+          <Rectangle Width="1" Fill="#33FFFFFF" Margin="4,2" />
+          <CheckBox Content="grid" IsChecked="{Binding SnapToGrid, Mode=TwoWay}"
+                    ToolTip.Tip="Snap to the grid. Hold Alt to bypass." />
+          <CheckBox Content="guides" IsChecked="{Binding SnapToGuides, Mode=TwoWay}"
+                    ToolTip.Tip="Align to neighbours. Hold Alt to bypass." />
+          <TextBlock VerticalAlignment="Center" Classes="caption" Text="{Binding ZoomText}" />
         </StackPanel>
 
         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8">
@@ -160,26 +166,72 @@
 
       <GridSplitter Grid.Column="1" Background="Transparent" />
 
-      <!-- The surface. -->
+      <!-- The surface, with the gestures listed over it: an editor whose gestures are undiscoverable
+           is an editor most people use one gesture of. -->
       <Border Grid.Column="2" Classes="panel" ClipToBounds="True">
+        <Panel>
         <design:DesignEditor x:Name="Surface"
                              ItemsSource="{Binding Forms}"
                              SelectedItems="{Binding SelectedForms}"
                              SelectionMode="Multiple"
                              ItemTemplate="{StaticResource FormTemplate}"
                              ViewportZoom="{Binding Zoom, Mode=TwoWay}">
+          <!--
+            The mapping a form designer wants. Without a modifier every gesture reaches the control
+            inside the form, which is what somebody is here to move; Ctrl switches the whole
+            interaction to the form itself, for arranging forms on the surface. That is what
+            ContainerInteractionModifiers means, and leaving it at None said "nothing ever reaches
+            the form", which is a designer that cannot move its own windows.
+          -->
           <design:DesignEditor.InputGestures>
             <design:DesignEditorInputGestures PanButton="Middle"
+                                              PanModifiers="None"
                                               MarqueeButton="Left"
-                                              ContainerInteractionModifiers="None"
-                                              AdditiveSelectionModifiers="Shift" />
+                                              MarqueeModifiers="None"
+                                              ZoomModifiers="None"
+                                              ContainerInteractionModifiers="Control"
+                                              AdditiveSelectionModifiers="Shift"
+                                              LargeNudgeModifiers="Shift"
+                                              SnapBypassModifiers="Alt"
+                                              ContainerEmptyAreaDrag="Marquee" />
           </design:DesignEditor.InputGestures>
+
+          <!--
+            Snapping on, to the grid and to the neighbours, because a form laid out by eye is a form
+            laid out crookedly — and Alt turns both off for the one control that has to sit at 37.
+            Resize is contained to the form: a button hanging outside the window it belongs to is a
+            picture of something that cannot happen at runtime.
+          -->
           <design:DesignEditor.InteractionOptions>
             <design:DesignEditorInteractionOptions ZoomStep="1.1"
                                                    DragStartThreshold="3"
-                                                   ResizeMinSize="8" />
+                                                   ResizeMinSize="8"
+                                                   IsResizeContainedToParent="True"
+                                                   IsSnapToGridEnabled="{Binding SnapToGrid}"
+                                                   IsSnapToGuidesEnabled="{Binding SnapToGuides}"
+                                                   SnapGuideTolerance="6"
+                                                   NudgeStep="1"
+                                                   LargeNudgeStep="10" />
           </design:DesignEditor.InteractionOptions>
         </design:DesignEditor>
+
+        <Border VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="10"
+                Background="#E0171B22" BorderBrush="#3E4655" BorderThickness="1"
+                CornerRadius="6" Padding="10,8">
+          <StackPanel Spacing="3">
+            <TextBlock Text="Gestures" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,3" />
+            <TextBlock Classes="caption" Text="drag — move the control under the pointer" />
+            <TextBlock Classes="caption" Text="Ctrl + drag — move or resize the form itself" />
+            <TextBlock Classes="caption" Text="drag on empty space — marquee select" />
+            <TextBlock Classes="caption" Text="Shift + click — add to the selection" />
+            <TextBlock Classes="caption" Text="middle drag — pan     wheel — zoom" />
+            <TextBlock Classes="caption" Text="arrows — nudge 1px     Shift + arrows — 10px" />
+            <TextBlock Classes="caption" Text="Alt — bypass snapping for one gesture" />
+            <TextBlock Classes="caption" Text="Delete — remove     Esc — deselect     Ctrl+A — all forms" />
+          </StackPanel>
+        </Border>
+
+        </Panel>
       </Border>
 
       <GridSplitter Grid.Column="3" Background="Transparent" />

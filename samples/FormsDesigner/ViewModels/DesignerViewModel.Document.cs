@@ -224,6 +224,47 @@ public sealed partial class DesignerViewModel
         }
     }
 
+    /// <summary>
+    /// Answers the editor's reorder request by moving the element in the document.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Subscribing is what makes the gesture exist.</b> The editor reads the control tree and
+    /// never writes to it, so dragging a control within a flow layout does nothing at all until
+    /// something answers — it does not even draw the insertion point. This is that something, and
+    /// what it does is edit the document, which is where the order actually lives.
+    /// </para>
+    /// <para>
+    /// The anchor is used rather than the index. The editor's index counts a panel's children and
+    /// the document's counts its content elements, and the two disagree the moment a parent holds a
+    /// property element — which a Grid with its row definitions does. The neighbour the control goes
+    /// before survives that difference, which is why the request carries one.
+    /// </para>
+    /// </remarks>
+    public void ReorderFromCanvas(FormViewModel form, Control target, Control? anchor)
+    {
+        if (form.Objects is not { } map
+            || map.GetElement(target) is not { } element
+            || element.Parent is not XamlElement parent)
+        {
+            return;
+        }
+
+        int index = anchor is not null && map.GetElement(anchor) is { } before
+            ? parent.ContentElements.ToList().IndexOf(before)
+            : parent.ContentElements.Count();
+
+        if (index < 0)
+        {
+            return;
+        }
+
+        RunDetached(() => ApplyAsync(
+            form,
+            editor => editor.MoveElement(element, parent, index),
+            $"move {element.Name}"));
+    }
+
     /// <summary>Answers the editor's delete request. Called by the view.</summary>
     public void DeleteFromCanvas(FormViewModel form, Control control)
     {

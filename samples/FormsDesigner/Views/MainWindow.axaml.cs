@@ -33,6 +33,7 @@ public sealed partial class MainWindow : Window
         surface.DesignSelectionChanged += OnDesignSelectionChanged;
         surface.EditCompleted += OnEditCompleted;
         surface.DeleteRequested += OnDeleteRequested;
+        surface.ReorderRequested += OnReorderRequested;
 
         // Drag out of the toolbox, drop onto the surface. Avalonia's own drag-and-drop rather than a
         // hand-rolled pointer dance, so the cursor, the escape key and the drop feedback are the
@@ -122,6 +123,26 @@ public sealed partial class MainWindow : Window
 
         // Answering it is what makes it happen: until a subscriber marks the request handled the
         // editor does nothing, because removing a control from the tree is not the editor's to do.
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Answers the editor's reorder request, which is what makes the gesture happen at all.
+    /// </summary>
+    /// <remarks>
+    /// The editor refuses to start a drag in a flow layout when nothing is listening — no insertion
+    /// point is drawn and no order changes — so this handler is not a refinement of the gesture, it
+    /// is the gesture.
+    /// </remarks>
+    private void OnReorderRequested(object? sender, DesignEditorReorderRequestedEventArgs e)
+    {
+        if (Designer is not { } designer || FormOf(e.Target) is not { } form)
+        {
+            return;
+        }
+
+        designer.ReorderFromCanvas(form, e.Target, e.Anchor);
+
         e.Handled = true;
     }
 

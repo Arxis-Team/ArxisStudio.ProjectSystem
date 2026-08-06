@@ -45,6 +45,32 @@ view of it** — a canvas that could disagree with the file is a designer that l
 | ▶ / ■ | `OutputArtifactKind.Assembly` and `RuntimeConfiguration`, built through `ExecuteAsync` first |
 | Console | everything above, said out loud |
 
+## The gestures
+
+Configured as `ArxisStudio.DesignEditor` documents them, mapped for a form designer.
+
+| Gesture | What it does |
+| --- | --- |
+| drag | moves the control under the pointer |
+| `Ctrl` + drag | moves or resizes the **form** instead — that is what `ContainerInteractionModifiers` is for |
+| drag on empty space | marquee selection |
+| `Shift` + click | adds to the selection |
+| middle drag | pans; wheel zooms |
+| arrows / `Shift` + arrows | nudge by 1px / 10px, and each press is one edit |
+| `Alt` | bypasses snapping for the length of one gesture |
+| `Delete`, `Esc`, `Ctrl+A` | remove, deselect, select every form |
+
+Snapping is on — to the grid and to the neighbours' edges and centres — and both are checkboxes on
+the toolbar. Resize is contained to the form, because a button hanging outside the window it belongs
+to is a picture of something that cannot happen at runtime.
+
+**Dragging within a flow layout only works because this application answers.** The editor reads the
+control tree and never writes to it, so a reorder is a request: until something marks it handled, no
+insertion point is drawn and nothing moves. The handler is here and what it does is edit the
+document. It uses the request's `Anchor` rather than its index, because the editor counts a panel's
+children and the document counts its content elements, and the two disagree the moment a parent
+holds a property element — which a `Grid` with row definitions does.
+
 ## Five things it demonstrates on purpose
 
 **A click on screen finds the line that drew it.** `XamlObjectMap` runs both ways. Templates produce

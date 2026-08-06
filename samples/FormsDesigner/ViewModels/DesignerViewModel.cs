@@ -128,8 +128,37 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
     public double Zoom
     {
         get;
-        set => Set(ref field, value);
+        set
+        {
+            if (Set(ref field, value))
+            {
+                Raise(nameof(ZoomText));
+            }
+        }
     } = 1.0;
+
+    /// <summary>The zoom as a person reads it.</summary>
+    public string ZoomText => $"{Zoom * 100:F0}%";
+
+    /// <summary>
+    /// Whether a drag snaps to the grid, and whether it aligns to its neighbours.
+    /// </summary>
+    /// <remarks>
+    /// Both on, and both switchable, because either one is occasionally the wrong help. Holding Alt
+    /// bypasses them for one gesture — which is the setting somebody actually reaches for, and the
+    /// reason these two are a pair of checkboxes rather than a settings page.
+    /// </remarks>
+    public bool SnapToGrid
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    public bool SnapToGuides
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
 
     /// <summary>
     /// Opens an entry point, and optionally a form in it, from the command line.
