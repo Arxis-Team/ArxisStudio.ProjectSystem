@@ -4,6 +4,16 @@
 artifacts/
 *.binlog
 
+## One exception, and it is test data rather than build output. A fixture holds a hand-written
+## project.assets.json so that reading restore output can be tested without restoring anything, and
+## it sits under obj/ because that is where a real one lives. Ignored, it left the suite passing on
+## a machine that had built it once and failing on every fresh clone.
+##
+## Deliberately tests/*/Fixtures rather than tests/**/Fixtures: the copies under bin/ are output and
+## must stay ignored, and one path segment between the two cannot match them.
+!tests/*/Fixtures/**/obj/
+!tests/*/Fixtures/**/obj/project.assets.json
+
 ## Test output
 [Tt]est[Rr]esult*/
 *.trx
