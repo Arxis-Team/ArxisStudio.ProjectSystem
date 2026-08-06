@@ -11,6 +11,12 @@ public enum TreeNodeKind
     Project,
     Group,
     Item,
+
+    /// <summary>The node collecting everything a project references.</summary>
+    Dependencies,
+
+    /// <summary>A file, shown where it sits on disk rather than under its item type.</summary>
+    File,
 }
 
 /// <summary>
@@ -49,9 +55,30 @@ public sealed class TreeNode(TreeNodeKind kind, string title, string? detail = n
     public string Glyph => Kind switch
     {
         TreeNodeKind.Solution => "▤",
-        TreeNodeKind.Folder => "▸",
+        TreeNodeKind.Folder => "🗀",
         TreeNodeKind.Project => "◆",
         TreeNodeKind.Group => "▪",
+        TreeNodeKind.Dependencies => "⚭",
+        TreeNodeKind.File => Extension switch
+        {
+            ".cs" => "C#",
+            ".axaml" or ".xaml" => "<>",
+            ".csproj" or ".fsproj" or ".vbproj" => "◆",
+            ".json" => "{}",
+            ".manifest" or ".xml" or ".config" or ".props" or ".targets" => "</>",
+            _ => "·",
+        },
         _ => "·",
+    };
+
+    /// <summary>The file's extension, lowered, or empty when the node is not a file.</summary>
+    public string Extension => File.IsEmpty ? string.Empty : File.Extension.ToLowerInvariant();
+
+    /// <summary>Sorts folders above files and then alphabetically, the way an explorer does.</summary>
+    internal string SortKey => Kind switch
+    {
+        TreeNodeKind.Dependencies => "0",
+        TreeNodeKind.Folder => "1" + Title,
+        _ => "2" + Title,
     };
 }

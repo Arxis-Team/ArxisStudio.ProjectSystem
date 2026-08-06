@@ -86,7 +86,7 @@ public sealed partial class IdeViewModel
 
     private ProjectSnapshot? SelectedProject =>
         _workspace.CurrentSnapshot is { } snapshot
-            && SelectedNode is { } node
+            && Current is { } node
             && snapshot.TryGetProject(node.Project, out ProjectSnapshot? project)
                 ? project
                 : null;

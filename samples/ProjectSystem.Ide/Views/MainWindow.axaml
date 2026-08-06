@@ -33,24 +33,23 @@
     <!-- Body -->
     <Grid Grid.Row="1" ColumnDefinitions="320,4,*" Margin="8">
 
-      <!-- Solution explorer -->
+      <!-- Solution explorer: the same model shown two ways -->
       <Border Grid.Column="0" Classes="panel">
-        <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Text="Solution explorer" Classes="caption" Margin="0,0,0,6" />
-          <TreeView ItemsSource="{Binding Tree}"
-                    SelectedItem="{Binding SelectedNode, Mode=TwoWay}">
-            <TreeView.ItemTemplate>
-              <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:TreeNode">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="{Binding Glyph}" Opacity="0.5" />
-                  <TextBlock Text="{Binding Title}"
-                             Foreground="{Binding HasErrors, Converter={x:Static vm:Converters.ErrorBrush}}" />
-                  <TextBlock Text="{Binding Detail}" Classes="caption" VerticalAlignment="Center" />
-                </StackPanel>
-              </TreeDataTemplate>
-            </TreeView.ItemTemplate>
-          </TreeView>
-        </DockPanel>
+        <TabControl>
+
+          <TabItem Header="Solution">
+            <TreeView ItemsSource="{Binding Tree}"
+                      SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
+                      ItemTemplate="{StaticResource TreeRow}" />
+          </TabItem>
+
+          <TabItem Header="Files">
+            <TreeView ItemsSource="{Binding FileTree}"
+                      SelectedItem="{Binding SelectedFileNode, Mode=TwoWay}"
+                      ItemTemplate="{StaticResource TreeRow}" />
+          </TabItem>
+
+        </TabControl>
       </Border>
 
       <GridSplitter Grid.Column="1" Background="Transparent" />
@@ -185,6 +184,22 @@
   </Grid>
 
   <Window.Resources>
+
+    <!-- One row template for both trees, because both are views of the same nodes. -->
+    <TreeDataTemplate x:Key="TreeRow" ItemsSource="{Binding Children}" x:DataType="vm:TreeNode">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <TextBlock Text="{Binding Glyph}"
+                   Width="22"
+                   FontSize="10"
+                   VerticalAlignment="Center"
+                   TextAlignment="Center"
+                   Foreground="{Binding ., Converter={x:Static vm:Converters.NodeBrush}}" />
+        <TextBlock Text="{Binding Title}"
+                   Foreground="{Binding HasErrors, Converter={x:Static vm:Converters.ErrorBrush}}" />
+        <TextBlock Text="{Binding Detail}" Classes="caption" VerticalAlignment="Center" />
+      </StackPanel>
+    </TreeDataTemplate>
+
     <DataTemplate x:Key="FactRow" x:DataType="vm:Fact">
       <Grid ColumnDefinitions="220,*" Margin="0,1">
         <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="caption" TextTrimming="CharacterEllipsis" />

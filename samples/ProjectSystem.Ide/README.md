@@ -29,7 +29,8 @@ It needs `ArxisStudio.Markup` checked out beside this repository, because the ad
 
 | Panel | The API behind it |
 | --- | --- |
-| Solution explorer | `SolutionSnapshot.Projects`, `Folders`, `TryGetFolder`, and each project's `Items` |
+| Solution tab | `SolutionSnapshot.Projects`, `Folders`, `TryGetFolder`, and each project's `Items` grouped by item type |
+| Files tab | the same `Items`, arranged by where they sit under `ProjectDirectory`, plus every reference list as `Dependencies` |
 | Project | every field of `ProjectSnapshot` — identity, evaluated context, surfaced properties |
 | References | project, framework, assembly and analyzer references, with aliases |
 | Outputs | `Outputs`, `GetRuntimeAssemblies`, and `EvaluationInputs` |
@@ -51,6 +52,13 @@ what went stale; refreshing is a button, because a designer mid-edit is the wron
 After a *restore* the sample refreshes explicitly, because a restore rewrites `project.assets.json`,
 which is an evaluation input — so the model is genuinely behind the disk and nothing but a refresh
 fixes that.
+
+**The Files tab keeps only items whose file exists**, and that is not belt and braces. A project
+evaluates to more than its contents: `PotentialEditorConfigFiles` alone contributes an
+`.editorconfig` and a `.globalconfig` for every directory holding source, none of which exists —
+MSBuild builds the list precisely so it can test each one. Without the check, two phantom files
+appeared in every folder. The folder structure still comes entirely from the model; nothing
+enumerates a directory, so a file no item includes is correctly absent.
 
 **Run never globs a directory.** Which file to start comes from `Outputs` — the `Assembly` artifact,
 and `RuntimeConfiguration` is how the project says it is startable at all. The responsibilities

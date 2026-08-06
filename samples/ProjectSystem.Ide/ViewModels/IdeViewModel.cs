@@ -153,9 +153,30 @@ public sealed partial class IdeViewModel : Observable, IDisposable
         get;
         set
         {
+            if (Set(ref field, value) && value is not null)
+            {
+                Select(value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whichever tab the user last picked something in.
+    /// </summary>
+    /// <remarks>
+    /// Two trees over one model, so the details panel follows whichever was touched last rather
+    /// than belonging to either. Binding both to one selected-node property would have them clear
+    /// each other, because a node of one tree is not in the other.
+    /// </remarks>
+    private TreeNode? Current
+    {
+        get;
+        set
+        {
             if (Set(ref field, value))
             {
                 ShowSelection();
+                RefreshAllCommands();
             }
         }
     }
@@ -330,6 +351,7 @@ public sealed partial class IdeViewModel : Observable, IDisposable
             $"{(snapshot.HasErrors ? ", with errors" : string.Empty)}");
 
         BuildTree(snapshot);
+        BuildFileTree(snapshot);
         BuildResourceMap(snapshot);
 
         ShowSelection();
@@ -443,21 +465,23 @@ public sealed partial class IdeViewModel : Observable, IDisposable
         return null;
     }
 
+    private void Select(TreeNode node) => Current = node;
+
     private void ShowSelection()
     {
         SolutionSnapshot? snapshot = _workspace.CurrentSnapshot;
 
-        if (snapshot is null || SelectedNode is null || SelectedNode.Project.IsEmpty)
+        if (snapshot is null || Current is null || Current.Project.IsEmpty)
         {
             Details = null;
 
             return;
         }
 
-        if (snapshot.TryGetProject(SelectedNode.Project, out ProjectSnapshot? project))
+        if (snapshot.TryGetProject(Current.Project, out ProjectSnapshot? project))
         {
             Details = ProjectDetails.For(snapshot, project);
-            ShowXamlFor(snapshot, project, SelectedNode.File);
+            ShowXamlFor(snapshot, project, Current.File);
         }
     }
 
