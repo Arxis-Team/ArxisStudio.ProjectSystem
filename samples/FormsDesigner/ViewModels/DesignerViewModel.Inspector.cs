@@ -70,6 +70,16 @@ public sealed partial class DesignerViewModel
     public Geometry SelectedGlyph => Glyphs.For(Selected?.Name.LocalName);
 
     /// <summary>
+    /// The chips the design puts under the header: what the element declares beyond its properties.
+    /// </summary>
+    /// <remarks>
+    /// Directives and classes, because those are the facts about an element that are not values —
+    /// <c>x:Name</c> says it can be found from code, a class says a style may reach it. The design
+    /// draws them as chips precisely because they are not editable in the rows below.
+    /// </remarks>
+    public ObservableCollection<string> SelectedChips { get; } = [];
+
+    /// <summary>
     /// Which of the design's three sections a property belongs to.
     /// </summary>
     /// <remarks>
@@ -144,9 +154,25 @@ public sealed partial class DesignerViewModel
         Raise(nameof(SelectedQualifier));
         Raise(nameof(SelectedGlyph));
 
+        SelectedChips.Clear();
+
         if (Selected is not { } element)
         {
             return;
+        }
+
+        foreach (XamlAttribute directive in element.Directives)
+        {
+            SelectedChips.Add(directive.Name.ToString());
+        }
+
+        if (element.Attributes.FirstOrDefault(
+            a => a.Name.IsUnprefixed("Classes")) is { } classes)
+        {
+            foreach (string name in classes.GetValueText().Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                SelectedChips.Add("." + name);
+            }
         }
 
         foreach (XamlAttribute attribute in element.Attributes)

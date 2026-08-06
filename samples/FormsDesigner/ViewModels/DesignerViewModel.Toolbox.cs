@@ -19,7 +19,7 @@ namespace FormsDesigner.ViewModels;
 /// then have to decide what a sensible new Button says — which is exactly what the snippet already
 /// says, in the form the file will hold.
 /// </remarks>
-public sealed record ToolboxEntry(string Group, string Name, string Xaml, double Width, double Height)
+public sealed record ToolboxEntry(string Group, string Name, string Xaml)
 {
     /// <summary>The design's glyph for this control, and the hue it is drawn in.</summary>
     public Avalonia.Media.Geometry Glyph => Glyphs.For(Name);
@@ -90,33 +90,33 @@ public sealed partial class DesignerViewModel
     {
         InitialiseInspector();
 
-        Add("Text", "TextBlock", """<TextBlock Text="Text" />""", 100, 20);
-        Add("Text", "TextBox", """<TextBox Width="160" />""", 160, 30);
-        Add("Text", "Label", """<Label Content="Label" />""", 80, 26);
+        // The design's three groups, in its order, with its six entries each. A palette is read by
+        // position as much as by name once somebody has used it twice, so the order is part of it.
+        Add("Layout", "Grid", """<Grid Width="200" Height="140" />""");
+        Add("Layout", "StackPanel", """<StackPanel Width="180" Height="120" />""");
+        Add("Layout", "DockPanel", """<DockPanel Width="200" Height="140" />""");
+        Add("Layout", "Border", """<Border Width="160" Height="90" Background="#22FFFFFF" />""");
+        Add("Layout", "ScrollViewer", """<ScrollViewer Width="200" Height="140" />""");
+        Add("Layout", "TabControl", """<TabControl Width="220" Height="150" />""");
 
-        Add("Input", "Button", """<Button Content="Button" />""", 90, 32);
-        Add("Input", "CheckBox", """<CheckBox Content="Check" />""", 90, 26);
-        Add("Input", "RadioButton", """<RadioButton Content="Option" />""", 90, 26);
-        Add("Input", "ToggleSwitch", """<ToggleSwitch />""", 90, 32);
-        Add("Input", "Slider", """<Slider Width="160" />""", 160, 32);
-        Add("Input", "ComboBox", """<ComboBox Width="160" />""", 160, 32);
-        Add("Input", "NumericUpDown", """<NumericUpDown Width="140" />""", 140, 32);
+        Add("Input", "Button", """<Button Content="Button" />""");
+        Add("Input", "TextBox", """<TextBox Width="160" />""");
+        Add("Input", "CheckBox", """<CheckBox Content="Check" />""");
+        Add("Input", "ComboBox", """<ComboBox Width="160" />""");
+        Add("Input", "Slider", """<Slider Width="160" />""");
+        Add("Input", "ToggleSwitch", """<ToggleSwitch />""");
 
-        Add("Display", "ProgressBar", """<ProgressBar Width="160" Value="40" />""", 160, 12);
-        Add("Display", "Image", """<Image Width="120" Height="90" />""", 120, 90);
-        Add("Display", "Border", """<Border Width="160" Height="90" Background="#22FFFFFF" />""", 160, 90);
-        Add("Display", "Separator", """<Separator Width="160" />""", 160, 8);
-
-        Add("Layout", "StackPanel", """<StackPanel Width="180" Height="120" />""", 180, 120);
-        Add("Layout", "Grid", """<Grid Width="200" Height="140" />""", 200, 140);
-        Add("Layout", "Canvas", """<Canvas Width="200" Height="140" />""", 200, 140);
-        Add("Layout", "DockPanel", """<DockPanel Width="200" Height="140" />""", 200, 140);
-        Add("Layout", "ScrollViewer", """<ScrollViewer Width="200" Height="140" />""", 200, 140);
+        Add("Display", "TextBlock", """<TextBlock Text="Text" />""");
+        Add("Display", "Image", """<Image Width="120" Height="90" />""");
+        Add("Display", "ListBox", """<ListBox Width="180" Height="120" />""");
+        Add("Display", "DataGrid", """<DataGrid Width="220" Height="140" />""");
+        Add("Display", "ProgressBar", """<ProgressBar Width="160" Value="40" />""");
+        Add("Display", "Path", """<Path Data="M3 12.5C5 6 11 10 13 3.5" Stroke="#9DA0A8" StrokeThickness="1.4" />""");
 
         GroupToolbox();
 
-        void Add(string group, string name, string xaml, double width, double height) =>
-            Toolbox.Add(new ToolboxEntry(group, name, xaml, width, height));
+        void Add(string group, string name, string xaml) =>
+            Toolbox.Add(new ToolboxEntry(group, name, xaml));
     }
 
     /// <summary>

@@ -22,6 +22,9 @@ public sealed partial class DesignerViewModel
                 Selected = null;
                 RebuildHierarchy();
                 Raise(nameof(CanvasCaption));
+                Raise(nameof(CanvasSize));
+                Raise(nameof(CanvasSizeAndZoom));
+                Raise(nameof(TargetName));
                 RefreshAllCommands();
             }
         }

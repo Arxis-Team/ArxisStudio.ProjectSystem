@@ -81,6 +81,8 @@ public sealed partial class DesignerViewModel
             }
         }
 
+        BuildProjectPane(snapshot);
+
         Log($"  {Describe(ProjectForms.Count, "form")} in the project");
 
         if (previous is not null && ProjectForms.FirstOrDefault(f => f.Path == previous.Path) is { } same)

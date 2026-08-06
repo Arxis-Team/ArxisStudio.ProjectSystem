@@ -135,6 +135,8 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
             {
                 Raise(nameof(ZoomText));
                 Raise(nameof(CanvasCaption));
+                Raise(nameof(CanvasSize));
+                Raise(nameof(CanvasSizeAndZoom));
             }
         }
     } = 1.0;
@@ -315,6 +317,9 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         IsLoaded = result.Snapshot is not null;
 
         Raise(nameof(StatusLeft));
+        Raise(nameof(ProjectName));
+        Raise(nameof(EntryPointName));
+        Raise(nameof(ConfigurationName));
         ShowDiagnostics(result.Diagnostics);
         RefreshAllCommands();
     }
@@ -352,6 +357,8 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         {
             Diagnostics.Add(DiagnosticRow.From(diagnostic));
         }
+
+        Raise(nameof(ProblemCount));
     }
 
     private void RefreshAllCommands()
@@ -376,6 +383,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         }
 
         Output.Add(message);
+        Record(message);
         Console.WriteLine(message);
 
         while (Output.Count > 500)

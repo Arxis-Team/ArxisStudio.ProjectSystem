@@ -126,6 +126,27 @@ public static class Glyphs
     /// <summary>The glyph for a document, for the tabs and the project list.</summary>
     public static Geometry DocumentGlyph { get; } = Geometry.Parse(Document);
 
+    private const string Markup = "M2.5 3.5h11v9h-11zM2.5 6h11";
+    private const string Picture = "M2.5 3.5h11v9h-11zM2.5 10l3.5-3 3 2.5 2-1.5 2.5 2";
+
+    /// <summary>The glyph a file is drawn with in the project grid, by its extension.</summary>
+    public static Geometry ForFile(string extension) => Geometry.Parse(extension.ToLowerInvariant() switch
+    {
+        ".axaml" or ".xaml" => Markup,
+        ".png" or ".jpg" or ".jpeg" or ".ico" or ".svg" or ".gif" => Picture,
+        _ => Document,
+    });
+
+    /// <summary>And the hue, so a folder of files is scannable.</summary>
+    public static string HueOfFile(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".axaml" or ".xaml" => "Acc",
+        ".cs" => "Grn",
+        ".png" or ".jpg" or ".jpeg" or ".ico" or ".svg" or ".gif" => "Org",
+        ".csproj" or ".sln" or ".slnx" or ".props" or ".targets" => "Pur",
+        _ => "Fg2",
+    };
+
     /// <summary>A name without its prefix, because <c>controls:Thing</c> is a Thing.</summary>
     private static string Bare(string name)
     {

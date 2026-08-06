@@ -45,6 +45,33 @@ public sealed class HierarchyRow(XamlElement element, int depth, bool hasChildre
     }
 }
 
+/// <summary>One step of the breadcrumb, and whether it is the one being edited.</summary>
+/// <remarks>
+/// The last step is the selection itself and the design gives it the foreground colour and a
+/// medium weight; the ones before it are the path to it and stay quiet. Carrying the flag is what
+/// lets one template draw both.
+/// </remarks>
+public sealed record Crumb(string Name, bool IsFirst, bool IsLast)
+{
+    /// <summary>The design gives the selection itself a medium weight and the path to it none.</summary>
+    public Avalonia.Media.FontWeight Weight =>
+        IsLast ? Avalonia.Media.FontWeight.Medium : Avalonia.Media.FontWeight.Normal;
+}
+
+/// <summary>A line of the console, split the way the design splits it.</summary>
+public sealed record LogRow(string Time, string Level, string Message)
+{
+    /// <summary>The colour the level is drawn in.</summary>
+    public string Hue => Level switch
+    {
+        "ERROR" => "Red",
+        "WARN" => "Yel",
+        "BUILD" => "Pur",
+        "RUN" => "Grn",
+        _ => "Fg3",
+    };
+}
+
 /// <summary>What the editor shows in the middle: the surface, the markup, or both.</summary>
 public enum DocumentView
 {
@@ -59,7 +86,7 @@ public sealed partial class DesignerViewModel
     public ObservableCollection<HierarchyRow> Hierarchy { get; } = [];
 
     /// <summary>The path from the root to what is selected, which the design puts above the canvas.</summary>
-    public ObservableCollection<string> Breadcrumb { get; } = [];
+    public ObservableCollection<Crumb> Breadcrumb { get; } = [];
 
     public HierarchyRow? SelectedHierarchyRow
     {
@@ -114,6 +141,43 @@ public sealed partial class DesignerViewModel
 
     public RelayCommand ToggleThemeCommand { get; private set; } = null!;
 
+    /// <summary>Which pane of the bottom dock is showing.</summary>
+    /// <remarks>
+    /// An index with four booleans off it rather than a TabControl, because the design's tabs are
+    /// text with a two-pixel underline and nothing else — no border, no header background — and
+    /// restyling a TabControl into that is more code than drawing it.
+    /// </remarks>
+    public int DockTab
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                Raise(nameof(IsDockProject));
+                Raise(nameof(IsDockConsole));
+                Raise(nameof(IsDockProblems));
+                Raise(nameof(IsDockPackages));
+            }
+        }
+    }
+
+    public bool IsDockProject => DockTab == 0;
+
+    public bool IsDockConsole => DockTab == 1;
+
+    public bool IsDockProblems => DockTab == 2;
+
+    public bool IsDockPackages => DockTab == 3;
+
+    public RelayCommand ShowProjectCommand { get; private set; } = null!;
+
+    public RelayCommand ShowConsoleCommand { get; private set; } = null!;
+
+    public RelayCommand ShowProblemsCommand { get; private set; } = null!;
+
+    public RelayCommand ShowPackagesCommand { get; private set; } = null!;
+
     /// <summary>The document's text, for the XAML view.</summary>
     public string DocumentText
     {
@@ -136,15 +200,46 @@ public sealed partial class DesignerViewModel
 
     public bool IsLight => !IsDark;
 
+    /// <summary>The project's name, for the toolbar's first control.</summary>
+    public string ProjectName => IsLoaded && EntryPoint.FileName is { Length: > 0 } name
+        ? System.IO.Path.GetFileNameWithoutExtension(name)
+        : "No project";
+
+    /// <summary>What was opened, which the design shows beside the project like a branch.</summary>
+    public string EntryPointName => EntryPoint.IsEmpty ? "—" : EntryPoint.FileName;
+
+    /// <summary>
+    /// The configuration a build would use.
+    /// </summary>
+    /// <remarks>
+    /// Read off the project rather than assumed, because the evaluated snapshot knows: a solution
+    /// opened without a configuration evaluates under Debug and says so, and a designer that printed
+    /// "Debug" regardless would be wrong for anybody who changed it.
+    /// </remarks>
+    public string ConfigurationName =>
+        _workspace.CurrentSnapshot?.Projects.FirstOrDefault()?.ActiveConfiguration is { Length: > 0 } configuration
+            ? $"Desktop · {configuration}"
+            : "Desktop · Debug";
+
+    /// <summary>What Run would start, which the design shows in the run bezel.</summary>
+    public string TargetName => ActiveForm is { } form ? form.Name : "—";
+
     /// <summary>What the status bar says on the left.</summary>
     public string StatusLeft => IsLoaded
         ? $"{Status} · {Describe(ProjectForms.Count, "form")}"
         : "No project";
 
-    /// <summary>The size of the form being designed, as the design shows it above the canvas.</summary>
-    public string CanvasCaption => ActiveForm is { } form
-        ? $"⌖ {form.Name}   {form.Width:F0} × {form.Height:F0} · {Zoom * 100:F0}%"
-        : string.Empty;
+    /// <summary>The label the design floats above the form on the canvas.</summary>
+    public string CanvasCaption => ActiveForm is { } form ? "⌖ " + form.Name : string.Empty;
+
+    /// <summary>The size chip in the breadcrumb bar, and the one over the canvas.</summary>
+    public string CanvasSize => ActiveForm is { } form
+        ? $"{form.Width:F0} × {form.Height:F0}"
+        : "—";
+
+    public string CanvasSizeAndZoom => ActiveForm is null
+        ? string.Empty
+        : $"{CanvasSize} · {Zoom * 100:F0}%";
 
     private bool _syncingHierarchy;
 
@@ -159,6 +254,11 @@ public sealed partial class DesignerViewModel
         ZoomResetCommand = new RelayCommand(() => Zoom = 1);
 
         ToggleThemeCommand = new RelayCommand(SwitchTheme);
+
+        ShowProjectCommand = new RelayCommand(() => DockTab = 0);
+        ShowConsoleCommand = new RelayCommand(() => DockTab = 1);
+        ShowProblemsCommand = new RelayCommand(() => DockTab = 2);
+        ShowPackagesCommand = new RelayCommand(() => DockTab = 3);
     }
 
     /// <summary>
@@ -253,9 +353,11 @@ public sealed partial class DesignerViewModel
                 : current.Name.LocalName);
         }
 
-        foreach (string step in trail)
+        string[] steps = [.. trail];
+
+        for (int index = 0; index < steps.Length; index++)
         {
-            Breadcrumb.Add(step);
+            Breadcrumb.Add(new Crumb(steps[index], index == 0, index == steps.Length - 1));
         }
     }
 }

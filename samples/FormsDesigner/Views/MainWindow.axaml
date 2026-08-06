@@ -17,8 +17,6 @@
       <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}" BorderThickness="1"
               CornerRadius="10" BoxShadow="0 18 50 0 #8C000000">
         <Grid RowDefinitions="Auto,*">
-
-          <!-- The window chrome, drawn rather than hosted: three dots and a title, as designed. -->
           <Border Grid.Row="0" Height="36" Background="{DynamicResource Bg2}" CornerRadius="10,10,0,0"
                   BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="12,0"
                   IsVisible="{Binding WindowTitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -30,14 +28,12 @@
                          Margin="6,0,0,0" VerticalAlignment="Center" />
             </StackPanel>
           </Border>
-
           <Panel Grid.Row="1">
             <ContentControl Content="{Binding Surface}" />
             <TextBlock Text="{Binding Problem}" TextWrapping="Wrap" Margin="14"
                        Foreground="{DynamicResource Red}" VerticalAlignment="Center"
                        IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </Panel>
-
         </Grid>
       </Border>
     </DataTemplate>
@@ -62,48 +58,81 @@
     <!-- Toolbar -->
     <Border Grid.Row="0" Background="{DynamicResource Bg2}"
             BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="10,0">
-      <Grid ColumnDefinitions="Auto,*,Auto,*,Auto">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto">
 
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-          <Border Width="24" Height="24" CornerRadius="6" Background="{DynamicResource Acc}">
-            <TextBlock Text="Ax" Foreground="White" FontWeight="Bold" FontSize="10.5"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Border>
-          <Button Classes="tool" Command="{Binding OpenCommand}" FontWeight="SemiBold" FontSize="12.5"
-                  Foreground="{DynamicResource Fg}" Content="{Binding Status}" />
-          <Button Classes="tool" Content="New form" Command="{Binding NewFormCommand}" />
-          <Button Classes="tool" Content="Save" Command="{Binding SaveCommand}" />
-          <Rectangle Width="1" Height="18" Fill="{DynamicResource Brd}" Margin="2,0" />
-          <Button Classes="tool" Content="Restore" Command="{Binding RestoreCommand}" />
-          <Button Classes="tool" Content="Build" Command="{Binding BuildCommand}" />
-        </StackPanel>
+        <Border Grid.Column="0" Width="24" Height="24" CornerRadius="6" Background="{DynamicResource Acc}"
+                VerticalAlignment="Center">
+          <TextBlock Text="Ax" Foreground="White" FontWeight="Bold" FontSize="10.5"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
 
-        <!-- Run and stop, in a bezel, centred: where an IDE puts the thing you press most. -->
-        <Border Grid.Column="2" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}"
-                BorderThickness="1" CornerRadius="7" Padding="2" VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="2">
-            <Button Classes="icon" Command="{Binding RunCommand}" ToolTip.Tip="Build and run"
-                    Foreground="{DynamicResource Grn}">
-              <Path Data="M5.2 3.4v9.2L13 8z" Width="14" Height="14" Stretch="Uniform"
-                    Fill="{DynamicResource Grn}" />
-            </Button>
-            <Button Classes="icon" Command="{Binding StopCommand}" ToolTip.Tip="Stop">
-              <Path Data="M4 4h8v8h-8z" Width="12" Height="12" Stretch="Uniform"
-                    Fill="{DynamicResource Red}" />
-            </Button>
-            <Rectangle Width="1" Fill="{DynamicResource Brd}" Margin="3,4" />
-            <CheckBox Content="grid" IsChecked="{Binding SnapToGrid, Mode=TwoWay}" Margin="5,0,0,0"
-                      ToolTip.Tip="Snap to the grid. Hold Alt to bypass." />
-            <CheckBox Content="guides" IsChecked="{Binding SnapToGuides, Mode=TwoWay}" Margin="4,0,8,0"
-                      ToolTip.Tip="Align to neighbours' edges and centres. Hold Alt to bypass." />
+        <Button Grid.Column="1" Classes="tool" Command="{Binding OpenCommand}" Margin="8,0,0,0"
+                Foreground="{DynamicResource Fg}" ToolTip.Tip="Open a solution or project">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="{Binding ProjectName}" FontWeight="SemiBold" FontSize="12.5" />
+            <Path Data="M4.2 6L8 9.8 11.8 6" Width="12" Height="12" Stretch="Uniform"
+                  Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+
+        <Border Grid.Column="2" Height="28" CornerRadius="6" Padding="10,0" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Path Data="M4.7 9.5V8a2 2 0 0 1 2-2h2.6a2 2 0 0 0 2-1.5" Width="13" Height="13"
+                  Stretch="Uniform" Stroke="{DynamicResource Fg2}" StrokeThickness="1.2" />
+            <TextBlock Text="{Binding EntryPointName}" FontSize="12" Foreground="{DynamicResource Fg2}" />
           </StackPanel>
         </Border>
 
-        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <ProgressBar IsIndeterminate="True" Width="80" Height="3"
+        <Border Grid.Column="3" Height="28" CornerRadius="6" Padding="10,0" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <TextBlock Text="{Binding ConfigurationName}" FontSize="12" Foreground="{DynamicResource Fg2}" />
+            <Path Data="M4.2 6L8 9.8 11.8 6" Width="12" Height="12" Stretch="Uniform"
+                  Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+
+        <Button Grid.Column="5" Classes="icon" Command="{Binding NewFormCommand}" ToolTip.Tip="New form">
+          <Path Data="M8 3.5v9M3.5 8h9" Width="15" Height="15" Stretch="Uniform"
+                Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" />
+        </Button>
+
+        <Border Grid.Column="6" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}"
+                BorderThickness="1" CornerRadius="7" Padding="2" VerticalAlignment="Center" Margin="4,0">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button Classes="icon" Width="30" Height="24" Command="{Binding RunCommand}" ToolTip.Tip="Run">
+              <Path Data="M5.2 3.4v9.2L13 8z" Width="14" Height="14" Stretch="Uniform"
+                    Fill="{DynamicResource Grn}" />
+            </Button>
+            <Button Classes="icon" Width="30" Height="24" Command="{Binding BuildCommand}" ToolTip.Tip="Build">
+              <Path Data="M13 8a5 5 0 1 1-1.6-3.7M13.3 2.9v2.7h-2.7" Width="14" Height="14" Stretch="Uniform"
+                    Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" />
+            </Button>
+            <Button Classes="icon" Width="30" Height="24" Command="{Binding StopCommand}" ToolTip.Tip="Stop">
+              <Path Data="M4 4h8v8h-8z" Width="12" Height="12" Stretch="Uniform"
+                    Fill="{DynamicResource Red}" />
+            </Button>
+            <Button Classes="tool" Height="24" Padding="9,0" FontSize="12" Command="{Binding SaveCommand}"
+                    ToolTip.Tip="Save the open form">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="{Binding TargetName}" FontSize="12" />
+                <Path Data="M4.2 6L8 9.8 11.8 6" Width="11" Height="11" Stretch="Uniform"
+                      Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Border>
+
+        <Button Grid.Column="7" Classes="icon" Command="{Binding RestoreCommand}" ToolTip.Tip="Restore">
+          <Path Data="M3 5h10M3 11h10" Width="15" Height="15" Stretch="Uniform"
+                Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
+        </Button>
+
+        <Rectangle Grid.Column="8" Width="1" Height="18" Fill="{DynamicResource Brd}" Margin="4,0" />
+
+        <StackPanel Grid.Column="9" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+          <ProgressBar IsIndeterminate="True" Width="70" Height="3" Margin="0,0,6,0"
                        VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
-          <TextBlock Classes="caption" Text="{Binding Progress}" VerticalAlignment="Center" />
-          <Button Classes="tool" Height="24" Padding="12,0" FontSize="11" CornerRadius="14"
+          <Button Classes="tool" Height="24" Padding="11,0" FontSize="11" CornerRadius="14"
                   Command="{Binding ToggleThemeCommand}" Content="{Binding ThemeName}"
                   ToolTip.Tip="Switch between the design's two variants" />
         </StackPanel>
@@ -114,37 +143,46 @@
     <!-- Body -->
     <Grid Grid.Row="1" ColumnDefinitions="262,4,*,4,302">
 
-      <!-- Left: hierarchy over palette -->
+      <!-- Left: hierarchy over toolbox -->
       <Border Grid.Column="0" Background="{DynamicResource Bg2}"
               BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="1.15*,1,*">
 
           <Grid Grid.Row="0" RowDefinitions="34,*">
             <Border Grid.Row="0" Classes="panelHeader">
-              <Grid ColumnDefinitions="*,Auto">
+              <Grid ColumnDefinitions="*,Auto,Auto">
                 <TextBlock Classes="panelTitle" Text="Hierarchy" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Classes="caption" VerticalAlignment="Center"
-                           Text="{Binding Hierarchy.Count, StringFormat='{}{0} elements'}" />
+                <Button Grid.Column="1" Classes="icon" Width="24" Height="22"
+                        Command="{Binding NewFormCommand}" ToolTip.Tip="New form">
+                  <Path Data="M8 3.5v9M3.5 8h9" Width="13" Height="13" Stretch="Uniform"
+                        Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
+                </Button>
+                <Button Grid.Column="2" Classes="icon" Width="24" Height="22"
+                        Command="{Binding DeleteSelectedCommand}" ToolTip.Tip="Delete the selection">
+                  <Path Data="M4.5 4.5l7 7M11.5 4.5l-7 7" Width="12" Height="12" Stretch="Uniform"
+                        Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
+                </Button>
               </Grid>
             </Border>
             <ListBox Grid.Row="1" ItemsSource="{Binding Hierarchy}"
                      SelectedItem="{Binding SelectedHierarchyRow, Mode=TwoWay}">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:HierarchyRow">
-                  <Grid ColumnDefinitions="Auto,Auto,Auto,*" Height="24">
+                  <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*" Height="24">
                     <Border Width="{Binding Indent}" />
                     <Path Grid.Column="1" Data="M4.2 6L8 9.8 11.8 6" Width="13" Height="13"
                           Stretch="Uniform" Opacity="{Binding ChevronOpacity}"
                           Stroke="{DynamicResource Fg3}" StrokeThickness="1.4"
-                          VerticalAlignment="Center" Margin="0,0,4,0" />
+                          VerticalAlignment="Center" Margin="0,0,5,0" />
                     <Path Grid.Column="2" Data="{Binding Glyph}" Width="14" Height="14"
                           Stretch="Uniform" StrokeThickness="1.2" VerticalAlignment="Center"
                           Stroke="{Binding Hue, Converter={x:Static vm:Converters.Hue}}"
-                          Margin="0,0,6,0" />
-                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                      <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Classes="caption" Text="{Binding TypeLabel}" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                          Margin="0,0,5,0" />
+                    <TextBlock Grid.Column="3" Text="{Binding Name}" FontSize="12.5"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="4" Text="{Binding TypeLabel}" FontSize="11" Margin="6,0,0,0"
+                               Foreground="{DynamicResource Fg3}" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
                   </Grid>
                 </DataTemplate>
               </ListBox.ItemTemplate>
@@ -166,12 +204,10 @@
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:ToolboxGroup">
                     <StackPanel Margin="0,0,0,6">
-                      <TextBlock Classes="section" Text="{Binding Name}" Margin="12,0,0,3" Height="20" />
+                      <TextBlock Classes="section" Text="{Binding Name}" Margin="12,0,0,2" Height="24" />
                       <ItemsControl ItemsSource="{Binding Items}" Margin="8,0">
                         <ItemsControl.ItemsPanel>
-                          <ItemsPanelTemplate>
-                            <UniformGrid Columns="2" />
-                          </ItemsPanelTemplate>
+                          <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:ToolboxEntry">
@@ -200,7 +236,7 @@
 
       <GridSplitter Grid.Column="1" />
 
-      <!-- Centre: tabs, breadcrumb, canvas, bottom panel -->
+      <!-- Centre -->
       <Grid Grid.Column="2" RowDefinitions="36,32,*,4,212" Background="{DynamicResource Bg1}">
 
         <Border Grid.Row="0" Background="{DynamicResource Bg2}"
@@ -211,11 +247,14 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:FormViewModel">
-                <Border Height="36" Padding="12,0" Background="Transparent">
+                <Border Height="36" Padding="12,0" Background="{DynamicResource Bg1}"
+                        BorderBrush="{DynamicResource Acc}" BorderThickness="0,0,0,2">
                   <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                     <Path Data="M2.5 3h11v10h-11zM2.5 6h11" Width="13" Height="13" Stretch="Uniform"
                           Stroke="{DynamicResource Acc}" StrokeThickness="1.2" />
-                    <TextBlock Text="{Binding Title}" FontSize="12.5" />
+                    <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="Medium" />
+                    <TextBlock Text="×" FontSize="11" Foreground="{DynamicResource Fg3}"
+                               VerticalAlignment="Center" />
                   </StackPanel>
                 </Border>
               </DataTemplate>
@@ -232,10 +271,13 @@
                 <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6" /></ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
-                <DataTemplate>
+                <DataTemplate x:DataType="vm:Crumb">
                   <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock Text="{Binding}" FontSize="11.5" Foreground="{DynamicResource Fg2}" />
-                    <TextBlock Text="›" FontSize="11.5" Foreground="{DynamicResource Fg3}" />
+                    <TextBlock Text="›" FontSize="11.5" Foreground="{DynamicResource Fg3}"
+                               IsVisible="{Binding !IsFirst}" />
+                    <TextBlock Text="{Binding Name}" FontSize="11.5"
+                               FontWeight="{Binding Weight}"
+                               Foreground="{Binding IsLast, Converter={x:Static vm:Converters.CurrentWhenTrue}}" />
                   </StackPanel>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
@@ -244,15 +286,15 @@
             <Border Grid.Column="1" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}"
                     BorderThickness="1" CornerRadius="6" Padding="2" VerticalAlignment="Center" Margin="0,0,8,0">
               <StackPanel Orientation="Horizontal">
-                <Button Classes="tool" Height="20" Padding="10,0" FontSize="11" Content="Design"
+                <Button Classes="tool" Height="20" Padding="10,0" FontSize="11" CornerRadius="4" Content="Design"
                         Command="{Binding ShowDesignCommand}"
                         Background="{Binding IsDesignView, Converter={x:Static vm:Converters.AccentWhenTrue}}"
                         Foreground="{Binding IsDesignView, Converter={x:Static vm:Converters.OnAccentWhenTrue}}" />
-                <Button Classes="tool" Height="20" Padding="10,0" FontSize="11" Content="XAML"
+                <Button Classes="tool" Height="20" Padding="10,0" FontSize="11" CornerRadius="4" Content="XAML"
                         Command="{Binding ShowXamlCommand}"
                         Background="{Binding IsXamlView, Converter={x:Static vm:Converters.AccentWhenTrue}}"
                         Foreground="{Binding IsXamlView, Converter={x:Static vm:Converters.OnAccentWhenTrue}}" />
-                <Button Classes="tool" Height="20" Padding="10,0" FontSize="11" Content="Split"
+                <Button Classes="tool" Height="20" Padding="10,0" FontSize="11" CornerRadius="4" Content="Split"
                         Command="{Binding ShowSplitCommand}"
                         Background="{Binding IsSplitView, Converter={x:Static vm:Converters.AccentWhenTrue}}"
                         Foreground="{Binding IsSplitView, Converter={x:Static vm:Converters.OnAccentWhenTrue}}" />
@@ -261,7 +303,11 @@
 
             <Border Grid.Column="2" BorderBrush="{DynamicResource Brd}" BorderThickness="1"
                     CornerRadius="6" Padding="9,3" VerticalAlignment="Center">
-              <TextBlock FontSize="11" Foreground="{DynamicResource Fg2}" Text="{Binding CanvasCaption}" />
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <TextBlock FontSize="11" Foreground="{DynamicResource Fg2}" Text="{Binding CanvasSize}" />
+                <Path Data="M4.2 6L8 9.8 11.8 6" Width="11" Height="11" Stretch="Uniform"
+                      Stroke="{DynamicResource Fg3}" StrokeThickness="1.4" VerticalAlignment="Center" />
+              </StackPanel>
             </Border>
 
           </Grid>
@@ -301,7 +347,16 @@
               </design:DesignEditor.InteractionOptions>
             </design:DesignEditor>
 
-            <!-- Zoom, bottom right, as designed. -->
+            <!-- The label the design floats over the form, and the zoom pill opposite it. -->
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left"
+                        VerticalAlignment="Top" Margin="16,10,0,0"
+                        IsVisible="{Binding CanvasCaption, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+              <TextBlock Text="{Binding CanvasCaption}" Classes="mono" FontSize="11" FontWeight="Medium"
+                         Foreground="{DynamicResource Acc}" />
+              <TextBlock Text="{Binding CanvasSizeAndZoom}" Classes="mono" FontSize="11"
+                         Foreground="{DynamicResource Fg3}" />
+            </StackPanel>
+
             <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14"
                     Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Brd}"
                     BorderThickness="1" CornerRadius="7">
@@ -310,20 +365,6 @@
                 <Button Classes="tool" Height="26" Padding="4,0" FontSize="11.5"
                         Content="{Binding ZoomText}" Command="{Binding ZoomResetCommand}" />
                 <Button Classes="icon" Width="28" Height="26" Content="+" Command="{Binding ZoomInCommand}" />
-              </StackPanel>
-            </Border>
-
-            <!-- The gestures, where somebody will find them. -->
-            <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="14"
-                    Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Brd}"
-                    BorderThickness="1" CornerRadius="7" Padding="10,8" Opacity="0.92">
-              <StackPanel Spacing="2">
-                <TextBlock Classes="section" Text="GESTURES" Margin="0,0,0,3" />
-                <TextBlock Classes="caption" Text="drag — the control under the pointer" />
-                <TextBlock Classes="caption" Text="Ctrl + drag — the form itself" />
-                <TextBlock Classes="caption" Text="middle — pan     wheel — zoom" />
-                <TextBlock Classes="caption" Text="arrows — 1px     Shift — 10px     Alt — no snap" />
-                <TextBlock Classes="caption" Text="Delete — remove     Ctrl+A — all forms" />
               </StackPanel>
             </Border>
           </Panel>
@@ -341,73 +382,150 @@
 
         <GridSplitter Grid.Row="3" Height="4" />
 
+        <!-- The dock: text tabs with a two-pixel underline, as designed. -->
         <Border Grid.Row="4" Background="{DynamicResource Bg2}"
                 BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0">
-          <TabControl Padding="0">
+          <Grid RowDefinitions="32,*">
 
-            <TabItem Header="Project">
-              <ListBox ItemsSource="{Binding ProjectForms}"
-                       SelectedItem="{Binding SelectedProjectForm, Mode=TwoWay}">
+            <Border Grid.Row="0" BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="6,0">
+              <StackPanel Orientation="Horizontal">
+                <Button Classes="tool" Height="32" CornerRadius="0" Padding="12,0" FontSize="12"
+                        Command="{Binding ShowProjectCommand}"
+                        BorderThickness="0,0,0,2"
+                        BorderBrush="{Binding IsDockProject, Converter={x:Static vm:Converters.UnderlineWhenTrue}}"
+                        Foreground="{Binding IsDockProject, Converter={x:Static vm:Converters.CurrentWhenTrue}}"
+                        Content="Project" />
+                <Button Classes="tool" Height="32" CornerRadius="0" Padding="12,0" FontSize="12"
+                        Command="{Binding ShowConsoleCommand}"
+                        BorderThickness="0,0,0,2"
+                        BorderBrush="{Binding IsDockConsole, Converter={x:Static vm:Converters.UnderlineWhenTrue}}"
+                        Foreground="{Binding IsDockConsole, Converter={x:Static vm:Converters.CurrentWhenTrue}}"
+                        Content="Console" />
+                <Button Classes="tool" Height="32" CornerRadius="0" Padding="12,0" FontSize="12"
+                        Command="{Binding ShowProblemsCommand}"
+                        BorderThickness="0,0,0,2"
+                        BorderBrush="{Binding IsDockProblems, Converter={x:Static vm:Converters.UnderlineWhenTrue}}"
+                        Foreground="{Binding IsDockProblems, Converter={x:Static vm:Converters.CurrentWhenTrue}}">
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <TextBlock Text="Problems" FontSize="12" />
+                    <TextBlock Text="{Binding ProblemCount}" FontSize="11"
+                               Foreground="{DynamicResource Fg3}" />
+                  </StackPanel>
+                </Button>
+                <Button Classes="tool" Height="32" CornerRadius="0" Padding="12,0" FontSize="12"
+                        Command="{Binding ShowPackagesCommand}"
+                        BorderThickness="0,0,0,2"
+                        BorderBrush="{Binding IsDockPackages, Converter={x:Static vm:Converters.UnderlineWhenTrue}}"
+                        Foreground="{Binding IsDockPackages, Converter={x:Static vm:Converters.CurrentWhenTrue}}"
+                        Content="Packages" />
+              </StackPanel>
+            </Border>
+
+            <!-- Project: folders on the left, a grid of files on the right. -->
+            <Grid Grid.Row="1" ColumnDefinitions="198,1,*" IsVisible="{Binding IsDockProject}">
+              <ListBox ItemsSource="{Binding ProjectFolders}"
+                       SelectedItem="{Binding SelectedFolder, Mode=TwoWay}">
                 <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="vm:FormFile">
-                    <StackPanel Orientation="Horizontal" Spacing="8" Height="24" VerticalAlignment="Center">
-                      <Path Data="M4 2.5h5.5L12.5 6v7.5H4zM9.5 2.5V6h3" Width="13" Height="13"
-                            Stretch="Uniform" Stroke="{DynamicResource Acc}" StrokeThickness="1.2" />
-                      <TextBlock Text="{Binding Name}" />
-                      <TextBlock Classes="caption" Text="{Binding Folder}" />
-                    </StackPanel>
+                  <DataTemplate x:DataType="vm:FolderRow">
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,*" Height="24">
+                      <Border Width="{Binding Indent}" />
+                      <Path Grid.Column="1" Data="M4.2 6L8 9.8 11.8 6" Width="12" Height="12"
+                            Stretch="Uniform" Stroke="{DynamicResource Fg3}" StrokeThickness="1.4"
+                            VerticalAlignment="Center" Margin="0,0,4,0"
+                            IsVisible="{Binding HasChildren}" />
+                      <Path Grid.Column="2" Data="M2.5 4.8h4l1.4 1.4h5.6v6.3H2.5z" Width="13" Height="13"
+                            Stretch="Uniform" Stroke="{DynamicResource Acc}" StrokeThickness="1.2"
+                            VerticalAlignment="Center" Margin="0,0,6,0" />
+                      <TextBlock Grid.Column="3" Text="{Binding Name}" FontSize="12"
+                                 VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </Grid>
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
-            </TabItem>
 
-            <TabItem Header="Console">
-              <ListBox ItemsSource="{Binding Output}" FontFamily="{DynamicResource MonoFont}" FontSize="11.5" />
-            </TabItem>
+              <Border Grid.Column="1" Background="{DynamicResource Brd}" />
 
-            <TabItem Header="Problems">
-              <ListBox ItemsSource="{Binding Diagnostics}">
-                <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="vm:DiagnosticRow">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                      <TextBlock Text="{Binding Code}" Classes="mono"
-                                 Foreground="{Binding Severity, Converter={x:Static vm:Converters.SeverityBrush}}" />
-                      <TextBlock Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Classes="caption" Text="{Binding Where}" />
-                    </StackPanel>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
-            </TabItem>
-
-            <TabItem Header="Packages">
-              <Grid RowDefinitions="Auto,*" Margin="10,8">
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
-                  <TextBox Width="180" PlaceholderText="search nuget.org" Text="{Binding PackageQuery, Mode=TwoWay}" />
-                  <Button Classes="tool" Content="Find" Command="{Binding SearchPackagesCommand}" />
-                  <ComboBox Width="150" ItemsSource="{Binding AvailableVersions}"
-                            SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" />
-                  <Button Classes="accent" Content="Add" Command="{Binding InstallPackageCommand}" />
-                  <TextBlock VerticalAlignment="Center" Text="{Binding PackageAdvice}"
-                             Foreground="{Binding PackageAdviceSeverity, Converter={x:Static vm:Converters.SeverityBrush}}" />
-                </StackPanel>
-                <ListBox Grid.Row="1" ItemsSource="{Binding FoundPackages}"
-                         SelectedItem="{Binding SelectedPackage, Mode=TwoWay}">
-                  <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:PackageRow">
-                      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Id}" FontWeight="SemiBold" />
-                        <TextBlock Classes="caption" Text="{Binding Version}" />
-                        <TextBlock Classes="caption" Text="{Binding Description}"
-                                   TextTrimming="CharacterEllipsis" />
-                      </StackPanel>
+              <ScrollViewer Grid.Column="2">
+                <ItemsControl ItemsSource="{Binding ProjectFiles}" Margin="12">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:FileTile">
+                      <Border Width="92" CornerRadius="8" Padding="4,10,4,8" Margin="2"
+                              Background="Transparent" Cursor="Hand">
+                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                          <Path Data="{Binding Glyph}" Width="26" Height="26" Stretch="Uniform"
+                                StrokeThickness="1.1" HorizontalAlignment="Center"
+                                Stroke="{Binding Hue, Converter={x:Static vm:Converters.Hue}}" />
+                          <TextBlock Text="{Binding Name}" FontSize="10.5" TextAlignment="Center"
+                                     TextWrapping="Wrap" LineHeight="13" />
+                        </StackPanel>
+                      </Border>
                     </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-              </Grid>
-            </TabItem>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Grid>
 
-          </TabControl>
+            <!-- Console: time, level, message. -->
+            <ScrollViewer Grid.Row="1" IsVisible="{Binding IsDockConsole}">
+              <ItemsControl ItemsSource="{Binding Logs}" Margin="14,8">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:LogRow">
+                    <Grid ColumnDefinitions="Auto,42,*" Height="20" ColumnSpacing="10">
+                      <TextBlock Text="{Binding Time}" Classes="mono" FontSize="11.5"
+                                 Foreground="{DynamicResource Fg3}" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Text="{Binding Level}" Classes="mono" FontSize="11.5"
+                                 FontWeight="SemiBold" VerticalAlignment="Center"
+                                 Foreground="{Binding Hue, Converter={x:Static vm:Converters.Hue}}" />
+                      <TextBlock Grid.Column="2" Text="{Binding Message}" Classes="mono" FontSize="11.5"
+                                 Foreground="{DynamicResource Fg2}" VerticalAlignment="Center" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+
+            <ListBox Grid.Row="1" IsVisible="{Binding IsDockProblems}" ItemsSource="{Binding Diagnostics}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:DiagnosticRow">
+                  <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Code}" Classes="mono"
+                               Foreground="{Binding Severity, Converter={x:Static vm:Converters.SeverityBrush}}" />
+                    <TextBlock Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="caption" Text="{Binding Where}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <Grid Grid.Row="1" IsVisible="{Binding IsDockPackages}" RowDefinitions="Auto,*" Margin="12,10">
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
+                <TextBox Width="200" PlaceholderText="search nuget.org" Text="{Binding PackageQuery, Mode=TwoWay}" />
+                <Button Classes="tool" Content="Find" Command="{Binding SearchPackagesCommand}" />
+                <ComboBox Width="160" ItemsSource="{Binding AvailableVersions}"
+                          SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" />
+                <Button Classes="accent" Height="26" Content="Add" Command="{Binding InstallPackageCommand}" />
+                <TextBlock VerticalAlignment="Center" FontSize="11.5" Text="{Binding PackageAdvice}"
+                           Foreground="{Binding PackageAdviceSeverity, Converter={x:Static vm:Converters.SeverityBrush}}" />
+              </StackPanel>
+              <ListBox Grid.Row="1" ItemsSource="{Binding FoundPackages}"
+                       SelectedItem="{Binding SelectedPackage, Mode=TwoWay}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PackageRow">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Id}" FontWeight="SemiBold" />
+                      <TextBlock Classes="caption" Text="{Binding Version}" />
+                      <TextBlock Classes="caption" Text="{Binding Description}"
+                                 TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+
+          </Grid>
         </Border>
 
       </Grid>
@@ -423,8 +541,8 @@
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Classes="panelTitle" Text="Inspector" VerticalAlignment="Center" />
               <Button Grid.Column="1" Classes="icon" Width="24" Height="22"
-                      Command="{Binding DeleteSelectedCommand}" ToolTip.Tip="Delete the selection">
-                <Path Data="M4.5 4.5l7 7M11.5 4.5l-7 7" Width="12" Height="12" Stretch="Uniform"
+                      Command="{Binding ToggleThemeCommand}" ToolTip.Tip="Switch theme">
+                <Path Data="M3 5h10M3 11h10" Width="13" Height="13" Stretch="Uniform"
                       Stroke="{DynamicResource Fg2}" StrokeThickness="1.3" />
               </Button>
             </Grid>
@@ -446,12 +564,31 @@
                 </StackPanel>
               </Grid>
 
+              <!-- The chips: what the element declares beyond its properties. -->
+              <ItemsControl ItemsSource="{Binding SelectedChips}" Margin="14,0,14,12">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Background="{DynamicResource Bg3}" CornerRadius="9" Padding="8,2" Margin="0,0,5,4">
+                      <TextBlock Text="{Binding}" FontSize="10.5" Foreground="{DynamicResource Fg2}" />
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
               <ItemsControl ItemsSource="{Binding PropertyGroups}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PropertyGroup">
                     <Border BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0" Padding="14,8,14,12">
                       <StackPanel>
-                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" Height="26" />
+                        <StackPanel Orientation="Horizontal" Spacing="6" Height="26">
+                          <Path Data="M4.2 6L8 9.8 11.8 6" Width="12" Height="12" Stretch="Uniform"
+                                Stroke="{DynamicResource Fg3}" StrokeThickness="1.4" VerticalAlignment="Center" />
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12"
+                                     VerticalAlignment="Center" />
+                        </StackPanel>
                         <ItemsControl ItemsSource="{Binding Rows}">
                           <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PropertyRow">
@@ -459,7 +596,8 @@
                                 <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"
                                            Foreground="{DynamicResource Fg2}"
                                            TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
-                                <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" />
+                                <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}"
+                                         FontFamily="{DynamicResource MonoFont}" />
                               </Grid>
                             </DataTemplate>
                           </ItemsControl.ItemTemplate>
@@ -470,16 +608,21 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
 
-              <Border BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0" Padding="14,10,14,16">
-                <StackPanel Spacing="6">
-                  <TextBlock Classes="section" Text="ADD A PROPERTY" />
-                  <Grid ColumnDefinitions="92,*,Auto" ColumnSpacing="6">
-                    <TextBox Text="{Binding NewPropertyName, Mode=TwoWay}" PlaceholderText="Name" />
-                    <TextBox Grid.Column="1" Text="{Binding NewPropertyValue, Mode=TwoWay}" PlaceholderText="Value" />
-                    <Button Grid.Column="2" Classes="accent" Height="26" Padding="10,0" Content="+"
-                            Command="{Binding AddPropertyCommand}" />
-                  </Grid>
-                </StackPanel>
+              <Border BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0" Padding="14,10,14,10">
+                <Grid ColumnDefinitions="92,*,Auto" ColumnSpacing="6">
+                  <TextBox Text="{Binding NewPropertyName, Mode=TwoWay}" PlaceholderText="Name" />
+                  <TextBox Grid.Column="1" Text="{Binding NewPropertyValue, Mode=TwoWay}" PlaceholderText="Value" />
+                  <Button Grid.Column="2" Classes="accent" Height="26" Padding="10,0" Content="+"
+                          Command="{Binding AddPropertyCommand}" />
+                </Grid>
+              </Border>
+
+              <!-- The design's dashed call to action at the foot of the inspector. -->
+              <Border Margin="14,4,14,16" Height="30" CornerRadius="6" BorderThickness="1"
+                      BorderBrush="{DynamicResource Brd2}">
+                <Button Classes="tool" Command="{Binding DeleteSelectedCommand}" HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center" Foreground="{DynamicResource Acc}"
+                        FontWeight="Medium" FontSize="12" Content="Remove this control" />
               </Border>
 
             </StackPanel>
@@ -499,6 +642,8 @@
           <TextBlock Classes="dim" FontSize="11" Text="Avalonia 12.1.1" />
           <TextBlock Classes="caption" Text="·" />
           <TextBlock Classes="dim" FontSize="11" Text="net10.0" />
+          <TextBlock Classes="caption" Text="·" />
+          <TextBlock Classes="dim" FontSize="11" Text="{Binding ConfigurationName}" />
           <TextBlock Classes="caption" Text="·" />
           <TextBlock Classes="dim" FontSize="11" Text="UTF-8" />
           <TextBlock Classes="caption" Text="·" />

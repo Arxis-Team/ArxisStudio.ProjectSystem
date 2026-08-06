@@ -35,6 +35,14 @@ public static class Converters
     public static IValueConverter AccentWhenTrue { get; } =
         new Lookup<bool>(static on => on ? "Acc" : null);
 
+    /// <summary>The foreground a breadcrumb step or a dock tab takes when it is the current one.</summary>
+    public static IValueConverter CurrentWhenTrue { get; } =
+        new Lookup<bool>(static on => on ? "Fg" : "Fg2");
+
+    /// <summary>The two-pixel underline the design puts under the active tab, and nothing otherwise.</summary>
+    public static IValueConverter UnderlineWhenTrue { get; } =
+        new Lookup<bool>(static on => on ? "Acc" : null);
+
     /// <summary>The text colour that goes with it.</summary>
     public static IValueConverter OnAccentWhenTrue { get; } =
         new Lookup<bool>(static on => on ? "OnAcc" : "Fg2");
