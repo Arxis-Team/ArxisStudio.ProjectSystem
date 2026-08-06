@@ -44,7 +44,16 @@ Opens, waits for the window to settle, writes exactly what is on screen, and exi
 thing you look at, so "does it work" and "does it look right" are different questions and only the
 first was ever answerable from a log.
 
-### One thing that does not match yet
+### Two things that do not match yet
+
+**The window keeps the system title bar.** The design draws its own, and
+`ExtendClientAreaToDecorationsHint` is the property for that — but Avalonia 12 removed
+`ExtendClientAreaChromeHints`, and without it Windows still paints the caption text and its buttons
+over the client area: the title landed on top of the toolbar and there were two sets of window
+buttons. Reverted rather than left broken. Doing this properly needs whatever replaced that property
+in 12, which I have not found.
+
+
 
 A form whose document sets no `Background` shows a light card on the dark canvas where the design
 shows a dark one. It is not the card: painting the template's own panel red fills that rectangle, so
