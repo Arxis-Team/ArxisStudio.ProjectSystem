@@ -111,7 +111,7 @@ view of it** — a canvas that could disagree with the file is a designer that l
 
 | Panel | The API behind it |
 | --- | --- |
-| Project | `ProjectSnapshot.Items` filtered to markup — a file the project does not compile is correctly absent |
+| Project | folders on the left, the folder's files on the right; **double-click a file to open it**. The tree is every item the project compiles, so a `.cs` file is there and says why it does not open; the forms are `ProjectSnapshot.Items` filtered to markup, and a file the project does not compile is correctly absent |
 | Toolbox | markup snippets, dragged with Avalonia's own drag-and-drop |
 | Canvas | one `DesignEditor` item per open form, whose content is `XamlLoadSession.RootObject` |
 | Inspector | the selected element's **attributes**, not the live control's hundred properties |

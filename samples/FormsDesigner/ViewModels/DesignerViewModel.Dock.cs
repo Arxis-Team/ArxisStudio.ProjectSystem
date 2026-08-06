@@ -181,12 +181,24 @@ public sealed partial class DesignerViewModel
         }
     }
 
-    /// <summary>Opens a file from the grid, when it is one this designer can open.</summary>
+    /// <summary>
+    /// Opens a file from the grid, when it is one this designer can open.
+    /// </summary>
+    /// <remarks>
+    /// A designer opens markup; the grid shows everything in the folder, because a project pane
+    /// that hid what it could not open would be lying about the project. A double click on a
+    /// <c>.cs</c> file therefore says why nothing happened, which is the whole difference between a
+    /// tool that declined and a tool that is broken.
+    /// </remarks>
     public void OpenFile(FileTile file)
     {
         if (ProjectForms.FirstOrDefault(form => form.Path == file.Path) is { } form)
         {
             SelectedProjectForm = form;
+
+            return;
         }
+
+        Log($"! {file.Name} is not markup — this designer opens .axaml and .xaml");
     }
 }

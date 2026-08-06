@@ -546,8 +546,10 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:FileTile">
-                      <Border Width="92" CornerRadius="8" Padding="4,10,4,8" Margin="2"
-                              Background="Transparent" Cursor="Hand">
+                      <Border Classes="tile" Width="92" CornerRadius="8" Padding="4,10,4,8" Margin="2"
+                              Background="Transparent" Cursor="Hand"
+                              DoubleTapped="OnProjectFileOpened"
+                              ToolTip.Tip="Double-click to open">
                         <StackPanel Spacing="6" HorizontalAlignment="Center">
                           <Path Data="{Binding Glyph}" Width="26" Height="26" Stretch="Uniform"
                                 StrokeThickness="1.1" HorizontalAlignment="Center"

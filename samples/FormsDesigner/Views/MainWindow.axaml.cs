@@ -290,6 +290,20 @@ public sealed partial class MainWindow : Window
         return answer;
     }
 
+    /// <summary>Opens the file a tile in the project grid stands for.</summary>
+    /// <remarks>
+    /// The grid is an <c>ItemsControl</c> of plain borders rather than a <c>ListBox</c>, because the
+    /// design draws tiles and not rows, and an `ItemsControl` has no selection to bind an open to.
+    /// So the gesture arrives here, which is where every other gesture in this window arrives.
+    /// </remarks>
+    private void OnProjectFileOpened(object? sender, TappedEventArgs e)
+    {
+        if (sender is Control { DataContext: FileTile file })
+        {
+            Designer?.OpenFile(file);
+        }
+    }
+
     // -- The window's own chrome ------------------------------------------------------------------
     //
     // `BorderOnly` keeps the frame and drops the caption, so the toolbar is the title bar and these
