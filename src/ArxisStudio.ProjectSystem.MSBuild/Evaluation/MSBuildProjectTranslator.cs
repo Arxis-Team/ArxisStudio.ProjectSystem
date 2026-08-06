@@ -42,6 +42,11 @@ internal static class MSBuildProjectTranslator
     /// with no packages -- which is why a missing restore is also reported as a diagnostic.
     /// </param>
     /// <param name="diagnostics">Anything the provider noticed while gathering the above.</param>
+    /// <param name="ceiling">
+    /// How far up the convention walk may be repeated when MSBuild found nothing -- see
+    /// <c>WalkedImportCandidates</c>. Absent means the project's own directory and no further, which
+    /// is the safe answer rather than the complete one.
+    /// </param>
     /// <returns>The snapshot.</returns>
     internal static ProjectSnapshot Translate(
         EvaluatedProject project,
@@ -49,7 +54,8 @@ internal static class MSBuildProjectTranslator
         string providerName,
         IReadOnlySet<CanonicalPath>? knownProjects = null,
         ImmutableArray<ResolvedPackage> resolvedPackages = default,
-        IReadOnlyList<ProjectDiagnostic>? diagnostics = null)
+        IReadOnlyList<ProjectDiagnostic>? diagnostics = null,
+        CanonicalPath ceiling = default)
     {
         CanonicalPath directory = project.FullPath.Directory;
 
@@ -90,7 +96,7 @@ internal static class MSBuildProjectTranslator
             builder.Outputs.Add(artifact);
         }
 
-        foreach (CanonicalPath input in EvaluationInputs(project))
+        foreach (CanonicalPath input in EvaluationInputs(project, ceiling))
         {
             builder.EvaluationInputs.Add(input);
         }
@@ -336,7 +342,7 @@ internal static class MSBuildProjectTranslator
     /// different than it did.
     /// </para>
     /// </remarks>
-    private static IEnumerable<CanonicalPath> EvaluationInputs(EvaluatedProject project)
+    private static IEnumerable<CanonicalPath> EvaluationInputs(EvaluatedProject project, CanonicalPath ceiling)
     {
         yield return project.FullPath;
 
@@ -357,6 +363,82 @@ internal static class MSBuildProjectTranslator
         if (CanonicalPath.TryCreate(Property(project, "ProjectAssetsFile"), out CanonicalPath assets))
         {
             yield return assets;
+        }
+
+        foreach (CanonicalPath candidate in WalkedImportCandidates(project, ceiling))
+        {
+            yield return candidate;
+        }
+    }
+
+    /// <summary>
+    /// The files MSBuild walks up the directory tree to find, at every place it would have looked.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An import MSBuild did not find is not among its imports, so a project that has no
+    /// <c>Directory.Build.props</c> above it says nothing about one — and somebody creating one is
+    /// then a change to a file nothing declared it depended on. That is the same problem the restore
+    /// assets file has, answered the same way: name where it would be, so that its appearance is a
+    /// change to something the project said it was watching.
+    /// </para>
+    /// <para>
+    /// <b>Every place it would have looked</b>, and not merely the nearest, because MSBuild stops at
+    /// the first file it finds and creating a nearer one takes over from the one in use — measured,
+    /// not assumed: with a file two directories up, adding one beside the project switched the
+    /// properties to the new file and the outer one stopped being imported at all. So each directory
+    /// from the project's own up to and including the one holding the file in use is a place where a
+    /// new file would change this project.
+    /// </para>
+    /// <para>
+    /// The name comes from the file MSBuild found rather than from a constant, so a repository that
+    /// renames the convention is followed rather than second-guessed. When nothing was found there is
+    /// no name to read and the constant is used, and the walk is bounded by
+    /// <paramref name="ceiling"/> — MSBuild's own goes to the root of the drive, and watching that is
+    /// not something a library should decide to do on a caller's behalf.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<CanonicalPath> WalkedImportCandidates(
+        EvaluatedProject project,
+        CanonicalPath ceiling)
+    {
+        CanonicalPath directory = project.FullPath.Directory;
+
+        if (directory.IsEmpty)
+        {
+            yield break;
+        }
+
+        foreach ((string name, string foundProperty) in MSBuildWellKnown.WalkedImports)
+        {
+            CanonicalPath.TryCreate(Property(project, foundProperty), out CanonicalPath found);
+
+            CanonicalPath stop = found.IsEmpty ? ceiling : found.Directory;
+            string file = found.IsEmpty ? name : found.FileName;
+
+            if (stop.IsEmpty || !directory.StartsWith(stop))
+            {
+                // Either a project pointed the search at a directory instead of letting MSBuild walk
+                // up to it, or the ceiling is not above this project — a solution may reference a
+                // project outside its own tree. Neither is a walk, so nothing is invented: the file
+                // that was found, or failing that the one place a new file certainly reaches this
+                // project, which is its own directory.
+                yield return found.IsEmpty ? directory.Combine(file) : found;
+
+                continue;
+            }
+
+            for (CanonicalPath current = directory;
+                !current.IsEmpty;
+                current = current.Directory)
+            {
+                yield return current.Combine(file);
+
+                if (current == stop)
+                {
+                    break;
+                }
+            }
         }
     }
 

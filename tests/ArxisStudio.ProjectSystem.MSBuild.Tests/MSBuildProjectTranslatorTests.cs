@@ -434,7 +434,9 @@ public sealed class MSBuildProjectTranslatorTests
     {
         ProjectSnapshot snapshot = Translate(Project());
 
-        Assert.Equal([snapshot.ProjectFilePath], snapshot.EvaluationInputs);
+        Assert.Equal(
+            [snapshot.ProjectFilePath, .. WalkedIn("src", "App")],
+            snapshot.EvaluationInputs);
     }
 
     /// <summary>
@@ -460,6 +462,7 @@ public sealed class MSBuildProjectTranslatorTests
             [
                 CanonicalPath.Create(Native("src", "App", "App.csproj")),
                 CanonicalPath.Create(Native("src", "Directory.Build.props")),
+                .. WalkedIn("src", "App"),
             ],
             snapshot.EvaluationInputs);
     }
@@ -520,6 +523,135 @@ public sealed class MSBuildProjectTranslatorTests
             imports: [shared, shared]));
 
         Assert.Single(snapshot.EvaluationInputs.Where(p => p == shared));
+    }
+
+    /// <summary>
+    /// The gap this closes: MSBuild reports the imports it resolved, so a project with no
+    /// Directory.Build.props above it said nothing about one, and creating one changed how it
+    /// evaluated without changing anything it claimed to depend on.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_NameTheConventionalImportsThatDoNotExistYet()
+    {
+        ProjectSnapshot snapshot = Translate(Project());
+
+        Assert.Equal(
+            [snapshot.ProjectFilePath, .. WalkedIn("src", "App")],
+            snapshot.EvaluationInputs);
+    }
+
+    /// <summary>
+    /// Every directory the walk would have visited, not only the one it stopped at.
+    /// </summary>
+    /// <remarks>
+    /// Measured against a real MSBuild before it was written: with a Directory.Build.props two
+    /// directories up, adding one beside the project switched the evaluated properties to the new
+    /// file and the outer one stopped being imported at all. So a nearer file is a change even
+    /// though a further one is in use.
+    /// </remarks>
+    [Fact]
+    public void EvaluationInputs_NameEveryDirectoryTheWalkWouldHaveVisited()
+    {
+        CanonicalPath found = CanonicalPath.Create(Native("Directory.Build.props"));
+
+        ProjectSnapshot snapshot = Translate(Project(
+            path: CanonicalPath.Create(Native("src", "App", "App.csproj")),
+            properties: Meta(("DirectoryBuildPropsPath", found.Value))));
+
+        Assert.Equal(
+            [
+                CanonicalPath.Create(Native("src", "App", "Directory.Build.props")),
+                CanonicalPath.Create(Native("src", "Directory.Build.props")),
+                found,
+            ],
+            snapshot.EvaluationInputs.Where(p => p.FileName == "Directory.Build.props"));
+    }
+
+    /// <summary>
+    /// The walk stops where MSBuild's stopped. A directory above the file in use cannot matter,
+    /// because a file created there would never be reached.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_StopWhereTheWalkStopped()
+    {
+        CanonicalPath found = CanonicalPath.Create(Native("src", "Directory.Packages.props"));
+
+        ProjectSnapshot snapshot = Translate(Project(
+            properties: Meta(("DirectoryPackagesPropsPath", found.Value))));
+
+        Assert.DoesNotContain(
+            CanonicalPath.Create(Native("Directory.Packages.props")),
+            snapshot.EvaluationInputs);
+    }
+
+    /// <summary>
+    /// The name is read rather than assumed, so a repository that renames the convention through
+    /// <c>DirectoryBuildPropsFile</c> is followed instead of watched for a file it does not use.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_TakeTheConventionsNameFromTheFileThatWasFound()
+    {
+        ProjectSnapshot snapshot = Translate(Project(properties: Meta(
+            ("DirectoryBuildPropsPath", Native("src", "Common.props")))));
+
+        Assert.Contains(CanonicalPath.Create(Native("src", "App", "Common.props")), snapshot.EvaluationInputs);
+        Assert.DoesNotContain(
+            CanonicalPath.Create(Native("src", "App", "Directory.Build.props")),
+            snapshot.EvaluationInputs);
+    }
+
+    /// <summary>
+    /// Without a ceiling the walk would climb to the root of the drive, and a library does not get
+    /// to decide that a host should watch it.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_WalkNoFurtherThanTheCeiling()
+    {
+        ProjectSnapshot snapshot = Translate(
+            Project(path: CanonicalPath.Create(Native("repo", "src", "App", "App.csproj"))),
+            ceiling: CanonicalPath.Create(Native("repo")));
+
+        Assert.Equal(
+            [
+                CanonicalPath.Create(Native("repo", "src", "App", "Directory.Build.props")),
+                CanonicalPath.Create(Native("repo", "src", "Directory.Build.props")),
+                CanonicalPath.Create(Native("repo", "Directory.Build.props")),
+            ],
+            snapshot.EvaluationInputs.Where(p => p.FileName == "Directory.Build.props"));
+    }
+
+    /// <summary>
+    /// A solution may reference a project outside its own tree, and then the ceiling is not above
+    /// that project at all. Walking towards it would climb to the root looking for somewhere it
+    /// never was.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_OfAProjectBelowNoCeiling_NameOnlyItsOwnDirectory()
+    {
+        ProjectSnapshot snapshot = Translate(
+            Project(path: CanonicalPath.Create(Native("elsewhere", "App", "App.csproj"))),
+            ceiling: CanonicalPath.Create(Native("repo")));
+
+        Assert.Equal(
+            [CanonicalPath.Create(Native("elsewhere", "App", "Directory.Build.props"))],
+            snapshot.EvaluationInputs.Where(p => p.FileName == "Directory.Build.props"));
+    }
+
+    /// <summary>
+    /// A project may point the search at one directory rather than let MSBuild walk up to it. The
+    /// result is then not above the project, and only that one place matters.
+    /// </summary>
+    [Fact]
+    public void EvaluationInputs_OfAConfiguredSearch_NameOnlyWhatItFound()
+    {
+        CanonicalPath found = CanonicalPath.Create(Native("build", "Common", "Directory.Build.targets"));
+
+        ProjectSnapshot snapshot = Translate(Project(properties: Meta(
+            ("DirectoryBuildTargetsPath", found.Value))));
+
+        Assert.Equal(
+            [found],
+            snapshot.EvaluationInputs.Where(p => p.FileName == "Directory.Build.targets"));
     }
 
     [Fact]

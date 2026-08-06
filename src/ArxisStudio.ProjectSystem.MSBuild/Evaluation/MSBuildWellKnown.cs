@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 
 namespace ArxisStudio.ProjectSystem.MSBuild;
 
@@ -56,11 +57,39 @@ internal static class MSBuildWellKnown
         // import that nobody edits is told apart from one that matters.
         "NetCoreRoot", "NuGetPackageRoot",
 
+        // Nor these: each names the convention-based file MSBuild found by walking up, which is
+        // where the walk it would repeat has to stop. See WalkedImports.
+        "DirectoryBuildPropsPath", "DirectoryBuildTargetsPath", "DirectoryPackagesPropsPath",
+
         "LangVersion", "Nullable", "ImplicitUsings", "TreatWarningsAsErrors",
         "UseWPF", "UseWindowsForms", "IsPackable", "IsTestProject",
         "DocumentationFile", "AssemblyVersion", "FileVersion", "Version",
         "MSBuildProjectName", "MSBuildProjectDirectory", "MSBuildProjectExtension",
     }.ToFrozenSet(System.StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The files MSBuild finds by walking up from a project, and the property naming the one it
+    /// found.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These three and no others, because these are the three a person edits. The SDK walks up for
+    /// more than this — an <c>.editorconfig</c>, a response file — but those are read by the
+    /// compiler or the command line rather than by evaluation, and a project's evaluation inputs are
+    /// about what makes <em>this snapshot</em> untrue.
+    /// </para>
+    /// <para>
+    /// The property matters as much as the name. It is what says where the walk stopped, and
+    /// therefore how far a repeat of it has to go: an unqualified walk runs to the root of the
+    /// drive.
+    /// </para>
+    /// </remarks>
+    internal static ImmutableArray<(string Name, string FoundProperty)> WalkedImports { get; } =
+    [
+        ("Directory.Build.props", "DirectoryBuildPropsPath"),
+        ("Directory.Build.targets", "DirectoryBuildTargetsPath"),
+        ("Directory.Packages.props", "DirectoryPackagesPropsPath"),
+    ];
 
     /// <summary>Language labels, keyed by project file extension.</summary>
     /// <remarks>

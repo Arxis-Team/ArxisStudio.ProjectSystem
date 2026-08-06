@@ -231,6 +231,14 @@ that do.
 Some entries name files that are not there, and that is the point: a project with no restore output
 still lists where it would be, so a restore *creating* it registers as a change.
 
+The same reasoning covers the files MSBuild finds by looking rather than by being told. A
+`Directory.Build.props` is found by walking up from the project, so the list names every directory
+that walk would visit — up to and including the one holding the file in use, because MSBuild stops
+at the first it finds and a nearer file takes over. Creating one is then a change to something the
+project said it depended on, which it previously was not. How far the walk goes when nothing was
+found is the provider's judgement; the MSBuild one stops at the opened solution or project. See
+[ADR 0019](../adr/0019-a-file-that-is-not-there-yet-is-an-evaluation-input.md).
+
 ```csharp
 foreach (CanonicalPath input in project.EvaluationInputs)
 {

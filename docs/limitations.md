@@ -151,16 +151,30 @@ read by nothing here: `SolutionSnapshot.Configurations` lists what the solution 
 project reports what it was evaluated under. Joining the two is worth doing when something needs it,
 and inventing the shape before then would be guessing.
 
-### An import that does not exist yet is not an evaluation input
+### The convention walk is repeated for three files, and no further than the entry point
 
-`EvaluationInputs` lists what the evaluation actually read. A `Directory.Build.props` that *would*
-be imported if somebody created it is not in the list, because MSBuild only reports imports it
-resolved — so creating one beside a project changes how that project evaluates without appearing as
-a change to anything the project said it depended on.
+`EvaluationInputs` names the places a `Directory.Build.props`, a `Directory.Build.targets` and a
+`Directory.Packages.props` would be looked for, whether or not one is there — every directory from
+the project's own up to and including the one holding the file in use, because MSBuild stops at the
+first it finds and a nearer file takes over from a further one.
 
-The restore output is the exception, and only because a property names its path whether or not the
-file is there. Closing the gap properly means watching directories for a set of well-known names,
-which belongs with the watching work rather than with the reading of a project.
+Three limits follow, all deliberate.
+
+**Only those three.** The SDK walks up for other things — an `.editorconfig`, a response file — and
+those are read by the compiler or the command line rather than by evaluation. A project's evaluation
+inputs are about what makes *this snapshot* untrue.
+
+**No further than the entry point's directory** when MSBuild found nothing at all. Its own walk ends
+at the root of the drive, and naming every directory up to `C:\` would ask a host to watch the
+volume because a project three levels down has no `Directory.Build.props`. A file created above the
+opened solution is therefore missed; a host that cares watches more.
+
+**A project outside the entry point's tree gets only its own directory.** A solution may reference a
+project anywhere, and for such a project the ceiling is not an ancestor — so rather than walk
+towards somewhere it never was, the one place a new file certainly reaches it is named and no more.
+
+Every other import is still reported only if it resolved. An SDK that conditionally imports a file
+by a path of its own devising is not predicted.
 
 ### A project reference outside the solution has no identity
 

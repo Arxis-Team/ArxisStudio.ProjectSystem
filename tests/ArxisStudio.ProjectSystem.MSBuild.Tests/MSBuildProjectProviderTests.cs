@@ -286,6 +286,15 @@ public sealed class MSBuildProjectProviderTests
                 // a list that only named files that already exist could never report one appearing.
                 CanonicalPath.Create(Path.Combine(
                     AppContext.BaseDirectory, "Fixtures", "Basic", "obj", "project.assets.json")),
+
+                // None of these three is there either, and the reason they are named is the same
+                // one. The three above were found in the fixtures directory, one level up; these
+                // are the nearer place the walk passed through on its way, where creating a file
+                // would take over from the one in use. It stops here because that is where MSBuild
+                // stopped — nothing above the file in use can be reached.
+                InBasic("Directory.Build.props"),
+                InBasic("Directory.Build.targets"),
+                InBasic("Directory.Packages.props"),
             ],
             project.EvaluationInputs);
     }
@@ -293,6 +302,10 @@ public sealed class MSBuildProjectProviderTests
     /// <summary>A file directly inside the fixtures directory.</summary>
     private static CanonicalPath Directory(string name) =>
         CanonicalPath.Create(Path.Combine(AppContext.BaseDirectory, "Fixtures", name));
+
+    /// <summary>A file inside the Basic fixture's own directory.</summary>
+    private static CanonicalPath InBasic(string name) =>
+        CanonicalPath.Create(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Basic", name));
 
     [Fact]
     public async Task DeclaredReferences_ComeThroughWithoutRestoring()

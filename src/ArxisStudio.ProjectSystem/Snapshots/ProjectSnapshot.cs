@@ -189,6 +189,14 @@ public sealed class ProjectSnapshot
     /// creating it is exactly the change that makes the snapshot stale. A list of only the files
     /// that already exist could never report one appearing.
     /// </para>
+    /// <para>
+    /// The same reasoning covers the files a build system finds by looking rather than by being
+    /// told — a <c>Directory.Build.props</c> is found by walking up from the project, so a project
+    /// with none above it would otherwise say nothing about one and somebody creating it would
+    /// change the evaluation without changing anything the project declared. A provider is expected
+    /// to name every place such a file would be looked for, and how far that goes is the provider's
+    /// judgement rather than this property's rule.
+    /// </para>
     /// </remarks>
     public ImmutableArray<CanonicalPath> EvaluationInputs { get; }
 

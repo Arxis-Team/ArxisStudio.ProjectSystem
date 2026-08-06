@@ -277,8 +277,28 @@ public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
         }
 
         return MSBuildProjectTranslator.Translate(
-            evaluated, request.Workspace, Name, knownProjects, resolved, diagnostics);
+            evaluated, request.Workspace, Name, knownProjects, resolved, diagnostics, Ceiling(request));
     }
+
+    /// <summary>
+    /// How far up a repeat of MSBuild's convention walk may go when the walk found nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The entry point's directory, which is what a caller opened and therefore what it has said it
+    /// is interested in. MSBuild's own walk ends at the root of the drive, and a library that
+    /// followed it there would ask a host to watch <c>C:\</c> because a project three directories
+    /// down has no <c>Directory.Build.props</c> — a decision far too large to make on a caller's
+    /// behalf, and one it can make for itself by watching more.
+    /// </para>
+    /// <para>
+    /// Nothing is assumed about where the projects are: a solution may reference a project outside
+    /// its own tree, and for that one the ceiling is not an ancestor at all. The translator checks
+    /// rather than trusting, and such a project falls back to naming only its own directory.
+    /// </para>
+    /// </remarks>
+    private static CanonicalPath Ceiling(WorkspaceLoadRequest request) =>
+        request.EntryPointPath.Directory;
 
     private static bool DeclaresPackages(EvaluatedProject project)
     {
