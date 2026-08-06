@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>FormsDesigner</RootNamespace>
+    <AssemblyName>FormsDesigner</AssemblyName>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <!--
+    Three families at once, which is the point of this sample and also the reason it is a sample
+    rather than a package. Each answers a different question and none of them answers another's:
+
+      ProjectSystem  what project is open, which assemblies it resolves to, what it builds and runs
+      Markup         what the document says, and every edit to it
+      DesignEditor   the surface, the selection, and the gestures that move things about
+
+    The integration is here because integration is the consumer's job. Nothing below this directory
+    references anything above it.
+  -->
+  <PropertyGroup>
+    <DesignEditorRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../ArxisStudio.DesignEditor/'))</DesignEditorRepositoryRoot>
+    <DesignEditorProject>$(DesignEditorRepositoryRoot)src/ArxisStudio.DesignEditor.csproj</DesignEditorProject>
+  </PropertyGroup>
+
+  <Target Name="CheckDesignEditorIsBesideUs" BeforeTargets="CollectPackageReferences;ResolveProjectReferences">
+    <Error
+      Condition="!Exists('$(DesignEditorProject)')"
+      Code="APSSAMPLE01"
+      Text="FormsDesigner is built on ArxisStudio.DesignEditor and expects that repository beside this one, at '$(DesignEditorRepositoryRoot)'. Clone it there, or exclude this project from the build." />
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.MSBuild/ArxisStudio.ProjectSystem.MSBuild.csproj" />
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.NuGet/ArxisStudio.ProjectSystem.NuGet.csproj" />
+    <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.Markup.Xaml/ArxisStudio.ProjectSystem.Markup.Xaml.csproj" />
+
+    <ProjectReference Include="$(DesignEditorProject)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+  </ItemGroup>
+
+</Project>

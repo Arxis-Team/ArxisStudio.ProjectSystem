@@ -426,7 +426,14 @@ Not limitations of the implementation so much as scope boundaries, listed so nob
 - **Benchmarks.** Nothing here has been measured for speed, and the correctness-first choices say so
   where they were made.
 
-There is one sample, `samples/ProjectSystem.Ide`, and it is the exception that earned its place: it
+There are two samples. `samples/FormsDesigner` is a visual form designer over all three families at
+once — `ArxisStudio.DesignEditor` for the surface, `ArxisStudio.Markup` for the document, this one
+for the project — and it needs both sibling repositories checked out beside this one. Its own README
+lists what it does not do; the one worth repeating here is that a form whose `x:Class` names a type
+the project has not compiled cannot be shown at all, which is a fact about loading a document rather
+than about this designer.
+
+`samples/ProjectSystem.Ide` is the other, and it is the one that earned its place twice over: it
 uses every package at once and found a real defect in the adapter within minutes of first running —
 the resource map accepted only `AvaloniaResource`, so it saw none of the `.axaml` documents in a
 real Avalonia project. No unit test had noticed, because every fixture used the item type the code

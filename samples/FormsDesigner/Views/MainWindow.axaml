@@ -1,0 +1,237 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FormsDesigner.ViewModels"
+        xmlns:design="clr-namespace:ArxisStudio;assembly=ArxisStudio.DesignEditor"
+        x:Class="FormsDesigner.Views.MainWindow"
+        x:DataType="vm:DesignerViewModel"
+        Title="ArxisStudio — Forms Designer"
+        Background="#141417"
+        Width="1560" Height="960">
+
+  <Window.Resources>
+
+    <!-- One form on the surface: the live control tree, with a title strip above it. -->
+    <DataTemplate x:Key="FormTemplate" DataType="vm:FormViewModel">
+      <Grid RowDefinitions="Auto,*">
+        <TextBlock Grid.Row="0" Text="{Binding Title}" Classes="caption" Margin="2,0,0,3" />
+        <Border Grid.Row="1" Background="#22262E" BorderBrush="#3A4152" BorderThickness="1">
+          <Panel>
+            <ContentControl Content="{Binding Root}" />
+            <TextBlock Text="{Binding Problem}" TextWrapping="Wrap" Margin="12"
+                       Foreground="#FF6B6B" VerticalAlignment="Center"
+                       IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </Panel>
+        </Border>
+      </Grid>
+    </DataTemplate>
+
+  </Window.Resources>
+
+  <Window.Styles>
+
+    <!--
+      The container binds its geometry to the form view model, which is what lets the editor move
+      and resize a form on the surface and have the view model know about it.
+    -->
+    <Style Selector="design|DesignEditorItem" x:DataType="vm:FormViewModel">
+      <Setter Property="ContentMode" Value="Loaded" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#4A5468" />
+      <Setter Property="Location" Value="{Binding Location, Mode=TwoWay}" />
+      <Setter Property="Width" Value="{Binding Width, Mode=TwoWay}" />
+      <Setter Property="Height" Value="{Binding Height, Mode=TwoWay}" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- Toolbar. Play and Stop sit in the middle, which is where Unity puts them. -->
+    <Border Grid.Row="0" Padding="8,6" Background="#1B1D23" BorderBrush="#2E3440" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*,Auto,*,Auto">
+
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+          <Button Content="Open…" Command="{Binding OpenCommand}" />
+          <Button Content="New form" Command="{Binding NewFormCommand}" />
+          <Button Content="Save" Command="{Binding SaveCommand}" />
+          <Rectangle Width="1" Fill="#33FFFFFF" Margin="4,2" />
+          <Button Content="Restore" Command="{Binding RestoreCommand}" />
+          <Button Content="Build" Command="{Binding BuildCommand}" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+          <Button Content="▶" Width="40" Command="{Binding RunCommand}" ToolTip.Tip="Build and run" />
+          <Button Content="■" Width="40" Command="{Binding StopCommand}" ToolTip.Tip="Stop" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8">
+          <TextBlock VerticalAlignment="Center" Text="{Binding Status}" />
+          <ProgressBar IsIndeterminate="True" Width="90" Height="4"
+                       VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
+          <TextBlock VerticalAlignment="Center" Classes="caption" Text="{Binding Progress}" />
+        </StackPanel>
+
+      </Grid>
+    </Border>
+
+    <!-- Body: project and toolbox, the surface, the inspector. -->
+    <Grid Grid.Row="1" ColumnDefinitions="280,4,*,4,320" Margin="8,8,8,0">
+
+      <Border Grid.Column="0" Classes="panel">
+        <TabControl>
+
+          <TabItem Header="Project">
+            <ListBox ItemsSource="{Binding ProjectForms}"
+                     SelectedItem="{Binding SelectedProjectForm, Mode=TwoWay}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:FormFile">
+                  <StackPanel Margin="0,1">
+                    <TextBlock Text="{Binding Name}" />
+                    <TextBlock Text="{Binding Folder}" Classes="caption" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </TabItem>
+
+          <TabItem Header="Toolbox">
+            <ListBox x:Name="ToolboxList" ItemsSource="{Binding Toolbox}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:ToolboxEntry">
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2">
+                    <TextBlock Text="{Binding Name}" Width="120" />
+                    <TextBlock Text="{Binding Group}" Classes="caption" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </TabItem>
+
+          <TabItem Header="Packages">
+            <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="4">
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="0,0,0,6">
+                <TextBox Width="130" Text="{Binding PackageQuery, Mode=TwoWay}" PlaceholderText="search" />
+                <Button Content="Find" Command="{Binding SearchPackagesCommand}" />
+              </StackPanel>
+              <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,6">
+                <ComboBox Width="150" ItemsSource="{Binding AvailableVersions}"
+                          SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" />
+                <Button Content="Add" Command="{Binding InstallPackageCommand}" />
+              </StackPanel>
+              <TextBlock Grid.Row="2" Text="{Binding PackageAdvice}" TextWrapping="Wrap" Margin="0,0,0,6"
+                         IsVisible="{Binding PackageAdvice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                         Foreground="{Binding PackageAdviceSeverity, Converter={x:Static vm:Converters.SeverityBrush}}" />
+              <ListBox Grid.Row="3" ItemsSource="{Binding FoundPackages}"
+                       SelectedItem="{Binding SelectedPackage, Mode=TwoWay}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PackageRow">
+                    <StackPanel Margin="0,2">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{Binding Id}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Version}" Classes="caption" />
+                      </StackPanel>
+                      <TextBlock Text="{Binding Description}" Classes="caption"
+                                 TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+          </TabItem>
+
+        </TabControl>
+      </Border>
+
+      <GridSplitter Grid.Column="1" Background="Transparent" />
+
+      <!-- The surface. -->
+      <Border Grid.Column="2" Classes="panel" ClipToBounds="True">
+        <design:DesignEditor x:Name="Surface"
+                             ItemsSource="{Binding Forms}"
+                             SelectedItems="{Binding SelectedForms}"
+                             SelectionMode="Multiple"
+                             ItemTemplate="{StaticResource FormTemplate}"
+                             ViewportZoom="{Binding Zoom, Mode=TwoWay}">
+          <design:DesignEditor.InputGestures>
+            <design:DesignEditorInputGestures PanButton="Middle"
+                                              MarqueeButton="Left"
+                                              ContainerInteractionModifiers="None"
+                                              AdditiveSelectionModifiers="Shift" />
+          </design:DesignEditor.InputGestures>
+          <design:DesignEditor.InteractionOptions>
+            <design:DesignEditorInteractionOptions ZoomStep="1.1"
+                                                   DragStartThreshold="3"
+                                                   ResizeMinSize="8" />
+          </design:DesignEditor.InteractionOptions>
+        </design:DesignEditor>
+      </Border>
+
+      <GridSplitter Grid.Column="3" Background="Transparent" />
+
+      <!-- Inspector. -->
+      <Border Grid.Column="4" Classes="panel">
+        <Grid RowDefinitions="Auto,*,Auto" Margin="6">
+
+          <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,8">
+            <TextBlock Text="Inspector" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding SelectedName}" Classes="caption" TextWrapping="Wrap" />
+            <Button Content="Delete" Command="{Binding DeleteSelectedCommand}" HorizontalAlignment="Left" />
+          </StackPanel>
+
+          <ScrollViewer Grid.Row="1">
+            <ItemsControl ItemsSource="{Binding Properties}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:PropertyRow">
+                  <Grid ColumnDefinitions="130,*" Margin="0,2">
+                    <TextBlock Grid.Column="0" Text="{Binding Name}" Classes="caption"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+          <StackPanel Grid.Row="2" Spacing="4" Margin="0,8,0,0">
+            <TextBlock Text="Add a property" Classes="caption" />
+            <Grid ColumnDefinitions="130,*,Auto" ColumnSpacing="4">
+              <TextBox Grid.Column="0" Text="{Binding NewPropertyName, Mode=TwoWay}" PlaceholderText="Name" />
+              <TextBox Grid.Column="1" Text="{Binding NewPropertyValue, Mode=TwoWay}" PlaceholderText="Value" />
+              <Button Grid.Column="2" Content="+" Command="{Binding AddPropertyCommand}" />
+            </Grid>
+          </StackPanel>
+
+        </Grid>
+      </Border>
+
+    </Grid>
+
+    <!-- Console and diagnostics. -->
+    <Border Grid.Row="2" Classes="panel" Margin="8" Height="180">
+      <Grid ColumnDefinitions="*,4,420">
+
+        <ListBox Grid.Column="0" ItemsSource="{Binding Output}"
+                 FontFamily="Cascadia Code,Consolas,monospace" FontSize="11" Background="Transparent" />
+
+        <GridSplitter Grid.Column="1" Background="Transparent" />
+
+        <ListBox Grid.Column="2" ItemsSource="{Binding Diagnostics}" Background="Transparent">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:DiagnosticRow">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="{Binding Code}"
+                           Foreground="{Binding Severity, Converter={x:Static vm:Converters.SeverityBrush}}" />
+                <TextBlock Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Where}" Classes="caption" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+      </Grid>
+    </Border>
+
+  </Grid>
+</Window>

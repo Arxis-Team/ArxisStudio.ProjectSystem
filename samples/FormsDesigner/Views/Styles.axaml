@@ -1,0 +1,16 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Style Selector="TextBlock.caption">
+    <Setter Property="Foreground" Value="#9AA4B2" />
+    <Setter Property="FontSize" Value="11" />
+  </Style>
+
+  <Style Selector="Border.panel">
+    <Setter Property="Background" Value="#1B1D23" />
+    <Setter Property="BorderBrush" Value="#2E3440" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+</Styles>
