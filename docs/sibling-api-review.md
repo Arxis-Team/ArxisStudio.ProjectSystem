@@ -2,7 +2,7 @@
 
 Date: 2026-08-07
 Reviewer: built `samples/FormsDesigner` against `ArxisStudio.DesignEditor` and `ArxisStudio.Markup`
-Status: findings; the one recommendation that belongs to this repository is done
+Status: findings, and every one of them acted on except two that belong to a repository this one does not own
 
 ## The question
 
@@ -16,7 +16,7 @@ or reach into something it should not have to.
 
 ## Verdict
 
-**Yes, with one exception, and the exception is important.**
+**Yes, with one exception — which was important, and has since been fixed.**
 
 FormsDesigner is roughly three thousand lines. It references the three libraries and Avalonia and
 nothing else. It loads a real solution, evaluates it through MSBuild, opens `.axaml` documents,
@@ -24,9 +24,11 @@ renders them live, edits them by direct manipulation, writes the edits back as X
 and builds and runs the project, and searches and installs NuGet packages. Every one of those goes
 through published API.
 
-The exception is that **a form whose root is a `Window` is not something either library has a story
-for**, and that is the most common form in any Avalonia application. Everything else below is either
-smaller than that or turned out on inspection not to be a gap at all.
+The exception was that **a form whose root is a `Window` was not something either library had a
+story for**, and that is the most common form in any Avalonia application. It is
+`ArxisStudio.Markup.Xaml.Design` now, and the section below is left as it was written — the reasoning
+that led there is worth more than a note saying it is done. Everything else is either smaller than
+that or turned out on inspection not to be a gap at all.
 
 ## What the API does well
 
@@ -78,7 +80,7 @@ Nothing in the sample needed a type this repository does not publish. `PackageRe
 was added during the work — a designer must tell a reference the project declares from one an import
 supplied, and it could not — which is the one place the core was short and is now not.
 
-## The gap that matters: a `Window` cannot be a designable surface
+## The gap that mattered: a `Window` could not be a designable surface
 
 Every Avalonia application's main form is a `Window`. In Avalonia a `Window` is a `TopLevel` and is
 parented to a `TopLevelHost` at construction; making it the content of anything throws during
@@ -102,15 +104,28 @@ it out of the window's `DataContext` too, and `Design.DataContext` is set on the
 binding underneath goes blank and the form measures to nothing — which looks exactly like a form that
 failed to load. The context has to be carried across by hand.
 
-That is a competent workaround, and it is the wrong place for it. Every consumer that builds a
-designer will hit this, will hit the `DataContext` consequence second, and will solve it differently.
+That was a competent workaround, and it was the wrong place for it. Every consumer that builds a
+designer would hit this, would hit the `DataContext` consequence second, and would solve it
+differently.
 
-**Recommendation.** One of the two libraries should own it. The cleaner of the two options is the
-loader: a load mode, or an option on `XamlLoadOptions`, that loads a `Window`-rooted document as a
-designable surface — the root's properties still addressable for editing, the content returned
-already detached, the design-time context already carried. The alternative — a `DesignEditorItem`
-that recognises a `TopLevel` and hosts its content — puts Avalonia-window knowledge in the editor,
-which is a worse fit, but is still better than each consumer discovering it.
+**Resolved.** It is `ArxisStudio.Markup.Xaml.Design` now — a fourth package beside the loader rather
+than inside it, because a stand-in is an object the document does not describe and is therefore not
+a load result, and because the rules it encodes are Avalonia's visual-tree rules, which move. See
+[ADR 0012](../../ArxisStudio.Markup/docs/adr/0012-hosting-a-top-level-root-is-a-package-beside-the-loader.md)
+in that repository. `XamlDesignSurface` borrows the content, the resource dictionary and the styles —
+Avalonia allows each one owner and seals the interfaces a forwarder would need, so they are moved for
+the duration and given back — binds size, theme variant and data context, and publishes the window's
+chrome as data for a host to draw from. FormsDesigner's `FormViewModel` is a caller now rather than an
+implementation.
+
+Building it corrected two things this review had assumed. Resources cannot be shared by reference at
+all, and moving them turns out to be the better answer anyway: merged and theme dictionaries are
+separate objects with owners of their own, so a copy reaches only the entries it can enumerate and
+flattens away exactly the structure a themed form depends on. And a root's `Background` must not be
+mirrored straight through — a window always has one, supplied by the application the designer itself
+runs under, so only a value at local priority is the form's. That one was caught by pointing the
+migrated sample at a real project and seeing the card go black for a document with no `Background`
+in it.
 
 ## Smaller findings
 
@@ -161,6 +176,9 @@ explaining a defect that did not exist.
 | Can a whole designer be built on the published API? | Yes |
 | Did the sample reach past public API anywhere? | No |
 | Did it have to invent anything substantial? | One thing: hosting a `Window`-rooted form |
-| Gaps found in `ArxisStudio.Markup` | One, fixed during the work (the object map's root) |
-| Gaps found in `ArxisStudio.DesignEditor` | The `Window` story; no `docs/`; card painting undocumented |
+| Gaps found in `ArxisStudio.Markup` | Two, both fixed: the object map's root, and the `Window` story |
+| Gaps found in `ArxisStudio.DesignEditor` | No `docs/`; card painting undocumented |
 | Gaps found in this repository | One, fixed: `PackageReferenceInfo.Origin` |
+
+Every gap this review found is closed except the two documentation ones, which belong to a
+repository this one does not own.

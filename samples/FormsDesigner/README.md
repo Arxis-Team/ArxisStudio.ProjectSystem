@@ -192,9 +192,14 @@ every log line still says the document loaded, because it did.
 **A window is drawn, not hosted.** A `Window` cannot be a child of anything — Avalonia gives one a
 `TopLevelHost` parent the moment it is constructed, and putting it in a `ContentControl` throws
 *during layout*, off the stack of everything that could report it, so the canvas simply stayed empty.
-The designer takes the content out of the window, shows that, and paints the title bar itself — and
-carries the window's data context across with it, because `Design.DataContext` is a property of the
-root and content taken out of the root loses it.
+
+This sample answered that itself for a while: take the content out of the window, show that, paint
+the title bar, and carry the data context across by hand because `Design.DataContext` is a property
+of the root and content taken out of the root loses it. That answer is
+`ArxisStudio.Markup.Xaml.Design` now, where it belongs — every host that shows forms meets the same
+wall and would meet the same consequences after it, in the same order. `FormViewModel` holds a
+`XamlDesignSurface` and calls `Attach` after every publication; what is left here is the frame the
+designer draws around it, and the title it reads off the surface.
 
 **Documents load in `XamlLoadMode.Design`.** A form is usually a page of bindings with nothing bound
 at rest; the Avalonia template's window is one `TextBlock` reading `{Binding Greeting}`. Design mode

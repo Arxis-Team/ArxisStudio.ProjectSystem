@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using ArxisStudio.Markup.Xaml;
+using ArxisStudio.Markup.Xaml.Design;
 using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
 using Avalonia;
@@ -97,26 +98,26 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The same object as <see cref="Root"/> for anything that can be a child, and the window's
-    /// contents when the root is a <see cref="Window"/>. <b>A window cannot be a child of
-    /// anything.</b> Avalonia gives one a <c>TopLevelHost</c> parent the moment it is constructed,
-    /// so putting it in a <c>ContentControl</c> throws — and it throws during layout, off the stack
-    /// of whatever asked for the form, which is why a window-rooted form left the canvas empty with
-    /// nothing said about it.
+    /// The same object as <see cref="Root"/> would be, except that a window cannot be a child of
+    /// anything: Avalonia gives one a <c>TopLevelHost</c> parent the moment it is constructed, so
+    /// putting it in a <c>ContentControl</c> throws during layout, off the stack of whatever asked
+    /// for the form. A window-rooted form used to leave the canvas empty with nothing said about it.
     /// </para>
     /// <para>
-    /// So the window's content is taken out of it and shown, with the designer drawing the frame.
-    /// That is what every form designer does, and it is why <see cref="WindowTitle"/> exists: the
-    /// title is a property of a window nobody can see, and drawing it is the only way it appears.
+    /// This sample used to answer that itself — take the content out, host that, carry the data
+    /// context across by hand. It is <c>ArxisStudio.Markup.Xaml.Design</c>'s answer now, which is
+    /// where it belongs: every host that shows forms meets the same wall, and would meet the same
+    /// four consequences after it. What is left here is the frame the designer draws around it.
     /// </para>
     /// </remarks>
-    public Control? Surface
-    {
-        get;
-        private set => Set(ref field, value);
-    }
+    public XamlDesignSurface Surface { get; } = new();
 
     /// <summary>The title to draw, when the root is a window, and nothing otherwise.</summary>
+    /// <remarks>
+    /// The title is a property of a window nobody can see, so drawing it is the only way it appears.
+    /// It is read off the surface rather than off the window, because the surface keeps it current:
+    /// an edit to <c>Title</c> in the inspector changes what is drawn without anything being rebuilt.
+    /// </remarks>
     public string? WindowTitle
     {
         get;
@@ -204,30 +205,11 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     {
         Root = session.RootObject as Control;
 
-        if (Root is Window window)
-        {
-            WindowTitle = window.Title is { Length: > 0 } title ? title : Name;
+        Surface.Attach(session);
 
-            object? content = window.Content;
-
-            window.Content = null;
-
-            Surface = content as Control;
-
-            // Carried, because taking the content out of the window takes it out of the window's
-            // data context too. A form's design-time data is set on the root -- Design.DataContext
-            // is a property of the window -- so without this every binding under it goes blank and
-            // the form measures to nothing, which looks exactly like a form that failed to load.
-            if (Surface is { DataContext: null } detached)
-            {
-                detached.DataContext = window.DataContext;
-            }
-        }
-        else
-        {
-            WindowTitle = null;
-            Surface = Root;
-        }
+        WindowTitle = Surface.IsTopLevel
+            ? Surface.Title is { Length: > 0 } title ? title : Name
+            : null;
 
         Raise(nameof(Objects));
     }
@@ -258,7 +240,8 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
             await session.DisposeAsync();
         }
 
-        Surface = null;
+        Surface.Dispose();
+
         Root = null;
     }
 }
