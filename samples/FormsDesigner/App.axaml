@@ -1,8 +1,33 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="FormsDesigner.App">
+             x:Class="FormsDesigner.App"
+             RequestedThemeVariant="Dark">
+
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://FormsDesigner/Views/Styles.axaml" />
   </Application.Styles>
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+
+        <!--
+          The editor's own theme, and without it there is no editor. DesignEditor ships its
+          template, its grid, its selection adorners and its resources in one dictionary that an
+          application merges; a control with no template renders nothing at all, so the canvas was
+          an empty rectangle — no grid, no forms, no handles — while every log line said the
+          document had loaded perfectly. It had. There was simply nothing drawing it.
+        -->
+        <ResourceInclude Source="avares://ArxisStudio.DesignEditor/Themes/ArxisStudioDesignEditorTheme.axaml" />
+
+      </ResourceDictionary.MergedDictionaries>
+
+      <!-- Forms are outlined at rest: on a dark canvas there is otherwise nothing to say where one
+           form ends and the next begins. -->
+      <x:Double x:Key="DesignEditorItem.OutlineOpacity">0.75</x:Double>
+
+    </ResourceDictionary>
+  </Application.Resources>
+
 </Application>

@@ -195,6 +195,15 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
             window.Content = null;
 
             Surface = content as Control;
+
+            // Carried, because taking the content out of the window takes it out of the window's
+            // data context too. A form's design-time data is set on the root -- Design.DataContext
+            // is a property of the window -- so without this every binding under it goes blank and
+            // the form measures to nothing, which looks exactly like a form that failed to load.
+            if (Surface is { DataContext: null } detached)
+            {
+                detached.DataContext = window.DataContext;
+            }
         }
         else
         {

@@ -79,10 +79,22 @@ built and waits for nothing.
 **A document is parsed with the `avares` URI it will be embedded under.** Without one a relative URI
 means nothing, and a new Avalonia window says `Icon="/Assets/avalonia-logo.ico"` on its second line.
 
+**The editor's theme has to be merged, or there is no editor.** `ArxisStudio.DesignEditor` ships its
+template, its grid, its selection adorners and its resources in one dictionary:
+
+```xml
+<ResourceInclude Source="avares://ArxisStudio.DesignEditor/Themes/ArxisStudioDesignEditorTheme.axaml" />
+```
+
+Without it the control has no template and draws nothing — no grid, no forms, no handles — while
+every log line still says the document loaded, because it did.
+
 **A window is drawn, not hosted.** A `Window` cannot be a child of anything — Avalonia gives one a
 `TopLevelHost` parent the moment it is constructed, and putting it in a `ContentControl` throws
 *during layout*, off the stack of everything that could report it, so the canvas simply stayed empty.
-The designer takes the content out of the window, shows that, and paints the title bar itself.
+The designer takes the content out of the window, shows that, and paints the title bar itself — and
+carries the window's data context across with it, because `Design.DataContext` is a property of the
+root and content taken out of the root loses it.
 
 **Documents load in `XamlLoadMode.Design`.** A form is usually a page of bindings with nothing bound
 at rest; the Avalonia template's window is one `TextBlock` reading `{Binding Greeting}`. Design mode
