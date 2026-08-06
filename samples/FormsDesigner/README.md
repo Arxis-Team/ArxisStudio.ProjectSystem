@@ -59,17 +59,17 @@ toolbar's own `Grid` covers it completely; the question to ask is not "is this t
 anything clickable under the pointer", so the handler walks up from the source and stops at the
 first `Button`, `TextBox`, `ComboBox` or `MenuItem`.
 
-**A form that sets no `Background` now shows the dark card the design shows.** The card was always
-the right layer — painting it magenta filled exactly the rectangle in question — so the fault was
-never above it. It was the token: the editor realises an item's content away from the window's tree,
-where a `DynamicResource` has no variant to resolve against, and asking `Application` with the
-variant stated answers with the other one. `Palette` therefore holds those three colours as values
-for both variants, with the reason attached; it is six duplicated hex numbers and the file to delete
-if the resolution is ever fixed.
+**A form that sets no `Background` now shows the dark card the design shows.** This one was never
+a limitation at all. The card was always the right layer — painting it magenta filled exactly the
+rectangle in question — and the token was always reaching it. Every reading that said otherwise came
+from a run started with `--no-build` against a binary the failed build had not replaced. With the
+build confirmed, `{DynamicResource Bg1}` on the card panel renders dark, and the palette of hard
+values written to work around it has been deleted.
 
-The general lesson, twice over: a rendering question is answerable in about a minute with
-`--shot`, and unanswerable for an hour without it. Both of these had been diagnosed from
-memory first, and both diagnoses were wrong.
+Two lessons, and the second is the sharper one. A rendering question is answerable in about a
+minute with `--shot` and unanswerable for an hour without it. And a measurement taken against a
+binary you did not watch get built is not a measurement — it is the previous answer, repeated back
+convincingly. The second finding above was invented entirely by that mistake.
 
 ### The header
 

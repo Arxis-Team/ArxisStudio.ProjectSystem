@@ -283,7 +283,6 @@ public sealed partial class DesignerViewModel
 
         foreach (FormViewModel form in Forms)
         {
-            form.Variant = variant;
         }
     }
 

@@ -33,11 +33,11 @@
           <TextBlock Text="{Binding $parent[Window].((vm:DesignerViewModel)DataContext).ZoomText}"
                      Classes="mono" FontSize="11" Foreground="{DynamicResource Fg3}" />
         </StackPanel>
-      <Border Background="{Binding CardBackground}" BorderBrush="{Binding CardBorder}" BorderThickness="1"
+      <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}" BorderThickness="1"
               CornerRadius="10" BoxShadow="0 18 50 0 #8C000000" Margin="0,4,0,0">
         <Grid RowDefinitions="Auto,*">
-          <Border Grid.Row="0" Height="36" Background="{Binding ChromeBackground}" CornerRadius="10,10,0,0"
-                  BorderBrush="{Binding CardBorder}" BorderThickness="0,0,0,1" Padding="12,0"
+          <Border Grid.Row="0" Height="36" Background="{DynamicResource Bg2}" CornerRadius="10,10,0,0"
+                  BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="12,0"
                   IsVisible="{Binding WindowTitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
               <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
@@ -47,7 +47,7 @@
                          Margin="6,0,0,0" VerticalAlignment="Center" />
             </StackPanel>
           </Border>
-          <Panel Grid.Row="1" Background="{Binding CardBackground}">
+          <Panel Grid.Row="1" Background="{DynamicResource Bg1}">
             <ContentControl Content="{Binding Surface}" />
             <TextBlock Text="{Binding Problem}" TextWrapping="Wrap" Margin="14"
                        Foreground="{DynamicResource Red}" VerticalAlignment="Center"

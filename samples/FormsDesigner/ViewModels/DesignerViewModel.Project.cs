@@ -149,7 +149,6 @@ public sealed partial class DesignerViewModel
 
         var opened = new FormViewModel(form.Path, NextFreeSpot())
         {
-            Variant = IsDark ? Avalonia.Styling.ThemeVariant.Dark : Avalonia.Styling.ThemeVariant.Light,
         };
 
         Forms.Add(opened);
