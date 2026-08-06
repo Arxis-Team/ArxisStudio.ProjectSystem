@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Globalization;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -39,12 +43,25 @@ public sealed class NuGetHttpFeed : IPackageFeed, IDisposable
     private const string SearchResource = "SearchQueryService";
     private const string PackageBaseResource = "PackageBaseAddress/3.0.0";
 
+    /// <summary>
+    /// The registration resource, named with its version because the version is the whole point.
+    /// </summary>
+    /// <remarks>
+    /// 3.6.0 is the SemVer 2.0.0 registration, and it is the only one carrying <c>deprecation</c>
+    /// and <c>vulnerabilities</c>. Matching the unversioned <c>RegistrationsBaseUrl</c> instead --
+    /// which every feed advertises, and which ReadResource would happily accept -- would return a
+    /// document with those fields simply absent, and a package with 28 published advisories would
+    /// read as a package with none.
+    /// </remarks>
+    private const string RegistrationResource = "RegistrationsBaseUrl/3.6.0";
+
     private readonly HttpClient _client;
     private readonly Uri _serviceIndex;
     private readonly SemaphoreSlim _indexGate = new(1, 1);
 
     private string? _searchAddress;
     private string? _packageBaseAddress;
+    private string? _registrationAddress;
 
     /// <summary>Creates a feed.</summary>
     /// <param name="client">The client to use. Not disposed by this object.</param>
@@ -138,9 +155,7 @@ public sealed class NuGetHttpFeed : IPackageFeed, IDisposable
 
             response.EnsureSuccessStatusCode();
 
-            string json = await response.Content
-                .ReadAsStringAsync(cancellationToken)
-                .ConfigureAwait(false);
+            string json = await ReadAsync(response, cancellationToken).ConfigureAwait(false);
 
             return FeedResult.Found(FeedResponseReader.ReadVersions(json));
         }
@@ -154,6 +169,99 @@ public sealed class NuGetHttpFeed : IPackageFeed, IDisposable
                 PackageDiagnosticCodes.FeedNotUnderstood,
                 $"'{Name}' answered with something that is not a version index: {exception.Message}"));
         }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<FeedResult<PackageVersionMetadata>> GetMetadataAsync(
+        string packageId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+
+        try
+        {
+            if (await ResolveAsync(RegistrationResource, cancellationToken).ConfigureAwait(false)
+                is not { } registrations)
+            {
+                // Named precisely, because the near miss is the likely one: a feed advertising only
+                // the unversioned RegistrationsBaseUrl publishes neither deprecation nor
+                // vulnerabilities, so reading it would answer "no advisories" for a package that has
+                // them. Measured on nuget.org, where the same package shows 32 deprecated versions
+                // and 28 advisories under 3.6.0 and none at all under the base resource.
+                return FeedResult.Failed<PackageVersionMetadata>(Diagnostic(
+                    PackageDiagnosticCodes.FeedNotUnderstood,
+                    $"'{Name}' advertises no {RegistrationResource}, which is the only registration " +
+                    "resource carrying deprecation and vulnerability data."));
+            }
+
+            string url = registrations.TrimEnd('/') + "/" + packageId.ToLowerInvariant() + "/index.json";
+
+            using HttpResponseMessage response = await _client
+                .GetAsync(url, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return FeedResult.Found(ImmutableArray<PackageVersionMetadata>.Empty);
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            string json = await ReadAsync(response, cancellationToken).ConfigureAwait(false);
+
+            (ImmutableArray<PackageVersionMetadata> inlined, ImmutableArray<string> pages) =
+                FeedResponseReader.ReadRegistrationIndex(json);
+
+            var all = ImmutableArray.CreateBuilder<PackageVersionMetadata>();
+
+            all.AddRange(inlined);
+
+            // Sequentially rather than all at once. A registration is read while somebody waits, but
+            // a package with a long history has enough pages that firing them together is a burst a
+            // feed may rate-limit -- and this library does not own the HttpClient's limits.
+            foreach (string page in pages)
+            {
+                all.AddRange(FeedResponseReader.ReadRegistrationPage(
+                    await GetAsync(page, cancellationToken).ConfigureAwait(false)));
+            }
+
+            return FeedResult.Found(Newest(all));
+        }
+        catch (Exception exception) when (IsTransport(exception))
+        {
+            return FeedResult.Failed<PackageVersionMetadata>(Unreachable(exception));
+        }
+        catch (JsonException exception)
+        {
+            return FeedResult.Failed<PackageVersionMetadata>(Diagnostic(
+                PackageDiagnosticCodes.FeedNotUnderstood,
+                $"'{Name}' answered with something that is not a registration: {exception.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Newest first, matching <see cref="GetVersionsAsync"/>, and ordered by the same comparison.
+    /// </summary>
+    /// <remarks>
+    /// A registration is ascending and pages arrive in the feed's order, so sorting here is what
+    /// makes the two methods agree — a caller pairing a version list with this must not have to
+    /// wonder whether the orders match.
+    /// </remarks>
+    private static ImmutableArray<PackageVersionMetadata> Newest(
+        ImmutableArray<PackageVersionMetadata>.Builder read)
+    {
+        var byVersion = new Dictionary<string, PackageVersionMetadata>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (PackageVersionMetadata metadata in read)
+        {
+            byVersion[metadata.Version] = metadata;
+        }
+
+        return
+        [
+            .. PackageVersions
+                .Sort(byVersion.Keys)
+                .Select(version => byVersion[version]),
+        ];
     }
 
     /// <summary>
@@ -185,6 +293,7 @@ public sealed class NuGetHttpFeed : IPackageFeed, IDisposable
 
             _searchAddress = FeedResponseReader.ReadResource(json, SearchResource);
             _packageBaseAddress = FeedResponseReader.ReadResource(json, PackageBaseResource);
+            _registrationAddress = FeedResponseReader.ReadResource(json, RegistrationResource);
 
             return Cached(resourceType);
         }
@@ -194,10 +303,12 @@ public sealed class NuGetHttpFeed : IPackageFeed, IDisposable
         }
     }
 
-    private string? Cached(string resourceType) =>
-        string.Equals(resourceType, SearchResource, StringComparison.Ordinal)
-            ? _searchAddress
-            : _packageBaseAddress;
+    private string? Cached(string resourceType) => resourceType switch
+    {
+        SearchResource => _searchAddress,
+        PackageBaseResource => _packageBaseAddress,
+        _ => _registrationAddress,
+    };
 
     private async Task<string> GetAsync(string url, CancellationToken cancellationToken)
     {
@@ -207,7 +318,56 @@ public sealed class NuGetHttpFeed : IPackageFeed, IDisposable
 
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reads a response body, decompressing it if the client has not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// nuget.org's registration blobs are stored gzipped and served that way <em>whatever the
+    /// client asked for</em> — measured: the response carries <c>Content-Encoding: gzip</c> even for
+    /// a request sending an empty <c>Accept-Encoding</c>. A default
+    /// <see cref="HttpClient"/> decompresses nothing, because
+    /// <see cref="System.Net.Http.HttpClientHandler.AutomaticDecompression"/> is
+    /// <see cref="DecompressionMethods.None"/> unless a host says otherwise, so the first byte to
+    /// arrive is <c>0x1F</c> and the parse fails on a document that is perfectly valid underneath.
+    /// </para>
+    /// <para>
+    /// Handled here rather than by asking hosts to configure their client, because this library
+    /// deliberately does not own it and a method that only works against a specially prepared
+    /// <see cref="HttpClient"/> is a method that fails for whoever writes the obvious code. The
+    /// header is the test and it is exact: when automatic decompression did the work, .NET removes
+    /// <c>Content-Encoding</c> from the response, so a header that is still there means the bytes
+    /// are still compressed.
+    /// </para>
+    /// </remarks>
+    private static async Task<string> ReadAsync(
+        HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        Stream body = await response.Content
+            .ReadAsStreamAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        await using (body.ConfigureAwait(false))
+        {
+            if (!response.Content.Headers.ContentEncoding.Contains("gzip", StringComparer.OrdinalIgnoreCase))
+            {
+                using var plain = new StreamReader(body);
+
+                return await plain.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            var decompressed = new GZipStream(body, CompressionMode.Decompress);
+
+            await using (decompressed.ConfigureAwait(false))
+            {
+                using var reader = new StreamReader(decompressed);
+
+                return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>

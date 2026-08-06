@@ -403,6 +403,28 @@ are prereleases returns `null` rather than quietly offering an alpha to somebody
 latest". Inside, the comparison is NuGet's own — a prerelease sorts *before* the release it
 precedes, `beta.9` before `beta.10`, build metadata is ignored, and there is a fourth numeric field.
 
+### What the feed knows against a version
+
+```csharp
+FeedResult<PackageVersionMetadata> metadata = await feed.GetMetadataAsync("Serilog", token);
+
+foreach (PackageVersionMetadata version in metadata.Items.Where(v => v.HasWarnings))
+{
+    // version.Deprecation?.AlternatePackageId, version.Vulnerabilities[0].Severity, …
+}
+```
+
+A separate call from `GetVersionsAsync` because it costs more: a version list is one small document
+and this is the package's whole registration, which for a long-lived package arrives as several. A
+caller offering a choice of versions should not pay for that; a caller about to install one should.
+
+Two details are measured rather than assumed. A severity arrives as a **number spelled as a string**
+and is named here, with anything unrecognised becoming `Unknown` rather than the least serious value.
+And only the SemVer 2.0.0 registration (`RegistrationsBaseUrl/3.6.0`) carries deprecation and
+advisories at all — the unversioned `RegistrationsBaseUrl` that every feed advertises returns the
+same packages with those fields simply absent, so a feed offering only that one is refused with a
+diagnostic instead of read. Silence must not be able to read as reassurance.
+
 ### Installing and restoring as one operation
 
 `PackageEditor` writes files and stops. `PackageInstaller` is the whole thing a person means by

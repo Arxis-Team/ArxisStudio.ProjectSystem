@@ -34,7 +34,7 @@ It needs `ArxisStudio.Markup` checked out beside this repository, because the ad
 | Project | every field of `ProjectSnapshot` — identity, evaluated context, surfaced properties |
 | References | project, framework, assembly and analyzer references, with aliases |
 | Outputs | `Outputs`, `GetRuntimeAssemblies`, and `EvaluationInputs` |
-| Packages | `NuGetHttpFeed`, `PackageVersions.Latest`, `PackageInstaller.ApplyAndRestoreAsync` |
+| Packages | `NuGetHttpFeed`, `PackageVersions.Latest`, `GetMetadataAsync` for the advisory line, `PackageInstaller.ApplyAndRestoreAsync` |
 | Resolved | declared `PackageReference` items beside what restore actually resolved |
 | XAML | `ProjectXamlEnvironment`, `ProjectAssemblyContext`, `ProjectResourceMap`, and `ProjectMarkupDiagnostics` translating what the parser found into the same list as the project's own |
 | Toolbar | `LoadAsync`, `RefreshAsync`, `ExecuteAsync` for restore, build, rebuild and clean |

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Net.Http;
@@ -22,6 +23,9 @@ public sealed partial class IdeViewModel
 {
     private readonly HttpClient _http = new();
     private readonly Latest _versions = new();
+
+    /// <summary>What the feed publishes about the selected package, one entry per version.</summary>
+    private ImmutableArray<PackageVersionMetadata> _metadata = [];
 
     /// <summary>
     /// Typed as the interface on purpose, which is the seam the library exists to offer.
@@ -85,8 +89,65 @@ public sealed partial class IdeViewModel
             if (Set(ref field, value))
             {
                 RefreshAllCommands();
+                Advise();
             }
         }
+    }
+
+    /// <summary>What the feed publishes against the selected version, in one line.</summary>
+    public string PackageAdvice
+    {
+        get;
+        private set => Set(ref field, value);
+    } = string.Empty;
+
+    /// <summary>
+    /// A severity name, so the existing converter can colour the line without a new one.
+    /// </summary>
+    public string PackageAdviceSeverity
+    {
+        get;
+        private set => Set(ref field, value);
+    } = string.Empty;
+
+    /// <summary>
+    /// Says whatever argues against the selected version, and nothing when nothing does.
+    /// </summary>
+    /// <remarks>
+    /// An advisory outranks a deprecation when both apply: a deprecated package is a maintenance
+    /// problem and a vulnerable one is a security problem, and only one line is being shown.
+    /// </remarks>
+    private void Advise()
+    {
+        PackageVersionMetadata? selected = _metadata.FirstOrDefault(
+            metadata => metadata.Version == SelectedVersion);
+
+        if (selected is null || !selected.HasWarnings)
+        {
+            PackageAdvice = selected?.LicenseExpression is { Length: > 0 } licence
+                ? $"Licence: {licence}"
+                : string.Empty;
+            PackageAdviceSeverity = string.Empty;
+
+            return;
+        }
+
+        if (!selected.Vulnerabilities.IsEmpty)
+        {
+            PackageVulnerability worst = selected.Vulnerabilities
+                .OrderByDescending(static v => v.Severity ?? PackageVulnerabilitySeverity.Low)
+                .First();
+
+            PackageAdvice = $"{Describe(selected.Vulnerabilities.Length, "advisory")} against "
+                + $"{selected.Version} — worst {worst}";
+            PackageAdviceSeverity = "Error";
+
+            return;
+        }
+
+        PackageAdvice = $"Deprecated: {selected.Deprecation}"
+            + (selected.Deprecation?.Message is { Length: > 0 } message ? $" — {message}" : string.Empty);
+        PackageAdviceSeverity = "Warning";
     }
 
     /// <summary>
@@ -166,6 +227,10 @@ public sealed partial class IdeViewModel
         AvailableVersions.Clear();
         SelectedVersion = null;
 
+        _metadata = [];
+        PackageAdvice = string.Empty;
+        PackageAdviceSeverity = string.Empty;
+
         if (_feed is null || SelectedPackage is null)
         {
             return;
@@ -194,6 +259,37 @@ public sealed partial class IdeViewModel
 
         SelectedVersion = PackageVersions.Latest(versions.Items, IncludePrerelease)
             ?? versions.Items.FirstOrDefault();
+
+        // A second call, deliberately. Listing versions is one small document and this is the
+        // package's whole registration, so the interface keeps them apart and a caller pays for the
+        // second only when it is about to recommend one of the answers — which is what a window with
+        // an install button is doing.
+        FeedResult<PackageVersionMetadata> metadata = await _feed
+            .GetMetadataAsync(SelectedPackage.Id, _shutdown.Token);
+
+        if (!_versions.IsCurrent(ticket))
+        {
+            return;
+        }
+
+        if (metadata.HasErrors)
+        {
+            // Not fatal: the versions above are still usable, and a feed that cannot say whether a
+            // package is vulnerable must say so rather than let silence read as reassurance.
+            ShowDiagnostics(metadata.Diagnostics);
+
+            PackageAdvice = "This feed publishes no advisory data.";
+            PackageAdviceSeverity = "Warning";
+
+            return;
+        }
+
+        _metadata = metadata.Items;
+
+        Log($"  {Describe(_metadata.Count(static m => m.HasWarnings), "version")} of "
+            + $"{SelectedPackage.Id} carry a warning");
+
+        Advise();
     }
 
     /// <summary>

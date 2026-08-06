@@ -217,4 +217,29 @@ public interface IPackageFeed
     /// </returns>
     ValueTask<FeedResult<string>> GetVersionsAsync(
         string packageId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads what the feed publishes about each version of a package: its licence, whether it has
+    /// been deprecated, and any advisories against it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Separate from <see cref="GetVersionsAsync"/> and deliberately so, because it costs more. A
+    /// version list is one small document; this is the package's whole registration, which for a
+    /// long-lived package is several documents. A caller that only needs to offer a choice of
+    /// versions should not pay for that, and a caller about to install one should.
+    /// </para>
+    /// <para>
+    /// A feed that publishes none of this answers with a diagnostic rather than with an empty list,
+    /// because "this feed cannot tell you whether the package is vulnerable" and "the package has no
+    /// advisories" are opposite answers and only one of them is reassuring.
+    /// </para>
+    /// </remarks>
+    /// <param name="packageId">The package to look up.</param>
+    /// <param name="cancellationToken">A token to observe.</param>
+    /// <returns>
+    /// One entry per version, newest first, and empty when the feed does not have the package.
+    /// </returns>
+    ValueTask<FeedResult<PackageVersionMetadata>> GetMetadataAsync(
+        string packageId, CancellationToken cancellationToken);
 }

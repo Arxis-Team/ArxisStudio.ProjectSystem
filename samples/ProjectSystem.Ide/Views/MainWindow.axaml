@@ -90,7 +90,7 @@
         </TabItem>
 
         <TabItem Header="Packages">
-          <Grid RowDefinitions="Auto,*,Auto" Margin="4">
+          <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="4">
             <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
               <TextBox Width="240" PlaceholderText="search nuget.org" Text="{Binding PackageQuery, Mode=TwoWay}" />
               <CheckBox Content="prerelease" IsChecked="{Binding IncludePrerelease, Mode=TwoWay}" />
@@ -101,7 +101,12 @@
               <Button Content="Uninstall" Command="{Binding UninstallPackageCommand}" />
             </StackPanel>
 
-            <ListBox Grid.Row="1" ItemsSource="{Binding FoundPackages}"
+            <TextBlock Grid.Row="1" Margin="0,0,0,8"
+                       Text="{Binding PackageAdvice}" TextTrimming="CharacterEllipsis"
+                       IsVisible="{Binding PackageAdvice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Foreground="{Binding PackageAdviceSeverity, Converter={x:Static vm:Converters.SeverityBrush}}" />
+
+            <ListBox Grid.Row="2" ItemsSource="{Binding FoundPackages}"
                      SelectedItem="{Binding SelectedPackage, Mode=TwoWay}">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:PackageRow">
@@ -117,7 +122,7 @@
               </ListBox.ItemTemplate>
             </ListBox>
 
-            <TextBlock Grid.Row="2" Classes="caption" Margin="0,6,0,0"
+            <TextBlock Grid.Row="3" Classes="caption" Margin="0,6,0,0"
                        Text="Declared and resolved packages for the selected project:" />
           </Grid>
         </TabItem>

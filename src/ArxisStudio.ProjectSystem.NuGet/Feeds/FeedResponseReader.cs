@@ -130,6 +130,211 @@ internal static class FeedResponseReader
         return PackageVersions.Sort(listed);
     }
 
+    /// <summary>
+    /// Reads a registration index, which either carries its leaves or names the pages holding them.
+    /// </summary>
+    /// <remarks>
+    /// A feed inlines the leaves for a package with few versions and pages them for a package with
+    /// many — measured, not assumed: on nuget.org <c>Microsoft.AspNetCore.Mvc</c> arrives inlined in
+    /// one page and <c>System.Text.Encodings.Web</c> arrives as three pages carrying nothing but
+    /// their addresses. A reader that only looked at what was inlined would return nothing at all
+    /// for the second, which is the shape of failure this library least wants: a confident empty
+    /// answer.
+    /// </remarks>
+    /// <param name="json">The registration index.</param>
+    /// <returns>Whatever leaves were inlined, and the addresses of the pages that were not.</returns>
+    internal static (ImmutableArray<PackageVersionMetadata> Inlined, ImmutableArray<string> Pages)
+        ReadRegistrationIndex(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+
+        if (!document.RootElement.TryGetProperty("items", out JsonElement pages)
+            || pages.ValueKind != JsonValueKind.Array)
+        {
+            return ([], []);
+        }
+
+        ImmutableArray<PackageVersionMetadata>.Builder inlined =
+            ImmutableArray.CreateBuilder<PackageVersionMetadata>();
+
+        ImmutableArray<string>.Builder addresses = ImmutableArray.CreateBuilder<string>();
+
+        foreach (JsonElement page in pages.EnumerateArray())
+        {
+            if (page.TryGetProperty("items", out JsonElement leaves)
+                && leaves.ValueKind == JsonValueKind.Array)
+            {
+                ReadLeaves(leaves, inlined);
+            }
+            else if (String(page, "@id") is { Length: > 0 } address)
+            {
+                addresses.Add(address);
+            }
+        }
+
+        return (inlined.ToImmutable(), addresses.ToImmutable());
+    }
+
+    /// <summary>Reads one registration page.</summary>
+    /// <param name="json">The page.</param>
+    /// <returns>Its leaves, in the order the feed listed them.</returns>
+    internal static ImmutableArray<PackageVersionMetadata> ReadRegistrationPage(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+
+        if (!document.RootElement.TryGetProperty("items", out JsonElement leaves)
+            || leaves.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        ImmutableArray<PackageVersionMetadata>.Builder read =
+            ImmutableArray.CreateBuilder<PackageVersionMetadata>();
+
+        ReadLeaves(leaves, read);
+
+        return read.ToImmutable();
+    }
+
+    private static void ReadLeaves(
+        JsonElement leaves,
+        ImmutableArray<PackageVersionMetadata>.Builder into)
+    {
+        foreach (JsonElement leaf in leaves.EnumerateArray())
+        {
+            if (!leaf.TryGetProperty("catalogEntry", out JsonElement entry)
+                || entry.ValueKind != JsonValueKind.Object
+                || String(entry, "version") is not { Length: > 0 } version)
+            {
+                continue;
+            }
+
+            into.Add(new PackageVersionMetadata
+            {
+                Version = version,
+
+                // Absent means listed. A feed says so only to say no, and defaulting an absent
+                // answer to unlisted would hide every version of every feed that omits it.
+                IsListed = Boolean(entry, "listed") ?? true,
+                LicenseExpression = String(entry, "licenseExpression"),
+                LicenseUrl = String(entry, "licenseUrl"),
+                ProjectUrl = String(entry, "projectUrl"),
+                Description = String(entry, "description"),
+                Deprecation = Deprecation(entry),
+                Vulnerabilities = Vulnerabilities(entry),
+            });
+        }
+    }
+
+    private static PackageDeprecation? Deprecation(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("deprecation", out JsonElement deprecation)
+            || deprecation.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var reasons = ImmutableArray.CreateBuilder<string>();
+
+        if (deprecation.TryGetProperty("reasons", out JsonElement listed)
+            && listed.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement reason in listed.EnumerateArray())
+            {
+                if (reason.ValueKind == JsonValueKind.String && reason.GetString() is { Length: > 0 } text)
+                {
+                    reasons.Add(text);
+                }
+            }
+        }
+
+        JsonElement alternate = default;
+        bool hasAlternate = deprecation.TryGetProperty("alternatePackage", out alternate)
+            && alternate.ValueKind == JsonValueKind.Object;
+
+        return new PackageDeprecation
+        {
+            Message = String(deprecation, "message"),
+            Reasons = reasons.ToImmutable(),
+            AlternatePackageId = hasAlternate ? String(alternate, "id") : null,
+            AlternateVersionRange = hasAlternate ? String(alternate, "range") : null,
+        };
+    }
+
+    private static ImmutableArray<PackageVulnerability> Vulnerabilities(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("vulnerabilities", out JsonElement listed)
+            || listed.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var found = ImmutableArray.CreateBuilder<PackageVulnerability>();
+
+        foreach (JsonElement vulnerability in listed.EnumerateArray())
+        {
+            if (vulnerability.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            found.Add(new PackageVulnerability
+            {
+                AdvisoryUrl = String(vulnerability, "advisoryUrl"),
+                Severity = Severity(vulnerability),
+            });
+        }
+
+        return found.ToImmutable();
+    }
+
+    /// <summary>
+    /// The severity, which a feed writes as a number spelled as a string.
+    /// </summary>
+    /// <remarks>
+    /// Anything outside the documented range becomes <see cref="PackageVulnerabilitySeverity.Unknown"/>
+    /// rather than the nearest value: a severity added after this was written must not be reported as
+    /// the least serious one.
+    /// </remarks>
+    private static PackageVulnerabilitySeverity? Severity(JsonElement vulnerability)
+    {
+        if (!vulnerability.TryGetProperty("severity", out JsonElement severity))
+        {
+            return null;
+        }
+
+        string? text = severity.ValueKind switch
+        {
+            JsonValueKind.String => severity.GetString(),
+            JsonValueKind.Number => severity.ToString(),
+            _ => null,
+        };
+
+        if (text is not { Length: > 0 })
+        {
+            return null;
+        }
+
+        return text.Trim() switch
+        {
+            "0" => PackageVulnerabilitySeverity.Low,
+            "1" => PackageVulnerabilitySeverity.Moderate,
+            "2" => PackageVulnerabilitySeverity.High,
+            "3" => PackageVulnerabilitySeverity.Critical,
+            _ => PackageVulnerabilitySeverity.Unknown,
+        };
+    }
+
+    private static bool? Boolean(JsonElement element, string name) =>
+        element.TryGetProperty(name, out JsonElement value)
+            ? value.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                _ => null,
+            }
+            : null;
+
     /// <summary>Whether a versioned resource type is the one being looked for.</summary>
     private static bool Matches(string declared, string wanted) =>
         string.Equals(declared, wanted, StringComparison.Ordinal)

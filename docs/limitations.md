@@ -313,8 +313,16 @@ provider. Nothing here answers "what will installing this pull in" beforehand, b
 dependency resolution — NuGet's resolver, not a feed query — and the package deliberately does not
 host one.
 
-Neither is there vulnerability or deprecation metadata. Both are available from a feed's
-registration documents, and neither is read yet.
+Deprecation, advisories and licence metadata *are* read, by `IPackageFeed.GetMetadataAsync`, and
+come with two limits worth knowing. They are read from the SemVer 2.0.0 registration resource
+(`RegistrationsBaseUrl/3.6.0`) and that resource only — measured on nuget.org, where a package shows
+32 deprecated versions and 28 advisories under it and none at all under the unversioned
+`RegistrationsBaseUrl`. A feed advertising only the latter is refused with a diagnostic rather than
+read, because reading it would report a vulnerable package as clean.
+
+And the answer is per version, as the feed publishes it. Nothing here decides whether the advisory
+applies to *your* use of the package, and nothing walks the dependency graph: a vulnerability in a
+transitive dependency is not reported against the package that pulled it in.
 
 ### An install undoes its edit, but a restore is not itself transactional
 
