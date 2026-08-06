@@ -180,7 +180,7 @@ public sealed class PackageInstallerTests : IDisposable
     {
         CanonicalPath project = Write("App.csproj", EmptyProject);
         var provider = new RestoringProvider { Report = "restoring App" };
-        var seen = new List<string>();
+        var seen = new RecordingProgress();
 
         await using var workspace = new ProjectWorkspace(provider);
 
@@ -188,29 +188,10 @@ public sealed class PackageInstallerTests : IDisposable
             Request(project),
             workspace,
             layout: null,
-            new Progress<ProjectOperationProgress>(p =>
-            {
-                lock (seen)
-                {
-                    seen.Add(p.Message);
-                }
-            }),
+            seen,
             TestContext.Current.CancellationToken);
 
-        for (int attempt = 0; attempt < 200; attempt++)
-        {
-            lock (seen)
-            {
-                if (seen.Count > 0)
-                {
-                    return;
-                }
-            }
-
-            await Task.Yield();
-        }
-
-        Assert.Fail("No progress was reported.");
+        Assert.Contains("restoring App", seen.Messages);
     }
 
     [Fact]
@@ -317,6 +298,41 @@ public sealed class PackageInstallerTests : IDisposable
                 ? ProjectOperationResult.Succeeded()
                 : ProjectOperationResult.Failed(
                     new ProjectDiagnostic("NU1102", Fail, ProjectDiagnosticSeverity.Error)));
+        }
+    }
+
+    /// <summary>
+    /// An <see cref="IProgress{T}"/> that records on the thread that reports.
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="Progress{T}"/>, which posts to the captured synchronization context or, with
+    /// none, to the thread pool: the callback then runs at some point after the operation returns,
+    /// and a test can only wait and hope. The interface makes no such promise, the installer simply
+    /// calls <c>Report</c>, and recording inline turns "has it arrived yet" into a question that is
+    /// already answered by the time the await completes.
+    /// </remarks>
+    private sealed class RecordingProgress : IProgress<ProjectOperationProgress>
+    {
+        private readonly List<string> _messages = [];
+
+        /// <summary>What was reported, in order.</summary>
+        public IReadOnlyList<string> Messages
+        {
+            get
+            {
+                lock (_messages)
+                {
+                    return _messages.ToArray();
+                }
+            }
+        }
+
+        public void Report(ProjectOperationProgress value)
+        {
+            lock (_messages)
+            {
+                _messages.Add(value.Message);
+            }
         }
     }
 
