@@ -55,6 +55,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         RestoreCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Restore)), CanOperate);
         BuildCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Build)), CanOperate);
 
+        InitialiseHeader();
         InitialiseShell();
         InitialiseRun();
         InitialisePackages();
@@ -320,6 +321,10 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         Raise(nameof(ProjectName));
         Raise(nameof(EntryPointName));
         Raise(nameof(ConfigurationName));
+        Raise(nameof(RunTargetName));
+
+        await ReadBranchAsync(_shutdown.Token).ConfigureAwait(true);
+
         ShowDiagnostics(result.Diagnostics);
         RefreshAllCommands();
     }
@@ -334,6 +339,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
 
         BuildProjectTree(snapshot);
         Raise(nameof(StatusLeft));
+        Raise(nameof(RunTargetName));
         RefreshAllCommands();
     }
 

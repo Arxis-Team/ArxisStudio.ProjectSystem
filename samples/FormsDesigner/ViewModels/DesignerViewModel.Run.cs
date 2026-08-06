@@ -115,6 +115,8 @@ public sealed partial class DesignerViewModel
             IsRunning = false;
             _running = null;
 
+            StopClock();
+
             process.Dispose();
         });
 
@@ -126,6 +128,8 @@ public sealed partial class DesignerViewModel
 
         _running = process;
         IsRunning = true;
+
+        StartClock();
     }
 
     private void Mirror(string? line)
@@ -213,6 +217,6 @@ public sealed partial class DesignerViewModel
             return owner;
         }
 
-        return snapshot.Projects.FirstOrDefault();
+        return SelectedRunTarget() ?? snapshot.Projects.FirstOrDefault();
     }
 }

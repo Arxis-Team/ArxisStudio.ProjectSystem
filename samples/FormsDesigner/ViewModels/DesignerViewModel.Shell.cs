@@ -194,6 +194,7 @@ public sealed partial class DesignerViewModel
             {
                 Raise(nameof(IsLight));
                 Raise(nameof(ThemeName));
+                Raise(nameof(ThemeMenuHeader));
             }
         }
     } = true;

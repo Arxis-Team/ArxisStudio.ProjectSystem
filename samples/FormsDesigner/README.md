@@ -44,22 +44,54 @@ Opens, waits for the window to settle, writes exactly what is on screen, and exi
 thing you look at, so "does it work" and "does it look right" are different questions and only the
 first was ever answerable from a log.
 
-### Two things that do not match yet
+### The two that used to not match
 
-**The window keeps the system title bar.** The design draws its own, and
-`ExtendClientAreaToDecorationsHint` is the property for that — but Avalonia 12 removed
-`ExtendClientAreaChromeHints`, and without it Windows still paints the caption text and its buttons
-over the client area: the title landed on top of the toolbar and there were two sets of window
-buttons. Reverted rather than left broken. Doing this properly needs whatever replaced that property
-in 12, which I have not found.
+Both are closed, and both were closed by measuring rather than by reasoning — which is worth
+recording, because in each case the reasoning had been confidently wrong.
 
+**The window no longer keeps the system title bar.** Avalonia 12 removed
+`ExtendClientAreaChromeHints`; the replacement is `Window.WindowDecorations`, and the value that
+fits is `BorderOnly` — the frame stays, so resizing, snapping and the shadow are still the
+platform's, and only the caption goes. The toolbar is then the title bar, which costs four handlers
+in the code-behind: minimise, maximise, close, and a press that calls `BeginMoveDrag`. That last one
+has a trap in it. Testing `e.Source is Border { Name: "TitleBar" }` never matches, because the
+toolbar's own `Grid` covers it completely; the question to ask is not "is this the bar" but "was
+anything clickable under the pointer", so the handler walks up from the source and stops at the
+first `Button`, `TextBox`, `ComboBox` or `MenuItem`.
 
+**A form that sets no `Background` now shows the dark card the design shows.** The card was always
+the right layer — painting it magenta filled exactly the rectangle in question — so the fault was
+never above it. It was the token: the editor realises an item's content away from the window's tree,
+where a `DynamicResource` has no variant to resolve against, and asking `Application` with the
+variant stated answers with the other one. `Palette` therefore holds those three colours as values
+for both variants, with the reason attached; it is six duplicated hex numbers and the file to delete
+if the resolution is ever fixed.
 
-A form whose document sets no `Background` shows a light card on the dark canvas where the design
-shows a dark one. It is not the card: painting the template's own panel red fills that rectangle, so
-nothing above it is at fault, and resolving the token explicitly for the dark variant through
-`Application.TryGetResource` does not change it either. Something under the item paints it, and I
-have not identified what. Every form that sets its own background is unaffected.
+The general lesson, twice over: a rendering question is answerable in about a minute with
+`--shot`, and unanswerable for an hour without it. Both of these had been diagnosed from
+memory first, and both diagnoses were wrong.
+
+### The header
+
+The design's header is a 42px row, and it is reproduced control for control: the 24px mark, the
+project, the branch, the configuration, then search, the run bezel, settings, a rule, and the
+window's three buttons.
+
+Two of those read state nothing else in the window has. The **branch** is asked of `git` rather
+than parsed out of `.git`, because a head can be a symbolic ref, a detached hash, or a worktree
+pointing elsewhere, and `git` already knows the difference; a project outside a repository shows no
+branch at all rather than a plausible-looking `main`. The **run bezel** is two different sets of
+controls — run, rebuild and a target while idle; a counting badge, restart and stop while
+something is running — and the target it names is a runnable project, decided by the same test the
+run path applies, which is that the project produced a runtime configuration.
+
+Two deliberate departures, both so that nothing is lost rather than for their own sake. The
+mockup's settings icon is decorative; here it opens the menu holding the theme, the two snap
+toggles and restore, which is where the controls the header no longer shows individually went. And
+the mockup's running bezel has a pause button, which is omitted: a `dotnet` process cannot be
+paused, and a button that cannot do its job is worse than no button.
+
+The keyboard reaches what the toolbar no longer shows: `Ctrl+O`, `Ctrl+S`, `Ctrl+N`, `Ctrl+B`, `F5`.
 
 ## Who does what
 

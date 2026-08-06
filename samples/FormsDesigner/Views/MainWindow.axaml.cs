@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using FormsDesigner.ViewModels;
 
 namespace FormsDesigner.Views;
@@ -51,6 +52,8 @@ public sealed partial class MainWindow : Window
             {
                 designer.PickEntryPoint = PickEntryPointAsync;
                 designer.AskForName = AskForNameAsync;
+                designer.SearchRequested += (_, _) =>
+                    this.GetControl<TextBox>("ToolboxSearch").Focus();
             }
         };
     }
@@ -286,4 +289,64 @@ public sealed partial class MainWindow : Window
 
         return answer;
     }
+
+    // -- The window's own chrome ------------------------------------------------------------------
+    //
+    // `BorderOnly` keeps the frame and drops the caption, so the toolbar is the title bar and these
+    // four handlers are what a caption would otherwise have given for free. Dragging is asked of the
+    // platform rather than simulated with pointer arithmetic, which is what keeps snapping, the
+    // aero-shake gesture and multi-monitor behaviour working the way every other window does.
+
+    private void OnTitleBarPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        // A control in the toolbar handles its own press; the empty space between them moves the
+        // window. Testing the source for the Border itself would never match — its Grid covers it —
+        // so the walk up asks the real question: was anything clickable underneath the pointer?
+        if (IsInteractive(e.Source as Visual))
+        {
+            return;
+        }
+
+        if (e.ClickCount == 2)
+        {
+            ToggleMaximised();
+
+            return;
+        }
+
+        BeginMoveDrag(e);
+    }
+
+    private void OnMinimise(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void OnMaximise(object? sender, RoutedEventArgs e) => ToggleMaximised();
+
+    private void OnClose(object? sender, RoutedEventArgs e) => Close();
+
+    /// <summary>Whether the press landed on something in the toolbar that answers presses itself.</summary>
+    private static bool IsInteractive(Visual? source)
+    {
+        for (Visual? visual = source; visual is not null; visual = visual.GetVisualParent())
+        {
+            if (visual is Button or TextBox or ComboBox or MenuItem)
+            {
+                return true;
+            }
+
+            if (visual is Border { Name: "TitleBar" })
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private void ToggleMaximised() =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 }
