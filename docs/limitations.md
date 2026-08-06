@@ -3,16 +3,18 @@
 The honest list of what `ArxisStudio.ProjectSystem` does not do, and of the costs its design
 decisions carry. A limitation nobody wrote down is discovered one user at a time.
 
-## Milestone 0
+## The core
 
-### No file-format provider ships
+### The core reads nothing
 
-The core models solutions, projects, references, items, and outputs, but reads none of them. There
-is no `.sln`, `.slnx`, or `.csproj` parsing in this package and no MSBuild evaluation. Until
-`ArxisStudio.ProjectSystem.MSBuild` exists, a consumer must implement `IProjectSystemProvider`
-itself to get any data into a workspace.
+`ArxisStudio.ProjectSystem` models solutions, projects, references, items and outputs, and parses
+none of them. There is no `.sln`, `.slnx` or `.csproj` reading in it and no MSBuild evaluation: a
+consumer referencing the core alone supplies an `IProjectSystemProvider` of its own, or references
+`ArxisStudio.ProjectSystem.MSBuild` for one that reads real projects.
 
-This is deliberate, not an oversight: the boundary is proved before anything is built on it.
+This is the whole design rather than a gap — see
+[ADR 0001](adr/0001-core-is-provider-neutral.md) — and it is what lets a snapshot stay readable
+after the engine that produced it is gone.
 
 ### The core touches no filesystem
 
@@ -387,6 +389,17 @@ way — but a file whose contents disagree with its name resolves under the name
 
 ## Deferred by design
 
-Not limitations of the implementation so much as scope boundaries, listed so nobody looks for
-them: assembly loading, `AssemblyLoadContext` management, package-manager operations, project-file
-editing, and any UI.
+Not limitations of the implementation so much as scope boundaries, listed so nobody looks for them.
+
+- **Any user interface.** These are libraries a tool is built on, and none of them draws anything.
+- **Parsing or rewriting AXAML.** That is `ArxisStudio.Markup`'s work, and the boundary is the point
+  of having two families. This side may say which files a project contains; it never looks inside
+  one.
+- **Hosting a user's controls in this process.** The adapter loads assemblies so a host can build a
+  preview; deciding to run somebody's code, and containing it when it misbehaves, belongs to the
+  host that has a window to put it in.
+- **Publishing.** These are referenced by source, not packed to a feed —
+  [ADR 0011](adr/0011-these-libraries-are-referenced-not-published.md). There is no versioning
+  ceremony, no release process and no `dotnet pack` output.
+- **Benchmarks and samples.** Nothing here has been measured for speed, and the correctness-first
+  choices say so where they were made.
