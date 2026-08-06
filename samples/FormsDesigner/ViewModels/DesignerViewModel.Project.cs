@@ -9,6 +9,7 @@ using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
 using ArxisStudio.ProjectSystem.Markup.Xaml;
 using Avalonia;
+using Avalonia.Threading;
 
 namespace FormsDesigner.ViewModels;
 
@@ -250,8 +251,15 @@ public sealed partial class DesignerViewModel
     {
         XamlLoadEnvironment environment = EnvironmentFor(snapshot, project);
 
+        // Design mode, which is the whole difference between a designer and a runtime. A form is
+        // usually a page of bindings with nothing bound at rest -- the Avalonia template's window is
+        // one TextBlock reading {Binding Greeting} -- so loading it the way the application would
+        // shows a blank rectangle and nothing to click. Design mode applies what the document says
+        // is for looking at: Design.DataContext, d:DesignWidth, the lot.
+        var options = new XamlLoadOptions { Mode = XamlLoadMode.Design };
+
         (XamlLoadSession? session, XamlLoadResult result) =
-            await XamlLoadSession.TryCreateAsync(document, environment, null, _shutdown.Token);
+            await XamlLoadSession.TryCreateAsync(document, environment, options, _shutdown.Token);
 
         ShowMarkupDiagnostics(result.Diagnostics, text, form.File);
 
@@ -286,6 +294,37 @@ public sealed partial class DesignerViewModel
         SizeToContent(form);
 
         Log($"  {form.Name} loaded, {Describe(session.Objects.MappedElements.Count, "element")} mapped");
+
+        await ReportShownAsync(form);
+    }
+
+    /// <summary>
+    /// Says whether the form reached the canvas, once the canvas has had a chance to lay it out.
+    /// </summary>
+    /// <remarks>
+    /// Loading and appearing are different things, and the gap between them is where the worst bug
+    /// in this designer lived: a window-rooted form loaded perfectly and then threw during layout,
+    /// off the stack of everything that could have reported it, leaving a canvas that was simply
+    /// empty. A size measured after the fact is the one statement that cannot be made by a form
+    /// nobody can see.
+    /// </remarks>
+    private async Task ReportShownAsync(FormViewModel form)
+    {
+        await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+
+        if (form.Surface is not { } surface)
+        {
+            Log($"  ! {form.Name} produced nothing the canvas can host");
+
+            return;
+        }
+
+        // Reported, not judged. One yield is enough for the container to exist and not always
+        // enough for it to have measured, so a zero here means "not yet or not at all" and this is
+        // in no position to say which. The number is still the most useful thing available about a
+        // form somebody says they cannot see.
+        Log($"  surface {surface.GetType().Name} measured "
+            + $"{surface.Bounds.Width:F0}×{surface.Bounds.Height:F0}");
     }
 
     /// <summary>

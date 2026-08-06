@@ -79,10 +79,19 @@ built and waits for nothing.
 **A document is parsed with the `avares` URI it will be embedded under.** Without one a relative URI
 means nothing, and a new Avalonia window says `Icon="/Assets/avalonia-logo.ico"` on its second line.
 
+**A window is drawn, not hosted.** A `Window` cannot be a child of anything — Avalonia gives one a
+`TopLevelHost` parent the moment it is constructed, and putting it in a `ContentControl` throws
+*during layout*, off the stack of everything that could report it, so the canvas simply stayed empty.
+The designer takes the content out of the window, shows that, and paints the title bar itself.
+
+**Documents load in `XamlLoadMode.Design`.** A form is usually a page of bindings with nothing bound
+at rest; the Avalonia template's window is one `TextBlock` reading `{Binding Greeting}`. Design mode
+is what applies `Design.DataContext` and the `d:` attributes the document supplies for exactly this.
+
 **Not every element reaches the map.** A freshly created `MainWindow.axaml` maps its `Window` and not
-the `TextBlock` inside it, so clicking the text selects the window. A plain window with the same
-content maps both, so it is something about that file rather than about windows; it has not been run
-to ground.
+the `TextBlock` inside it, so clicking the text selects the window. A window with the same content
+and no `x:Class` maps both, so it is something about that document — `x:Class`, `x:DataType` or the
+binding — rather than about windows. Unexplained, and stated here rather than guessed at.
 
 **The toolbox is Avalonia's controls, not the project's.** Reflecting over the project's assemblies
 for placeable types is a real feature and a different one: it needs a rule for what counts as a

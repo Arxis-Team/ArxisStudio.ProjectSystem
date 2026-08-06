@@ -185,12 +185,15 @@ public sealed partial class MainWindow : Window
 
         Control? over = e.Source as Control;
 
-        if (over is null || FormOf(over) is not { } form || form.Root is not { } root)
+        if (over is null || FormOf(over) is not { } form || form.Surface is not { } surface)
         {
             return;
         }
 
-        designer.Drop(form, entry, over, e.GetPosition(root));
+        // Against the surface, which is what is on screen. For a window-rooted form the root is not
+        // in the visual tree at all, and asking a control that was never shown where a point is
+        // gives an answer about nothing.
+        designer.Drop(form, entry, over, e.GetPosition(surface));
 
         e.Handled = true;
     }

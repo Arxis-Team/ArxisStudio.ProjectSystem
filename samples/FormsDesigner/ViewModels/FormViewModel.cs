@@ -69,8 +69,43 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
         private set => Set(ref field, value);
     }
 
-    /// <summary>The live control tree the canvas shows.</summary>
+    /// <summary>The live control tree the document produced.</summary>
+    /// <remarks>
+    /// What the document means, not what the canvas shows — see <see cref="Surface"/> for the
+    /// difference and why there is one.
+    /// </remarks>
     public Control? Root
+    {
+        get;
+        private set => Set(ref field, value);
+    }
+
+    /// <summary>
+    /// The control the canvas actually hosts.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same object as <see cref="Root"/> for anything that can be a child, and the window's
+    /// contents when the root is a <see cref="Window"/>. <b>A window cannot be a child of
+    /// anything.</b> Avalonia gives one a <c>TopLevelHost</c> parent the moment it is constructed,
+    /// so putting it in a <c>ContentControl</c> throws — and it throws during layout, off the stack
+    /// of whatever asked for the form, which is why a window-rooted form left the canvas empty with
+    /// nothing said about it.
+    /// </para>
+    /// <para>
+    /// So the window's content is taken out of it and shown, with the designer drawing the frame.
+    /// That is what every form designer does, and it is why <see cref="WindowTitle"/> exists: the
+    /// title is a property of a window nobody can see, and drawing it is the only way it appears.
+    /// </para>
+    /// </remarks>
+    public Control? Surface
+    {
+        get;
+        private set => Set(ref field, value);
+    }
+
+    /// <summary>The title to draw, when the root is a window, and nothing otherwise.</summary>
+    public string? WindowTitle
     {
         get;
         private set => Set(ref field, value);
@@ -118,12 +153,12 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
 
         Session = session;
         Document = session.Document;
-        Root = session.RootObject as Control;
+
+        Publish(session);
+
         Problem = Root is null
             ? $"The document's root is {session.RootObject.GetType().Name}, which is not a Control."
             : null;
-
-        Raise(nameof(Objects));
 
         if (previous is not null)
         {
@@ -138,9 +173,34 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// An update that reaches far enough rebuilds the root object rather than patching it, and the
     /// canvas is holding the previous one until it is told otherwise.
     /// </remarks>
-    internal void AdoptRoot(XamlLoadSession session)
+    internal void AdoptRoot(XamlLoadSession session) => Publish(session);
+
+    /// <summary>
+    /// Works out what to show from what the document produced.
+    /// </summary>
+    /// <remarks>
+    /// Run again after every update, because an update that reaches far enough rebuilds the root —
+    /// and because a rebuilt window arrives with its content back inside it.
+    /// </remarks>
+    private void Publish(XamlLoadSession session)
     {
         Root = session.RootObject as Control;
+
+        if (Root is Window window)
+        {
+            WindowTitle = window.Title is { Length: > 0 } title ? title : Name;
+
+            object? content = window.Content;
+
+            window.Content = null;
+
+            Surface = content as Control;
+        }
+        else
+        {
+            WindowTitle = null;
+            Surface = Root;
+        }
 
         Raise(nameof(Objects));
     }
@@ -171,6 +231,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
             await session.DisposeAsync();
         }
 
+        Surface = null;
         Root = null;
     }
 }
