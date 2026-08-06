@@ -17,6 +17,23 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
+  <!--
+    Carry the configuration into project references.
+
+    MSBuild decides a reference's configuration from the configuration table of the solution being
+    built, and defaults to *unsetting* it for any project that table does not mention.
+    ArxisStudio.Markup lives in another repository and is never in this solution, so a Release build
+    linked Debug assemblies of it.
+
+    Repository-wide rather than on the adapter alone, because MSBuild flattens transitive references
+    for ordering: the tests and the sample build ArxisStudio.Markup directly and each unsets the
+    configuration for itself. The same setting exists in that repository, where the references below
+    the entry point lose it in turn; both halves are needed and neither is sufficient.
+  -->
+  <PropertyGroup>
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
+  </PropertyGroup>
+
   <!-- Reproducible builds. -->
   <PropertyGroup>
     <Deterministic>true</Deterministic>

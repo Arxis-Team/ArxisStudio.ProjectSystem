@@ -42,6 +42,8 @@ public sealed partial class IdeViewModel : Observable, IDisposable
         RebuildCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Rebuild)), CanOperate);
         CleanCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Clean)), CanOperate);
 
+        InitialiseRun();
+
         SearchPackagesCommand = new RelayCommand(() => Run(SearchPackagesAsync), () => !IsBusy);
         InstallPackageCommand = new RelayCommand(() => Run(InstallPackageAsync), CanInstallPackage);
         UninstallPackageCommand = new RelayCommand(() => Run(UninstallPackageAsync), CanUninstallPackage);
@@ -81,11 +83,33 @@ public sealed partial class IdeViewModel : Observable, IDisposable
     /// as a smoke test: <c>ProjectSystem.Ide path\to\App.sln</c> loads it at startup and the output
     /// pane says what happened.
     /// </remarks>
-    public void OpenAtStartup(string path) => Run(async () =>
+    /// <param name="path">The solution or project to open.</param>
+    /// <param name="thenRun">Whether to build and start it once it has loaded.</param>
+    public void OpenAtStartup(string path, bool thenRun = false) => Run(async () =>
     {
         _entryPoint = CanonicalPath.Create(path);
 
         await LoadAsync();
+
+        if (!thenRun || !IsLoaded)
+        {
+            return;
+        }
+
+        // The tree and the selection are built from the snapshot notification, which is posted
+        // rather than raised inline -- publication happens off the UI thread and the handler has to
+        // cross to it. Yielding to a lower priority lets that post run first, so there is something
+        // selected to run.
+        await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+
+        if (SelectedProject is null)
+        {
+            Log("! nothing runnable was selected after loading");
+
+            return;
+        }
+
+        await RunProjectAsync();
     });
 
     public bool IsLoaded
@@ -154,6 +178,7 @@ public sealed partial class IdeViewModel : Observable, IDisposable
     {
         _shutdown.Cancel();
 
+        StopProject();
         StopWatching();
         ReleaseXamlEnvironment();
 
@@ -453,6 +478,8 @@ public sealed partial class IdeViewModel : Observable, IDisposable
         BuildCommand.RaiseCanExecuteChanged();
         RebuildCommand.RaiseCanExecuteChanged();
         CleanCommand.RaiseCanExecuteChanged();
+        RunCommand.RaiseCanExecuteChanged();
+        StopCommand.RaiseCanExecuteChanged();
         SearchPackagesCommand.RaiseCanExecuteChanged();
         InstallPackageCommand.RaiseCanExecuteChanged();
         UninstallPackageCommand.RaiseCanExecuteChanged();

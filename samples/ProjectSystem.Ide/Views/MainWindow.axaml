@@ -19,6 +19,9 @@
         <Button Content="Rebuild" Command="{Binding RebuildCommand}" />
         <Button Content="Clean" Command="{Binding CleanCommand}" />
         <Rectangle Width="1" Fill="#33FFFFFF" Margin="4,2" />
+        <Button Content="▶ Run" Command="{Binding RunCommand}" />
+        <Button Content="■ Stop" Command="{Binding StopCommand}" />
+        <Rectangle Width="1" Fill="#33FFFFFF" Margin="4,2" />
         <TextBlock VerticalAlignment="Center" Text="{Binding Status}" />
         <TextBlock VerticalAlignment="Center" Classes="caption" Text="{Binding VersionText}" />
         <ProgressBar IsIndeterminate="True" Width="90" Height="4"

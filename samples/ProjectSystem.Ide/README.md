@@ -15,6 +15,13 @@ mirrored to standard output:
 dotnet run --project samples/ProjectSystem.Ide -- C:\src\App\App.sln
 ```
 
+Add `--run` to build and start the first project once it has loaded, which is what makes the Run
+button checkable without a mouse:
+
+```bash
+dotnet run --project samples/ProjectSystem.Ide -- C:\src\App\App.csproj --run
+```
+
 It needs `ArxisStudio.Markup` checked out beside this repository, because the adapter it uses does
 ([ADR 0018](../../docs/adr/0018-the-adapter-references-markup-by-source.md)).
 
@@ -30,6 +37,7 @@ It needs `ArxisStudio.Markup` checked out beside this repository, because the ad
 | Resolved | declared `PackageReference` items beside what restore actually resolved |
 | XAML | `ProjectXamlEnvironment`, `ProjectAssemblyContext`, `ProjectResourceMap` |
 | Toolbar | `LoadAsync`, `RefreshAsync`, `ExecuteAsync` for restore, build, rebuild and clean |
+| Run / Stop | `OutputArtifactKind.Assembly` and `RuntimeConfiguration`, built through `ExecuteAsync` first |
 | Status | `WorkspaceVersion`, and `Invalidate` over a watched, coalesced batch of file changes |
 
 ## Three things it demonstrates on purpose
@@ -43,6 +51,13 @@ what went stale; refreshing is a button, because a designer mid-edit is the wron
 After a *restore* the sample refreshes explicitly, because a restore rewrites `project.assets.json`,
 which is an evaluation input — so the model is genuinely behind the disk and nothing but a refresh
 fixes that.
+
+**Run never globs a directory.** Which file to start comes from `Outputs` — the `Assembly` artifact,
+and `RuntimeConfiguration` is how the project says it is startable at all. The responsibilities
+document is explicit that a consumer must not "return an arbitrary `bin` DLL when several outputs
+exist", and this is what having descriptors instead of a folder listing buys. It builds through
+`ExecuteAsync` first and refuses to start anything if that failed, because running the previous
+build after a failed one is how somebody ends up debugging code they did not write.
 
 **A load context is rebuilt, not patched.** `ProjectAssemblyContext.IsCurrentFor` compares one
 integer against the current snapshot; when it disagrees, the old context is dropped and a new one

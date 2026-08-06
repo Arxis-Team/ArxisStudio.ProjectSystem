@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../ArxisStudio.ProjectSystem/ArxisStudio.ProjectSystem.csproj" />
+
     <ProjectReference Include="$(MarkupLoaderProject)" />
   </ItemGroup>
 

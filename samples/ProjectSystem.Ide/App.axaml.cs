@@ -18,9 +18,9 @@ public sealed partial class App : Application
 
             desktop.MainWindow = new MainWindow { DataContext = workspace };
 
-            if (desktop.Args is [{ Length: > 0 } path, ..])
+            if (desktop.Args is [{ Length: > 0 } path, .. var rest])
             {
-                workspace.OpenAtStartup(path);
+                workspace.OpenAtStartup(path, System.Array.IndexOf(rest, "--run") >= 0);
             }
 
             // The workspace owns a provider, a file watcher and a collectible load context. Letting
