@@ -70,10 +70,19 @@ works out what actually changed, so setting one property does not tear down the 
 
 ## What it is not
 
-**A form with an uncompiled `x:Class` cannot be shown.** The document names a type, and a type that
-has not been built does not exist. Build the project and the form opens. The designer says exactly
-which type was missing and lists what the load context held, because "did not load" on its own tells
-nobody anything.
+**A form is built before it is opened, once, when it has to be.** A document naming an `x:Class`
+names a type, and a type in a project nobody has compiled does not exist — so opening a form in a
+freshly created application used to fail with "unable to resolve type", which is true and
+unactionable. The designer builds instead, and says so. A document with no `x:Class` needs nothing
+built and waits for nothing.
+
+**A document is parsed with the `avares` URI it will be embedded under.** Without one a relative URI
+means nothing, and a new Avalonia window says `Icon="/Assets/avalonia-logo.ico"` on its second line.
+
+**Not every element reaches the map.** A freshly created `MainWindow.axaml` maps its `Window` and not
+the `TextBlock` inside it, so clicking the text selects the window. A plain window with the same
+content maps both, so it is something about that file rather than about windows; it has not been run
+to ground.
 
 **The toolbox is Avalonia's controls, not the project's.** Reflecting over the project's assemblies
 for placeable types is a real feature and a different one: it needs a rule for what counts as a

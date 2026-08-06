@@ -125,12 +125,119 @@ public sealed partial class DesignerViewModel
 
         Log($"Opening {form.Name}…");
 
+        string text = await ReadAsync(form.Path);
+
+        // Parsed with the URI the document will have once it is embedded, because a relative URI
+        // means nothing without one. A freshly created Avalonia window says
+        // Icon="/Assets/avalonia-logo.ico", and without a base the load fails on it -- correctly,
+        // and uselessly, since the file is right there in the project.
+        XamlDocument document = XamlDocument.Parse(
+            text,
+            new XamlParseOptions { DocumentUri = AvaresUriFor(snapshot, form) });
+
+        // Built first when it has to be. A document naming an x:Class names a type, and a type in a
+        // project nobody has compiled does not exist -- so opening a form in a freshly created
+        // application failed with "unable to resolve type", which is true, unactionable, and the
+        // first thing anybody sees. Building is what a designer does about it.
+        if (NeedsBuilding(snapshot, form.Project, document))
+        {
+            snapshot = await BuildBeforeOpeningAsync(snapshot, form.Project) ?? snapshot;
+        }
+
         var opened = new FormViewModel(form.Path, NextFreeSpot());
 
         Forms.Add(opened);
         ActiveForm = opened;
 
-        await LoadIntoAsync(opened, snapshot, form.Project, await ReadAsync(form.Path));
+        await LoadIntoAsync(opened, snapshot, form.Project, document, text);
+    }
+
+    /// <summary>
+    /// The <c>avares</c> URI a project file will be embedded under.
+    /// </summary>
+    /// <remarks>
+    /// Composed rather than looked up, because the map answers the other direction: it says which
+    /// file a URI names, and a project item does not carry the URI it will be given. The rule is the
+    /// one the adapter documents — the producing assembly is the authority, the path is relative to
+    /// the project directory — and the segments are escaped, because a file name is not a URI and a
+    /// '#' in one would truncate the path.
+    /// </remarks>
+    private static Uri? AvaresUriFor(SolutionSnapshot snapshot, FormFile form)
+    {
+        if (!snapshot.TryGetProject(form.Project, out ProjectSnapshot? project)
+            || !form.Path.StartsWith(project.ProjectDirectory))
+        {
+            return null;
+        }
+
+        string assembly = project.Properties.TryGetValue("AssemblyName", out string? name) && name.Length > 0
+            ? name
+            : project.Name;
+
+        string relative = form.Path.Value[project.ProjectDirectory.Value.Length..]
+            .Replace('\\', '/')
+            .TrimStart('/');
+
+        string escaped = string.Join('/', relative.Split('/').Select(Uri.EscapeDataString));
+
+        return new Uri($"avares://{assembly}/{escaped}");
+    }
+
+    /// <summary>
+    /// Whether this document needs the project compiled before it can produce anything.
+    /// </summary>
+    /// <remarks>
+    /// Two conditions, and both matter. A document with no <c>x:Class</c> names no type of the
+    /// project's and loads out of Avalonia alone, so building for it would be a wait bought with
+    /// nothing. And a project whose assembly is already there does not need building again — the
+    /// designer is not a build system and pressing Build is still the user's to do when they have
+    /// changed code.
+    /// </remarks>
+    private static bool NeedsBuilding(
+        SolutionSnapshot snapshot, ProjectIdentity project, XamlDocument document)
+    {
+        if (document.Root?.GetDirective("Class") is not { Length: > 0 })
+        {
+            return false;
+        }
+
+        if (!snapshot.TryGetProject(project, out ProjectSnapshot? owner))
+        {
+            return false;
+        }
+
+        return owner.Outputs.FirstOrDefault(o => o.Kind == OutputArtifactKind.Assembly) is not { } assembly
+            || !System.IO.File.Exists(assembly.Path.Value);
+    }
+
+    /// <summary>
+    /// Builds one project and returns the snapshot to load against.
+    /// </summary>
+    /// <remarks>
+    /// The refresh afterwards is what makes the new assembly reachable: the environment is keyed on
+    /// the snapshot version, so loading against the old one would build a context from paths that
+    /// were empty when it was taken.
+    /// </remarks>
+    private async Task<SolutionSnapshot?> BuildBeforeOpeningAsync(
+        SolutionSnapshot snapshot, ProjectIdentity project)
+    {
+        if (!snapshot.TryGetProject(project, out ProjectSnapshot? owner))
+        {
+            return null;
+        }
+
+        Log($"  {owner.Name} has not been built — building it first");
+
+        if (await ExecuteAsync(ProjectOperationKind.Build, owner) != ProjectOperationStatus.Succeeded)
+        {
+            Log("  the build failed — the form is opened anyway, and will say what it could not find");
+
+            return null;
+        }
+
+        await _workspace.RefreshAsync(_shutdown.Token);
+
+        return _workspace.CurrentSnapshot;
     }
 
     /// <summary>Parses text into a document and builds its objects into a form.</summary>
@@ -138,10 +245,9 @@ public sealed partial class DesignerViewModel
         FormViewModel form,
         SolutionSnapshot snapshot,
         ProjectIdentity project,
+        XamlDocument document,
         string text)
     {
-        XamlDocument document = XamlDocument.Parse(text);
-
         XamlLoadEnvironment environment = EnvironmentFor(snapshot, project);
 
         (XamlLoadSession? session, XamlLoadResult result) =

@@ -161,12 +161,14 @@ public sealed partial class DesignerViewModel
     /// knows, so nothing is published and the version does not advance. A restore is the exception
     /// worth refreshing after, because it rewrites an evaluation input.
     /// </remarks>
-    private async Task<ProjectOperationStatus> ExecuteAsync(ProjectOperationKind kind)
+    private Task<ProjectOperationStatus> ExecuteAsync(ProjectOperationKind kind) =>
+        Project() is { } project
+            ? ExecuteAsync(kind, project)
+            : Task.FromResult(ProjectOperationStatus.Failed);
+
+    private async Task<ProjectOperationStatus> ExecuteAsync(
+        ProjectOperationKind kind, ProjectSnapshot project)
     {
-        if (Project() is not { } project)
-        {
-            return ProjectOperationStatus.Failed;
-        }
 
         Log($"{kind} {project.Name}…");
 
