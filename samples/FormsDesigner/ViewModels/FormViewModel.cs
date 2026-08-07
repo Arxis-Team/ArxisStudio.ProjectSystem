@@ -7,6 +7,7 @@ using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Reactive;
 
 namespace FormsDesigner.ViewModels;
 
@@ -34,6 +35,8 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
         File = file;
         Name = file.FileName;
         Location = location;
+
+        FollowTheSurface();
     }
 
     /// <summary>The file this form was read from and will be written back to.</summary>
@@ -127,6 +130,19 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// </remarks>
     public XamlDesignSurface Surface { get; } = new() { IsHitTestVisible = false };
 
+    /// <summary>Follows what the stand-in reports about the form, which it keeps current.</summary>
+    /// <remarks>
+    /// Observed rather than copied on publication. A publication happens once per session, and the
+    /// title is a property an inspector edits — so a snapshot went stale the first time anybody used
+    /// the feature the title bar exists to show, while the doc above claimed the opposite.
+    /// </remarks>
+    private void FollowTheSurface() =>
+        Surface.GetObservable(XamlDesignSurface.TitleProperty).Subscribe(new AnonymousObserver<string?>(_ =>
+        {
+            Raise(nameof(WindowTitle));
+            Raise(nameof(ChromeTop));
+        }));
+
     /// <summary>Where the designer's chrome starts, which is the card's left edge.</summary>
     public double ChromeLeft => Location.X;
 
@@ -146,17 +162,9 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// It is read off the surface rather than off the window, because the surface keeps it current:
     /// an edit to <c>Title</c> in the inspector changes what is drawn without anything being rebuilt.
     /// </remarks>
-    public string? WindowTitle
-    {
-        get;
-        private set
-        {
-            if (Set(ref field, value))
-            {
-                Raise(nameof(ChromeTop));
-            }
-        }
-    }
+    public string? WindowTitle => Surface.IsTopLevel
+        ? Surface.Title is { Length: > 0 } title ? title : Name
+        : null;
 
     /// <summary>The map between the two, in both directions.</summary>
     public XamlObjectMap? Objects => Session?.Objects;
@@ -241,11 +249,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
 
         Surface.Attach(session);
 
-        Mark(session);
-
-        WindowTitle = Surface.IsTopLevel
-            ? Surface.Title is { Length: > 0 } title ? title : Name
-            : null;
+        MarkEditable(session);
 
         Raise(nameof(Objects));
     }
@@ -259,7 +263,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// have to guess about the stand-in that hosts the form, about anything a template generated,
     /// and about whatever the designer adds next — and it would guess silently.
     /// </remarks>
-    private static void Mark(XamlLoadSession session)
+    internal static void MarkEditable(XamlLoadSession session)
     {
         foreach (object produced in session.Objects.Objects)
         {

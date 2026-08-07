@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ArxisStudio.Markup;
 using ArxisStudio.Markup.Xaml;
+using ArxisStudio.Markup.Xaml.Design;
 using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
 using ArxisStudio.ProjectSystem.Markup.Xaml;
@@ -318,12 +319,18 @@ public sealed partial class DesignerViewModel
     {
         await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
 
-        if (form.Surface is not { } surface)
+        // Asked of the surface, not of the reference. The stand-in is always there — it is a
+        // control the form owns from construction — so testing it for null tested nothing, and the
+        // one diagnostic this designer has for "the document loaded and there is nothing to show"
+        // silently stopped being reachable. HasContent is the question that still has an answer.
+        if (!form.Surface.HasContent)
         {
             Log($"  ! {form.Name} produced nothing the canvas can host");
 
             return;
         }
+
+        XamlDesignSurface surface = form.Surface;
 
         // Reported, not judged. One yield is enough for the container to exist and not always
         // enough for it to have measured, so a zero here means "not yet or not at all" and this is

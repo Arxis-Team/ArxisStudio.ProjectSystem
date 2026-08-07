@@ -194,7 +194,13 @@ public sealed partial class DesignerViewModel
     {
         if (ProjectForms.FirstOrDefault(form => form.Path == file.Path) is { } form)
         {
+            // Opened directly rather than by assigning the selection. The setter acts only on a
+            // change, and FormFile is a record compared by value, so double-clicking the file that
+            // was already selected did nothing at all — not even re-activate the form it names,
+            // which is the whole of what a second double-click is asking for.
             SelectedProjectForm = form;
+
+            RunDetached(() => OpenFormAsync(form));
 
             return;
         }

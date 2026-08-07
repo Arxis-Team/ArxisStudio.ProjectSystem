@@ -421,7 +421,15 @@
 
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto">
 
-          <Panel Grid.Column="0" IsVisible="{Binding IsDesignVisible}">
+          <!--
+            The clip lives here, on the pane, because this is the one thing the viewport transform
+            does not move. Put on the chrome layer itself it would be evaluated in that layer's own
+            pre-transform space and pan and zoom with the forms — cutting the caption and title bar
+            off whichever form had strayed outside a rectangle that no longer corresponded to the
+            screen, while the card it belongs to stayed plainly visible. The editor's own theme
+            arranges it the same way round: clip the untransformed root, never the transformed layer.
+          -->
+          <Panel Grid.Column="0" ClipToBounds="True" IsVisible="{Binding IsDesignVisible}">
             <design:DesignEditor x:Name="Surface"
                                  ItemsSource="{Binding Forms}"
                                  SelectedItems="{Binding SelectedForms}"
@@ -460,7 +468,7 @@
             <ItemsControl ItemsSource="{Binding Forms}"
                           ItemTemplate="{StaticResource FormChromeTemplate}"
                           IsHitTestVisible="False"
-                          ClipToBounds="True"
+                          ClipToBounds="False"
                           RenderTransform="{Binding #Surface.ViewportTransform}"
                           RenderTransformOrigin="0,0">
               <ItemsControl.ItemsPanel>

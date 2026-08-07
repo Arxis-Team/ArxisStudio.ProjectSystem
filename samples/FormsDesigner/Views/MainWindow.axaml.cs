@@ -89,17 +89,45 @@ public sealed partial class MainWindow : Window
     /// Follows the tree's selection onto the canvas, which is the direction the editor cannot infer.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The map answers the question the other way round from the selection handler above: there a
-    /// control became an element, here an element becomes the control it produced. A row with
-    /// nothing live behind it — an element in a document that failed to load, or one the editor does
-    /// not consider editable — leaves the canvas as it was rather than clearing it.
+    /// control became an element, here an element becomes the control it produced.
+    /// </para>
+    /// <para>
+    /// A window-rooted form needs the second attempt. Its root is a control the canvas cannot host —
+    /// that is the whole reason a stand-in exists — so it is nowhere under the editor and cannot be
+    /// selected as itself. The card is what stands in for it on screen, so the card is what gets
+    /// selected, which is the same answer the canvas gives in the other direction when a click lands
+    /// on the stand-in. Without it, picking the root row of a window form did nothing and said
+    /// nothing.
+    /// </para>
+    /// <para>
+    /// A row with nothing live behind it at all leaves the canvas as it was rather than clearing it,
+    /// and says so, because a selection that silently does not happen is indistinguishable from a
+    /// designer that has stopped responding.
+    /// </para>
     /// </remarks>
     private void ShowOnCanvas(DesignEditor surface, XamlElement element)
     {
-        if (Designer?.ActiveForm?.Objects?.GetObject(element) is Control control)
+        if (Designer is not { ActiveForm: { } form } designer)
         {
-            surface.SelectDesignTarget(control);
+            return;
         }
+
+        if (DesignerViewModel.ControlFor(form, element) is { } control
+            && surface.SelectDesignTarget(control))
+        {
+            return;
+        }
+
+        if (ReferenceEquals(element, form.Document?.Root)
+            && surface.ContainerFromItem(form) is Control card
+            && surface.SelectDesignTarget(card))
+        {
+            return;
+        }
+
+        designer.Log($"! {element.Name} is not on the canvas to select");
     }
 
     /// <summary>

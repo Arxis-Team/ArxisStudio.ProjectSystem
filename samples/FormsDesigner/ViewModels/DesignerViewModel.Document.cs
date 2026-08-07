@@ -160,12 +160,33 @@ public sealed partial class DesignerViewModel
         RefreshAllCommands();
     }
 
+    /// <summary>
+    /// Brings the canvas back in line with a session an update has just changed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two different questions, and answering only the first is what made an edited form go dead.
+    /// The root is republished when the update replaced it — which, since <c>RootObject</c> is
+    /// fixed for the life of a session, is only when the root is not a Control at all.
+    /// </para>
+    /// <para>
+    /// The marking is not conditional on that, because an update need not touch the root to build
+    /// new objects: an insert rebuilds the parent's children, and in <c>ContentMode="Annotated"</c>
+    /// a control nobody marked is a control the editor will not offer. A Button dropped from the
+    /// toolbox appeared, got a row in the tree, and could not be clicked, resized or deleted until
+    /// the form was reopened.
+    /// </para>
+    /// </remarks>
     private static void RefreshRoot(FormViewModel form, XamlLoadSession session)
     {
         if (!ReferenceEquals(form.Root, session.RootObject))
         {
             form.AdoptRoot(session);
+
+            return;
         }
+
+        FormViewModel.MarkEditable(session);
     }
 
     /// <summary>

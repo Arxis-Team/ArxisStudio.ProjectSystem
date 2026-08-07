@@ -379,7 +379,8 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         RefreshPackageCommands();
     }
 
-    private void Log(string message)
+    /// <summary>Says something in the console. Internal, because the view has things to say too.</summary>
+    internal void Log(string message)
     {
         if (!Dispatcher.UIThread.CheckAccess())
         {
