@@ -255,19 +255,40 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Tells the editor which controls are the document's, and therefore editable.
+    /// Tells the editor which controls are the document's own, and therefore editable.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Asked of the object map rather than worked out from the tree, because the map is the one
-    /// thing that knows: it holds every object the document produced and nothing else. A walk would
-    /// have to guess about the stand-in that hosts the form, about anything a template generated,
-    /// and about whatever the designer adds next — and it would guess silently.
+    /// thing that knows. A walk would have to guess about the stand-in that hosts the form, about
+    /// anything a template generated, and about whatever the designer adds next — and it would guess
+    /// silently.
+    /// </para>
+    /// <para>
+    /// But the map holds more than the document's own objects, and marking all of them offered a
+    /// button's own label as something to select and resize — a rectangle inside the button, for
+    /// which the inspector and the tree both answered "Button", because that is the nearest thing
+    /// with an element behind it. After an edit, when the button's template has been realised, the
+    /// map picks the label up too.
+    /// </para>
+    /// <para>
+    /// The test is the round trip, not the origin. <c>GetOrigin</c> looked like the right question
+    /// and is not: it answers <c>Document</c> for an object it has no origin for, because that is
+    /// the enum's first member, and a template-produced label is exactly such an object. Asking
+    /// instead for the element behind a control <em>and</em> checking that the element leads back to
+    /// the same control admits only what the document actually declared — a label paired to nothing
+    /// fails the first half, and anything paired to its owner's element fails the second.
+    /// </para>
     /// </remarks>
     internal static void MarkEditable(XamlLoadSession session)
     {
-        foreach (object produced in session.Objects.Objects)
+        XamlObjectMap map = session.Objects;
+
+        foreach (object produced in map.Objects)
         {
-            if (produced is Control control)
+            if (produced is Control control
+                && map.GetElement(control) is { } element
+                && ReferenceEquals(map.GetObject(element), control))
             {
                 Layout.SetIsTracked(control, true);
             }
