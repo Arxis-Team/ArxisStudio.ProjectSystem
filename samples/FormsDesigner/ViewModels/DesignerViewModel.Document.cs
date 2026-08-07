@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using ArxisStudio;
 using ArxisStudio.Markup.Xaml;
 using ArxisStudio.Markup.Xaml.Loader;
 using Avalonia.Controls;
@@ -227,14 +228,52 @@ public sealed partial class DesignerViewModel
         }
     }
 
-    /// <summary>Writes a finished gesture into the document. Called by the view.</summary>
+    /// <summary>
+    /// Writes a finished gesture into the document. Called by the view.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A gesture on the card is a gesture on the form. The card is the container, and inside it the
+    /// stand-in that hosts a root which cannot be shown; neither has an element of its own, nor
+    /// should — they are what the root is when the root is on screen. So they resolve to the
+    /// document's root, and resizing the card resizes the form.
+    /// </para>
+    /// <para>
+    /// Without that they resolved to nothing and the write was skipped in silence: the caption read
+    /// the new size off the card while the document went on saying the old one, and the two
+    /// disagreed with nothing to say so. A control that genuinely has nothing behind it says so now.
+    /// </para>
+    /// <para>
+    /// Only the size, though. Where a card sits on the canvas is the designer's business and not the
+    /// document's — a form does not have a position, the thing showing it does.
+    /// </para>
+    /// </remarks>
     public void WriteGeometry(FormViewModel form, Control control, bool moved, bool resized)
     {
         if (form.Objects?.GetElement(control) is { } element)
         {
             RunDetached(() => WriteGeometryAsync(form, element, control, moved, resized));
+
+            return;
         }
+
+        if (StandsForTheForm(form, control))
+        {
+            if (resized && form.Document?.Root is { } root)
+            {
+                RunDetached(() => WriteGeometryAsync(form, root, control, moved: false, resized: true));
+            }
+
+            return;
+        }
+
+        Log($"! {control.GetType().Name} has nothing in the document behind it — geometry not written");
     }
+
+    /// <summary>Whether this control is the form as it appears, rather than something inside it.</summary>
+    private static bool StandsForTheForm(FormViewModel form, Control control) =>
+        ReferenceEquals(control, form.Surface)
+        || (control is DesignEditorItem item && ReferenceEquals(item.DataContext, form));
 
     /// <summary>
     /// Answers the editor's reorder request by moving the element in the document.
