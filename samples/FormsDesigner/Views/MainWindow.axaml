@@ -105,7 +105,7 @@
       window's own buttons. The window is BorderOnly, so this row *is* the title bar: it keeps the
       frame (and with it resizing and snapping) and drops the system caption the design does not have.
     -->
-    <Border x:Name="TitleBar" Grid.Row="0" Background="{DynamicResource Bg2}"
+    <Border x:Name="TitleBar" Classes="chrome" Grid.Row="0" Background="{DynamicResource Bg2}"
             BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="10,0"
             PointerPressed="OnTitleBarPressed">
       <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto">
@@ -250,7 +250,7 @@
     <Grid Grid.Row="1" ColumnDefinitions="262,4,*,4,302">
 
       <!-- Left: hierarchy over toolbox -->
-      <Border Grid.Column="0" Background="{DynamicResource Bg2}"
+      <Border Classes="chrome" Grid.Column="0" Background="{DynamicResource Bg2}"
               BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="1.15*,1,*">
 
@@ -340,12 +340,12 @@
         </Grid>
       </Border>
 
-      <GridSplitter Grid.Column="1" />
+      <GridSplitter Classes="chrome" Grid.Column="1" />
 
       <!-- Centre -->
       <Grid Grid.Column="2" RowDefinitions="36,32,*,4,212" Background="{DynamicResource Bg1}">
 
-        <Border Grid.Row="0" Background="{DynamicResource Bg2}"
+        <Border Classes="chrome" Grid.Row="0" Background="{DynamicResource Bg2}"
                 BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="6,0">
           <ItemsControl ItemsSource="{Binding Forms}">
             <ItemsControl.ItemsPanel>
@@ -368,7 +368,7 @@
           </ItemsControl>
         </Border>
 
-        <Border Grid.Row="1" Background="{DynamicResource Bg2}"
+        <Border Classes="chrome" Grid.Row="1" Background="{DynamicResource Bg2}"
                 BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="12,0">
           <Grid ColumnDefinitions="*,Auto,Auto">
 
@@ -489,7 +489,7 @@
               </ItemsControl.Styles>
             </ItemsControl>
 
-            <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14"
+            <Border Classes="chrome" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14"
                     Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Brd}"
                     BorderThickness="1" CornerRadius="7">
               <StackPanel Orientation="Horizontal">
@@ -501,9 +501,9 @@
             </Border>
           </Panel>
 
-          <GridSplitter Grid.Column="1" Width="4" IsVisible="{Binding IsSplitView}" />
+          <GridSplitter Classes="chrome" Grid.Column="1" Width="4" IsVisible="{Binding IsSplitView}" />
 
-          <Border Grid.Column="2" IsVisible="{Binding IsXamlVisible}" Width="520"
+          <Border Classes="chrome" Grid.Column="2" IsVisible="{Binding IsXamlVisible}" Width="520"
                   Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}" BorderThickness="1,0,0,0">
             <ScrollViewer>
               <TextBlock Text="{Binding DocumentText}" Classes="mono" TextWrapping="NoWrap" Margin="14,10" />
@@ -512,10 +512,10 @@
 
         </Grid>
 
-        <GridSplitter Grid.Row="3" Height="4" />
+        <GridSplitter Classes="chrome" Grid.Row="3" Height="4" />
 
         <!-- The dock: text tabs with a two-pixel underline, as designed. -->
-        <Border Grid.Row="4" Background="{DynamicResource Bg2}"
+        <Border Classes="chrome" Grid.Row="4" Background="{DynamicResource Bg2}"
                 BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0">
           <Grid RowDefinitions="32,*">
 
@@ -686,10 +686,10 @@
 
       </Grid>
 
-      <GridSplitter Grid.Column="3" />
+      <GridSplitter Classes="chrome" Grid.Column="3" />
 
       <!-- Right: inspector -->
-      <Border Grid.Column="4" Background="{DynamicResource Bg2}"
+      <Border Classes="chrome" Grid.Column="4" Background="{DynamicResource Bg2}"
               BorderBrush="{DynamicResource Brd}" BorderThickness="1,0,0,0">
         <Grid RowDefinitions="34,*">
 
@@ -873,7 +873,7 @@
     </Grid>
 
     <!-- Status bar -->
-    <Border Grid.Row="2" Background="{DynamicResource Bg2}"
+    <Border Classes="chrome" Grid.Row="2" Background="{DynamicResource Bg2}"
             BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0" Padding="12,0">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
