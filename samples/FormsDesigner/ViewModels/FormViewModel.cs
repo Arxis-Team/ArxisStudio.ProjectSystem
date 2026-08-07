@@ -272,12 +272,13 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// map picks the label up too.
     /// </para>
     /// <para>
-    /// The test is the round trip, not the origin. <c>GetOrigin</c> looked like the right question
-    /// and is not: it answers <c>Document</c> for an object it has no origin for, because that is
-    /// the enum's first member, and a template-produced label is exactly such an object. Asking
-    /// instead for the element behind a control <em>and</em> checking that the element leads back to
-    /// the same control admits only what the document actually declared — a label paired to nothing
-    /// fails the first half, and anything paired to its owner's element fails the second.
+    /// The test is the round trip rather than the origin, and it is the stricter of the two. Asking
+    /// for the element behind a control <em>and</em> checking that the element leads back to the
+    /// same control admits only what the document declared: a label paired to nothing fails the
+    /// first half, and anything paired to its owner's element fails the second. <c>GetOrigin</c>
+    /// would do for the label — since the map stopped claiming the document's origin for objects it
+    /// found no declaration for — but it answers a question about provenance, and this one is about
+    /// editability, which is what an element is.
     /// </para>
     /// </remarks>
     internal static void MarkEditable(XamlLoadSession session)
