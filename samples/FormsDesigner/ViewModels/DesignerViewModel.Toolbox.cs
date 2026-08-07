@@ -149,7 +149,11 @@ public sealed partial class DesignerViewModel
 
         string xaml = entry.Xaml;
 
-        if (parentControl is Canvas or null || ReferenceEquals(parentControl, form.Root))
+        // Only a Canvas positions its children by Canvas.Left and Canvas.Top, so only a Canvas gets
+        // them written. The root used to count too, and a form rooted at a UserControl or a
+        // StackPanel therefore collected attached properties that mean nothing where they landed —
+        // noise in the user's file that the layout ignores and a reader has to puzzle over.
+        if (parentControl is Canvas)
         {
             // Into the parent's own coordinates. The point arrives in the stand-in's, and the two
             // coincide only while the parent happens to sit at the form's origin — so a canvas
