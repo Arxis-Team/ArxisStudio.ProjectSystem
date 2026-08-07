@@ -1,54 +1,14 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Collections.Generic;
+using System.Reflection;
 using ArxisStudio.Markup.Xaml;
+using ArxisStudio.Markup.Xaml.Loader;
+using Avalonia.Controls;
 using Avalonia.Media;
 
 namespace FormsDesigner.ViewModels;
-
-/// <summary>
-/// One editable property of the selected element.
-/// </summary>
-/// <remarks>
-/// A row is a fact about the <em>document</em>: the attribute's name as written, and its text. It is
-/// deliberately not a fact about the live control, which would report the value every property has
-/// rather than the ones this file sets — a Button has upwards of a hundred, three of which the
-/// author wrote, and an inspector listing all of them tells nobody which ones matter.
-/// </remarks>
-public sealed class PropertyRow : Observable
-{
-    private readonly Action<PropertyRow, string> _commit;
-
-    internal PropertyRow(string name, string value, bool isDirective, Action<PropertyRow, string> commit)
-    {
-        Name = name;
-        IsDirective = isDirective;
-        _commit = commit;
-        _value = value;
-    }
-
-    public string Name { get; }
-
-    /// <summary>Whether this is <c>x:Name</c> and its kind rather than an ordinary property.</summary>
-    public bool IsDirective { get; }
-
-    private string _value;
-
-    public string Value
-    {
-        get => _value;
-        set
-        {
-            if (Set(ref _value, value))
-            {
-                _commit(this, value);
-            }
-        }
-    }
-}
-
-/// <summary>One of the inspector's headings, and the rows under it.</summary>
-public sealed record PropertyGroup(string Name, System.Collections.Generic.IReadOnlyList<PropertyRow> Rows);
 
 public sealed partial class DesignerViewModel
 {
@@ -60,6 +20,21 @@ public sealed partial class DesignerViewModel
 
     /// <summary>The selected element's type, for the inspector's header.</summary>
     public string SelectedType => Selected is null ? string.Empty : Selected.Name.LocalName;
+
+    /// <summary>
+    /// The namespace the selected control's type lives in, which the design shows beside the type.
+    /// </summary>
+    /// <remarks>
+    /// Read off the live object rather than the document, because the document says a prefix and a
+    /// local name and the answer to "which Button is this" is the resolved type. A document naming
+    /// a type nothing resolved has no namespace to show, and shows none.
+    /// </remarks>
+    public string SelectedNamespace => LiveSelection()?.GetType().Namespace ?? string.Empty;
+
+    /// <summary>The type and its namespace, the way the design writes them under the name.</summary>
+    public string SelectedTypeLine => SelectedNamespace is { Length: > 0 } space
+        ? $"{SelectedType} · {space}"
+        : SelectedType;
 
     public string SelectedQualifier => Selected is null
         ? "nothing selected"
@@ -152,6 +127,7 @@ public sealed partial class DesignerViewModel
 
         Raise(nameof(SelectedType));
         Raise(nameof(SelectedQualifier));
+        Raise(nameof(SelectedTypeLine));
         Raise(nameof(SelectedGlyph));
 
         SelectedChips.Clear();
@@ -175,6 +151,9 @@ public sealed partial class DesignerViewModel
             }
         }
 
+        Control? live = LiveSelection();
+        XamlLoadSession? session = ActiveForm?.Session;
+
         foreach (XamlAttribute attribute in element.Attributes)
         {
             // Namespace declarations are not properties of the control, they are how the file names
@@ -186,11 +165,7 @@ public sealed partial class DesignerViewModel
 
             string name = attribute.Name.ToString();
 
-            Properties.Add(new PropertyRow(
-                name,
-                attribute.GetValueText(),
-                attribute.IsDirective,
-                (_, value) => RunDetached(() => SetPropertyAsync(element, name, value))));
+            Properties.Add(RowFor(element, attribute, name, live, session));
         }
 
         // Grouped in the design's order, and a section with nothing in it is not drawn: an inspector
@@ -204,6 +179,111 @@ public sealed partial class DesignerViewModel
             {
                 PropertyGroups.Add(new PropertyGroup(heading, rows));
             }
+        }
+    }
+
+    /// <summary>The live control the selection stands for, when there is one.</summary>
+    private Control? LiveSelection() =>
+        Selected is { } element && ActiveForm?.Objects is { } map
+            ? map.GetObject(element) as Control
+            : null;
+
+    /// <summary>
+    /// Builds a row, asking the member what kind of value it holds.
+    /// </summary>
+    /// <remarks>
+    /// The document alone cannot answer this — every attribute is text there — so the descriptor is
+    /// what turns <c>IsEnabled="True"</c> into a checkbox and <c>Dock="Right"</c> into the four
+    /// values <c>Dock</c> allows. A member nothing resolved still gets a row: a document may name a
+    /// property of a type the project has not compiled yet, and refusing to show it would hide what
+    /// the file says.
+    /// </remarks>
+    private PropertyRow RowFor(
+        XamlElement element,
+        XamlAttribute attribute,
+        string name,
+        Control? live,
+        XamlLoadSession? session)
+    {
+        string text = attribute.GetValueText();
+
+        // An expression is not a value, and a row that let one be typed over would replace a
+        // binding with whatever the text happened to look like.
+        if (attribute.GetValue() is XamlMarkupExtensionValue)
+        {
+            return Row(PropertyEditor.Expression, [], isReadOnly: true, static _ => null);
+        }
+
+        XamlMemberDescriptor? member = null;
+
+        if (live is not null && session is not null && !attribute.IsDirective)
+        {
+            try
+            {
+                member = session.GetMember(live, name);
+            }
+            catch (Exception error) when (error is InvalidOperationException or NotSupportedException)
+            {
+                member = null;
+            }
+        }
+
+        if (member is not { IsResolved: true })
+        {
+            return Row(PropertyEditor.Text, [], attribute.IsDirective, static _ => null);
+        }
+
+        Type value = Nullable.GetUnderlyingType(member.ValueType) ?? member.ValueType;
+
+        (PropertyEditor editor, IReadOnlyList<string> choices) = value switch
+        {
+            _ when value == typeof(bool) => (PropertyEditor.Flag, (IReadOnlyList<string>)[]),
+            _ when value.IsEnum => Choices(value),
+            _ when typeof(IBrush).IsAssignableFrom(value) || value == typeof(Color) =>
+                (PropertyEditor.Colour, (IReadOnlyList<string>)[]),
+            _ when value == typeof(double) || value == typeof(float)
+                || value == typeof(int) || value == typeof(long) => (PropertyEditor.Number, (IReadOnlyList<string>)[]),
+            _ => (PropertyEditor.Text, (IReadOnlyList<string>)[]),
+        };
+
+        XamlMemberDescriptor resolved = member;
+
+        return Row(
+            editor,
+            choices,
+            member.IsReadOnly || !member.CanWrite,
+            typed => resolved.ConvertFromText(typed) is { Succeeded: false } failed
+                ? failed.Error ?? $"not a {value.Name}"
+                : null);
+
+        static (PropertyEditor, IReadOnlyList<string>) Choices(Type value)
+        {
+            string[] names = Enum.GetNames(value);
+
+            // Few enough to lay out side by side is the design's rule for a segmented control, and
+            // four is where a row of them stops fitting the inspector's width.
+            return (names.Length <= 4 ? PropertyEditor.Segmented : PropertyEditor.Choice, names);
+        }
+
+        PropertyRow Row(
+            PropertyEditor editor,
+            IReadOnlyList<string> choices,
+            bool isReadOnly,
+            Func<string, string?> validate)
+        {
+            var row = new PropertyRow(
+                name,
+                text,
+                attribute.IsDirective,
+                editor,
+                choices,
+                isReadOnly,
+                validate,
+                (_, written) => RunDetached(() => SetPropertyAsync(element, name, written)));
+
+            row.Prime();
+
+            return row;
         }
     }
 

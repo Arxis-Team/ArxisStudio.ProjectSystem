@@ -715,8 +715,9 @@
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                   <TextBlock Text="{Binding SelectedName}" FontWeight="SemiBold" FontSize="13"
                              TextTrimming="CharacterEllipsis" />
-                  <TextBlock Text="{Binding SelectedQualifier}" Classes="mono" FontSize="10.5"
-                             Foreground="{DynamicResource Fg3}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding SelectedTypeLine}" Classes="mono" FontSize="10.5"
+                             Foreground="{DynamicResource Fg3}" TextTrimming="CharacterEllipsis"
+                             ToolTip.Tip="{Binding SelectedQualifier}" />
                 </StackPanel>
                 <Border Grid.Column="2" Width="14" Height="14" CornerRadius="3.5"
                         Background="{DynamicResource Acc}" VerticalAlignment="Center"
@@ -751,7 +752,12 @@
                           <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12"
                                      VerticalAlignment="Center" />
                         </StackPanel>
-                        <ItemsControl ItemsSource="{Binding Rows}">
+                        <!--
+                          Two to a line for the narrow editors and the whole panel for the wide
+                          ones, which is how the design lays them out and why a row knows its own
+                          width. A UniformGrid cannot let one cell span, so the two go in two panels.
+                        -->
+                        <ItemsControl ItemsSource="{Binding Narrow}" IsVisible="{Binding HasNarrow}">
                           <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
                           </ItemsControl.ItemsPanel>
@@ -761,8 +767,76 @@
                                 <TextBlock Text="{Binding Name}" FontSize="10.5"
                                            Foreground="{DynamicResource Fg3}"
                                            TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+
                                 <TextBox Text="{Binding Value, Mode=TwoWay}" Height="26"
+                                         IsVisible="{Binding IsText}" IsReadOnly="{Binding IsReadOnly}"
                                          FontFamily="{DynamicResource MonoFont}" FontWeight="Medium" />
+
+                                <CheckBox IsChecked="{Binding Flag, Mode=TwoWay}" Height="26"
+                                          IsVisible="{Binding IsFlag}" IsEnabled="{Binding !IsReadOnly}" />
+
+                                <ComboBox ItemsSource="{Binding Choices}" Height="26"
+                                          SelectedItem="{Binding Value, Mode=TwoWay}"
+                                          IsVisible="{Binding IsChoice}" IsEnabled="{Binding !IsReadOnly}"
+                                          HorizontalAlignment="Stretch" />
+
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Height="26"
+                                      IsVisible="{Binding IsColour}">
+                                  <Border Width="16" Height="16" CornerRadius="4" VerticalAlignment="Center"
+                                          Background="{Binding Swatch}"
+                                          BorderBrush="{DynamicResource Brd2}" BorderThickness="1" />
+                                  <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" Height="26"
+                                           IsReadOnly="{Binding IsReadOnly}"
+                                           FontFamily="{DynamicResource MonoFont}" FontWeight="Medium" />
+                                </Grid>
+
+                                <TextBlock Text="{Binding Error}" FontSize="10.5" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource Red}"
+                                           IsVisible="{Binding HasError}" />
+                              </StackPanel>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <ItemsControl ItemsSource="{Binding Wide}" IsVisible="{Binding HasWide}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PropertyRow">
+                              <StackPanel Margin="0,0,0,8" Spacing="3">
+                                <TextBlock Text="{Binding Name}" FontSize="10.5"
+                                           Foreground="{DynamicResource Fg3}"
+                                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+
+                                <!-- One control per value, when a type has few enough of them. -->
+                                <ItemsControl ItemsSource="{Binding Options}" IsVisible="{Binding IsSegmented}">
+                                  <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+                                  </ItemsControl.ItemsPanel>
+                                  <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ChoiceOption">
+                                      <Button Classes="segment" Command="{Binding ChooseCommand}"
+                                              Content="{Binding Text}"
+                                              Classes.chosen="{Binding IsChosen}" />
+                                    </DataTemplate>
+                                  </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!--
+                                  An expression is shown and not edited. Typing a literal over a
+                                  binding would replace it with whatever the text happened to look
+                                  like, which is a change nobody asked for.
+                                -->
+                                <Border IsVisible="{Binding IsExpression}" Height="26" CornerRadius="5"
+                                        Background="{DynamicResource Inp}" Padding="8,0"
+                                        BorderBrush="{DynamicResource Acc}" BorderThickness="1">
+                                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <Path Data="M3.5 12.5L12.5 3.5M7.5 3.5h5v5" Width="12" Height="12"
+                                          Stretch="Uniform" Stroke="{DynamicResource Acc}"
+                                          StrokeThickness="1.3" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Value}" Classes="mono" FontSize="11.5"
+                                               Foreground="{DynamicResource Acc}" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                  </StackPanel>
+                                </Border>
                               </StackPanel>
                             </DataTemplate>
                           </ItemsControl.ItemTemplate>
