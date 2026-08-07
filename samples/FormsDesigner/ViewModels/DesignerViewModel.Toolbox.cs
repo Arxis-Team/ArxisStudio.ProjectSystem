@@ -151,7 +151,14 @@ public sealed partial class DesignerViewModel
 
         if (parentControl is Canvas or null || ReferenceEquals(parentControl, form.Root))
         {
-            Point local = at;
+            // Into the parent's own coordinates. The point arrives in the stand-in's, and the two
+            // coincide only while the parent happens to sit at the form's origin — so a canvas
+            // nested anywhere else would take the control and put it at the wrong place, by exactly
+            // the parent's offset.
+            Point local = parentControl is not null
+                && form.Surface.TranslatePoint(at, parentControl) is { } inParent
+                ? inParent
+                : at;
 
             xaml = WithPosition(entry, local);
         }

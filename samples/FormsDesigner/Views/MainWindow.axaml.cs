@@ -251,6 +251,24 @@ public sealed partial class MainWindow : Window
     /// whole chain of transforms, which is the part that would otherwise be wrong at every zoom but
     /// one.
     /// </remarks>
+    /// <summary>
+    /// Drops a toolbox entry onto whatever is under the pointer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Resolved geometrically rather than from <c>e.Source</c>, because a loaded form does not take
+    /// input: it must not live its own life under the pointer, so nothing inside it is hit-testable
+    /// and the event source is the card, whatever the pointer is actually over. Asking the source
+    /// therefore answered "the form" for every drop, and every control landed at the root.
+    /// </para>
+    /// <para>
+    /// This is the same trade the editor makes for selection, and it settles it the same way: a
+    /// geometric hit test, which does not care whether a control accepts input. What comes back is
+    /// the deepest control the document owns at that point; <c>Drop</c> walks up from it to the
+    /// nearest one that can hold a child, so a control lands inside the panel it was dropped on
+    /// rather than at the top of the form.
+    /// </para>
+    /// </remarks>
     private void OnDrop(object? sender, DragEventArgs e)
     {
         if (_dragging is not { } entry || Designer is not { } designer)
@@ -258,19 +276,99 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        Control? over = e.Source as Control;
+        DesignEditor editor = this.GetControl<DesignEditor>("Surface");
 
-        if (over is null || FormOf(over) is not { } form || form.Surface is not { } surface)
+        if (FormUnder(editor, designer, e.GetPosition(editor)) is not { } form)
         {
             return;
         }
 
-        // Against the surface, which is what is on screen. For a window-rooted form the root is not
-        // in the visual tree at all, and asking a control that was never shown where a point is
-        // gives an answer about nothing.
-        designer.Drop(form, entry, over, e.GetPosition(surface));
+        Point inForm = e.GetPosition(form.Surface);
+
+        designer.Drop(form, entry, DeepestAt(form, inForm), inForm);
 
         e.Handled = true;
+    }
+
+    /// <summary>The form whose card is under a point on the canvas.</summary>
+    private static FormViewModel? FormUnder(DesignEditor editor, DesignerViewModel designer, Point at)
+    {
+        foreach (FormViewModel form in designer.Forms)
+        {
+            if (editor.ContainerFromItem(form) is Control card
+                && card.TranslatePoint(default, editor) is { } origin
+                && new Rect(origin, card.Bounds.Size).Contains(at))
+            {
+                return form;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The smallest control the document owns whose rectangle contains a point.</summary>
+    /// <remarks>
+    /// By rectangle rather than by rendering, which is the same rule the editor uses to decide what
+    /// a click landed on and for the same reason: a panel that paints no background renders nothing
+    /// to hit, so a geometric hit test walks straight past the very containers a drop most wants to
+    /// find. A form's empty area belongs to the panel that occupies it, and dropping there should
+    /// put the control in that panel rather than at the top of the form.
+    /// </remarks>
+    private static Control? DeepestAt(FormViewModel form, Point at)
+    {
+        if (form.Objects is not { } map)
+        {
+            return null;
+        }
+
+        Control? best = null;
+        int deepest = -1;
+        double smallest = double.PositiveInfinity;
+
+        foreach (object produced in map.Objects)
+        {
+            if (produced is not Control control
+                || map.GetElement(control) is null
+                || control.TranslatePoint(default, form.Surface) is not { } origin)
+            {
+                continue;
+            }
+
+            var rectangle = new Rect(origin, control.Bounds.Size);
+
+            if (!rectangle.Contains(at))
+            {
+                continue;
+            }
+
+            int depth = DepthIn(control, form.Surface);
+            double area = rectangle.Width * rectangle.Height;
+
+            // Deeper wins, and area only settles a tie. A panel that fills its parent has the same
+            // rectangle as the parent, so area alone would hand every drop on an empty form to the
+            // root — which is the one container least likely to accept it.
+            if (depth > deepest || (depth == deepest && area < smallest))
+            {
+                best = control;
+                deepest = depth;
+                smallest = area;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>How far a control sits below the control hosting the form.</summary>
+    private static int DepthIn(Visual control, Visual host)
+    {
+        int depth = 0;
+
+        for (Visual? current = control; current is not null && current != host; current = current.GetVisualParent())
+        {
+            depth++;
+        }
+
+        return depth;
     }
 
     private async Task<string?> PickEntryPointAsync()

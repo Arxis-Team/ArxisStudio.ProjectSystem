@@ -36,6 +36,9 @@ public sealed partial class DesignerViewModel
     /// An element rather than a live object, because the document is what gets edited. The live
     /// object is how the user pointed at it and is of no further interest once the pointing is done.
     /// </remarks>
+    /// <summary>The control the current selection was made through, when it was made on the canvas.</summary>
+    private Control? _selectedControl;
+
     public XamlElement? Selected
     {
         get;
@@ -79,6 +82,12 @@ public sealed partial class DesignerViewModel
     public void SelectFromCanvas(FormViewModel form, Control? control)
     {
         ActiveForm = form;
+
+        // Remembered because an element does not survive an edit and a control does. Elements are
+        // immutable syntax nodes: applying a change produces a new document with new ones, and the
+        // one the inspector is holding goes on describing the form as it was. The control is the
+        // handle that still means something afterwards.
+        _selectedControl = control;
 
         if (form.Objects is not { } map)
         {
@@ -151,6 +160,15 @@ public sealed partial class DesignerViewModel
         // The root object can be replaced outright when a change reaches far enough, and the canvas
         // is holding the old one until it is told.
         RefreshRoot(form, session);
+
+        // And the inspector is holding an element from the document that has just been replaced, so
+        // it goes on showing the values the form had before the edit — and, worse, the next edit it
+        // makes addresses an element the document no longer contains. Re-resolving through the
+        // control puts it back on the live one.
+        if (_selectedControl is { } selected)
+        {
+            SelectFromCanvas(form, selected);
+        }
 
         if (!result.Applied)
         {
