@@ -88,6 +88,16 @@ public sealed partial class DesignerViewModel
     /// <summary>The path from the root to what is selected, which the design puts above the canvas.</summary>
     public ObservableCollection<Crumb> Breadcrumb { get; } = [];
 
+    /// <summary>
+    /// Raised when a row in the tree asks the canvas to show what it names.
+    /// </summary>
+    /// <remarks>
+    /// An event rather than the view watching <see cref="Selected"/>, because that property changes
+    /// from both directions and watching it would send the canvas's own selection straight back at
+    /// it. This fires only on the way the canvas cannot already know about.
+    /// </remarks>
+    public event EventHandler<XamlElement>? CanvasSelectionRequested;
+
     public HierarchyRow? SelectedHierarchyRow
     {
         get;
@@ -96,6 +106,8 @@ public sealed partial class DesignerViewModel
             if (Set(ref field, value) && value is not null && !_syncingHierarchy)
             {
                 Selected = value.Element;
+
+                CanvasSelectionRequested?.Invoke(this, value.Element);
             }
         }
     }

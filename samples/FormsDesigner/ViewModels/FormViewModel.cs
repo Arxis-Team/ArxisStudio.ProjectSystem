@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using ArxisStudio.Markup.Xaml;
+using ArxisStudio.Attached;
 using ArxisStudio.Markup.Xaml.Design;
 using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
@@ -117,7 +118,14 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// four consequences after it. What is left here is the frame the designer draws around it.
     /// </para>
     /// </remarks>
-    public XamlDesignSurface Surface { get; } = new();
+    /// <remarks>
+    /// Hit-testing is off because a loaded form must not live its own life: a button would eat the
+    /// press and a text box would take focus and accept typing. The editor does not need it — it
+    /// works out what was pointed at from rectangles in world coordinates — and in
+    /// <c>ContentMode="Loaded"</c> its own theme switches this off for the same reason. Annotated
+    /// mode leaves it to the host, so the host does it.
+    /// </remarks>
+    public XamlDesignSurface Surface { get; } = new() { IsHitTestVisible = false };
 
     /// <summary>Where the designer's chrome starts, which is the card's left edge.</summary>
     public double ChromeLeft => Location.X;
@@ -233,11 +241,33 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
 
         Surface.Attach(session);
 
+        Mark(session);
+
         WindowTitle = Surface.IsTopLevel
             ? Surface.Title is { Length: > 0 } title ? title : Name
             : null;
 
         Raise(nameof(Objects));
+    }
+
+    /// <summary>
+    /// Tells the editor which controls are the document's, and therefore editable.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the object map rather than worked out from the tree, because the map is the one
+    /// thing that knows: it holds every object the document produced and nothing else. A walk would
+    /// have to guess about the stand-in that hosts the form, about anything a template generated,
+    /// and about whatever the designer adds next — and it would guess silently.
+    /// </remarks>
+    private static void Mark(XamlLoadSession session)
+    {
+        foreach (object produced in session.Objects.Objects)
+        {
+            if (produced is Control control)
+            {
+                Layout.SetIsTracked(control, true);
+            }
+        }
     }
 
     internal void Fail(string problem)

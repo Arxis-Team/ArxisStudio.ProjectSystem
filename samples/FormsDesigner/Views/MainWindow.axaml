@@ -68,7 +68,15 @@
 
   <Window.Styles>
     <Style Selector="design|DesignEditorItem" x:DataType="vm:FormViewModel">
-      <Setter Property="ContentMode" Value="Loaded" />
+      <!--
+        Annotated rather than Loaded, because this designer knows exactly what is editable and the
+        editor should not have to guess. `Loaded` means "everything the author wrote", found by
+        walking the container's content — and the walk cannot tell the document's own controls from
+        the two the stand-in adds to host them, so a form offered three targets where it has one, and
+        two of them answered "UserControl". Annotated asks for designer metadata instead, and the
+        object map says precisely which controls have a document element behind them.
+      -->
+      <Setter Property="ContentMode" Value="Annotated" />
 
       <!--
         The card is the container, not something wrapped around the form inside it. A frame drawn
