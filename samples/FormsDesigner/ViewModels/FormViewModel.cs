@@ -48,7 +48,14 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     public Point Location
     {
         get;
-        set => Set(ref field, value);
+        set
+        {
+            if (Set(ref field, value))
+            {
+                Raise(nameof(ChromeLeft));
+                Raise(nameof(ChromeTop));
+            }
+        }
     }
 
     public double Width
@@ -112,6 +119,19 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// </remarks>
     public XamlDesignSurface Surface { get; } = new();
 
+    /// <summary>Where the designer's chrome starts, which is the card's left edge.</summary>
+    public double ChromeLeft => Location.X;
+
+    /// <summary>
+    /// Where the designer's chrome starts vertically, which is far enough above the card for it.
+    /// </summary>
+    /// <remarks>
+    /// The chrome hangs above the form rather than over it: a caption, and for a window the title
+    /// bar that belongs to the window rather than to its content. Both are laid out downwards from
+    /// here, so this is the card's top edge less however much of them there is.
+    /// </remarks>
+    public double ChromeTop => Location.Y - (WindowTitle is { Length: > 0 } ? 60 : 22);
+
     /// <summary>The title to draw, when the root is a window, and nothing otherwise.</summary>
     /// <remarks>
     /// The title is a property of a window nobody can see, so drawing it is the only way it appears.
@@ -121,7 +141,13 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     public string? WindowTitle
     {
         get;
-        private set => Set(ref field, value);
+        private set
+        {
+            if (Set(ref field, value))
+            {
+                Raise(nameof(ChromeTop));
+            }
+        }
     }
 
     /// <summary>The map between the two, in both directions.</summary>

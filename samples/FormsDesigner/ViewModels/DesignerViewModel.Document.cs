@@ -96,6 +96,9 @@ public sealed partial class DesignerViewModel
             }
         }
 
+        // The stand-in that hosts a window-rooted form has no element of its own, and should not:
+        // it is what the root would be if the root could be shown. Falling back to the document's
+        // root is therefore the right answer here rather than a shrug.
         Selected = form.Document?.Root;
     }
 

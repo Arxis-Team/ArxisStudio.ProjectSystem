@@ -113,7 +113,7 @@ view of it** — a canvas that could disagree with the file is a designer that l
 | --- | --- |
 | Project | folders on the left, the folder's files on the right; **double-click a file to open it**. The tree is every item the project compiles, so a `.cs` file is there and says why it does not open; the forms are `ProjectSnapshot.Items` filtered to markup, and a file the project does not compile is correctly absent |
 | Toolbox | markup snippets, dragged with Avalonia's own drag-and-drop |
-| Canvas | one `DesignEditor` item per open form, whose content is `XamlLoadSession.RootObject` |
+| Canvas | one `DesignEditor` item per open form, and the item's content is the form and nothing else. In `ContentMode="Loaded"` the editor offers every control the author wrote as a design target and finds them by walking the container's content, so a caption or a title bar put in there is — correctly, and unhelpfully — something the user can select and resize. The card is the container's own `Background`, `BorderBrush` and `CornerRadius`; everything else the designer draws sits in a layer above the canvas, in world coordinates, through the editor's public `ViewportTransform` |
 | Inspector | the selected element's **attributes**, not the live control's hundred properties |
 | Packages | `NuGetHttpFeed`, `GetMetadataAsync` for the advisory line, `PackageInstaller.ApplyAndRestoreAsync` |
 | ▶ / ■ | `OutputArtifactKind.Assembly` and `RuntimeConfiguration`, built through `ExecuteAsync` first |

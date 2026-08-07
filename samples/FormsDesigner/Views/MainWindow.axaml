@@ -21,41 +21,47 @@
 
   <Window.Resources>
 
-    <!-- One form on the surface: the live tree, framed the way the design frames a window. -->
-    <DataTemplate x:Key="FormTemplate" DataType="vm:FormViewModel">
-      <Panel>
-        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left"
-                    VerticalAlignment="Top" Margin="0,-24,0,0">
+    <!--
+      What the designer draws around a form, in the form's own coordinates.
+
+      Not in the container's content, which is the whole point. In `ContentMode="Loaded"` the editor
+      offers every control the author wrote as a design target, and it finds them by walking the
+      container's content — so a caption or a title bar put in there is, correctly and unhelpfully,
+      something the user can select, resize and ask the inspector about. The container holds the form
+      and only the form; everything the designer adds is drawn over the canvas instead, in world
+      coordinates, through the editor's own viewport transform.
+    -->
+    <DataTemplate x:Key="FormChromeTemplate" DataType="vm:FormViewModel">
+      <StackPanel Width="{Binding Width}" Spacing="2">
+
+        <StackPanel Orientation="Horizontal" Spacing="8" Height="20" HorizontalAlignment="Left">
           <TextBlock Text="{Binding Caption}" Classes="mono" FontSize="11" FontWeight="Medium"
-                     Foreground="{DynamicResource Acc}" />
+                     Foreground="{DynamicResource Acc}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding SizeText}" Classes="mono" FontSize="11"
-                     Foreground="{DynamicResource Fg3}" />
+                     Foreground="{DynamicResource Fg3}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding $parent[Window].((vm:DesignerViewModel)DataContext).ZoomText}"
-                     Classes="mono" FontSize="11" Foreground="{DynamicResource Fg3}" />
+                     Classes="mono" FontSize="11" Foreground="{DynamicResource Fg3}"
+                     VerticalAlignment="Center" />
         </StackPanel>
-      <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}" BorderThickness="1"
-              CornerRadius="10" BoxShadow="0 18 50 0 #8C000000" Margin="0,4,0,0">
-        <Grid RowDefinitions="Auto,*">
-          <Border Grid.Row="0" Height="36" Background="{DynamicResource Bg2}" CornerRadius="10,10,0,0"
-                  BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,0,1" Padding="12,0"
-                  IsVisible="{Binding WindowTitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-              <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
-              <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
-              <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
-              <TextBlock Text="{Binding WindowTitle}" FontWeight="SemiBold" FontSize="12"
-                         Margin="6,0,0,0" VerticalAlignment="Center" />
-            </StackPanel>
-          </Border>
-          <Panel Grid.Row="1" Background="{DynamicResource Bg1}">
-            <ContentControl Content="{Binding Surface}" />
-            <TextBlock Text="{Binding Problem}" TextWrapping="Wrap" Margin="14"
-                       Foreground="{DynamicResource Red}" VerticalAlignment="Center"
-                       IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-          </Panel>
-        </Grid>
-      </Border>
-      </Panel>
+
+        <!-- A window's title bar belongs to the window, not to its content, so it is drawn here. -->
+        <Border Height="36" Background="{DynamicResource Bg2}" CornerRadius="10,10,0,0"
+                BorderBrush="{DynamicResource Brd}" BorderThickness="1,1,1,0" Padding="12,0"
+                IsVisible="{Binding WindowTitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
+            <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
+            <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
+            <TextBlock Text="{Binding WindowTitle}" FontWeight="SemiBold" FontSize="12"
+                       Margin="6,0,0,0" VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+
+        <TextBlock Text="{Binding Problem}" TextWrapping="Wrap" Margin="14"
+                   Foreground="{DynamicResource Red}"
+                   IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+      </StackPanel>
     </DataTemplate>
 
   </Window.Resources>
@@ -63,8 +69,18 @@
   <Window.Styles>
     <Style Selector="design|DesignEditorItem" x:DataType="vm:FormViewModel">
       <Setter Property="ContentMode" Value="Loaded" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource Brd2}" />
+
+      <!--
+        The card is the container, not something wrapped around the form inside it. A frame drawn
+        in the content would be a design target like any other; drawn here it is the container's own
+        chrome, out of reach of the walk that looks for targets. `DesignEditorItem.OutlineOpacity`
+        turns on an overlay outline that costs no pixel — a BorderThickness would lay the form out
+        inside the stroke and make it two pixels narrower than the document says.
+      -->
+      <Setter Property="Content" Value="{Binding Surface}" />
+      <Setter Property="Background" Value="{DynamicResource Bg1}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brd}" />
+      <Setter Property="CornerRadius" Value="10" />
       <Setter Property="Location" Value="{Binding Location, Mode=TwoWay}" />
       <Setter Property="Width" Value="{Binding Width, Mode=TwoWay}" />
       <Setter Property="Height" Value="{Binding Height, Mode=TwoWay}" />
@@ -402,7 +418,6 @@
                                  ItemsSource="{Binding Forms}"
                                  SelectedItems="{Binding SelectedForms}"
                                  SelectionMode="Multiple"
-                                 ItemTemplate="{StaticResource FormTemplate}"
                                  ViewportZoom="{Binding Zoom, Mode=TwoWay}">
               <design:DesignEditor.InputGestures>
                 <design:DesignEditorInputGestures PanButton="Middle"
@@ -428,6 +443,35 @@
                                                        LargeNudgeStep="10" />
               </design:DesignEditor.InteractionOptions>
             </design:DesignEditor>
+
+            <!--
+              The chrome layer. Transformed by the editor's own viewport transform, so it pans and
+              zooms with the forms without knowing how either works, and hit-test invisible, so a
+              click always reaches the editor underneath.
+            -->
+            <ItemsControl ItemsSource="{Binding Forms}"
+                          ItemTemplate="{StaticResource FormChromeTemplate}"
+                          IsHitTestVisible="False"
+                          ClipToBounds="True"
+                          RenderTransform="{Binding #Surface.ViewportTransform}"
+                          RenderTransformOrigin="0,0">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+
+              <!--
+                On the container, not on the template's root. An ItemsControl wraps each item in a
+                presenter, and it is the presenter the Canvas positions; a Canvas.Left set inside the
+                template is read by whatever the template's root sits in, which is the presenter and
+                not the Canvas. Every form then stacks at the origin, which is exactly what it did.
+              -->
+              <ItemsControl.Styles>
+                <Style Selector="ContentPresenter" x:DataType="vm:FormViewModel">
+                  <Setter Property="Canvas.Left" Value="{Binding ChromeLeft}" />
+                  <Setter Property="Canvas.Top" Value="{Binding ChromeTop}" />
+                </Style>
+              </ItemsControl.Styles>
+            </ItemsControl>
 
             <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14"
                     Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Brd}"
