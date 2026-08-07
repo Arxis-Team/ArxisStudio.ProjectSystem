@@ -62,6 +62,63 @@ public sealed partial class DesignerViewModel
     /// what the document sets is a name — so the grouping is a fact about the name, and a property
     /// this table has never heard of goes to Content rather than being hidden.
     /// </remarks>
+    /// <summary>
+    /// The properties an inspector offers for a control, in the design's groups and order.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This used to show only what the document had written, on the grounds that a Button has
+    /// upwards of a hundred properties and listing them tells nobody which matter. The first half
+    /// was right and the conclusion was wrong: a designer whose inspector is empty until you type
+    /// the property name yourself is not an inspector, it is a text editor with extra steps.
+    /// </para>
+    /// <para>
+    /// So there is a list, and it is short on purpose. Every name here is asked of the control
+    /// before it is offered — <c>CornerRadius</c> appears for a Border and not for a TextBlock —
+    /// so the list is a candidate set and the control decides. Anything the document set that is
+    /// not in it is appended, because an inspector that hides what the file says is worse than one
+    /// that shows too much.
+    /// </para>
+    /// </remarks>
+    private static readonly (string Group, string[] Names)[] Catalogue =
+    [
+        ("Layout",
+        [
+            "Width", "Height", "MinWidth", "MinHeight",
+            "Margin", "Padding",
+            "HorizontalAlignment", "VerticalAlignment",
+            "HorizontalContentAlignment", "VerticalContentAlignment",
+            "Orientation", "Spacing", "ZIndex",
+        ]),
+
+        ("Appearance",
+        [
+            "Background", "Foreground", "BorderBrush", "BorderThickness", "CornerRadius",
+            "FontSize", "FontWeight", "FontFamily", "Opacity",
+        ]),
+
+        ("Content & Interaction",
+        [
+            "Content", "Text", "Command", "CommandParameter", "HotKey",
+            "IsEnabled", "IsVisible", "IsChecked", "Watermark", "PlaceholderText", "ToolTip.Tip",
+        ]),
+    ];
+
+    /// <summary>
+    /// The attached properties a control's parent gives it, which belong to the child's inspector.
+    /// </summary>
+    /// <remarks>
+    /// <c>Canvas.Left</c> is a property of the button, not of the canvas, and it exists only while
+    /// the button is in one. Offering it by the parent's type is the difference between an inspector
+    /// that knows where the control lives and a list of everything anybody could ever attach.
+    /// </remarks>
+    private static readonly (Type Parent, string[] Names)[] Attached =
+    [
+        (typeof(Canvas), ["Canvas.Left", "Canvas.Top"]),
+        (typeof(Grid), ["Grid.Row", "Grid.Column", "Grid.RowSpan", "Grid.ColumnSpan"]),
+        (typeof(DockPanel), ["DockPanel.Dock"]),
+    ];
+
     private static string GroupOf(string name) => name switch
     {
         "Width" or "Height" or "MinWidth" or "MinHeight" or "MaxWidth" or "MaxHeight"
@@ -154,6 +211,8 @@ public sealed partial class DesignerViewModel
         Control? live = LiveSelection();
         XamlLoadSession? session = ActiveForm?.Session;
 
+        var written = new Dictionary<string, XamlAttribute>(StringComparer.Ordinal);
+
         foreach (XamlAttribute attribute in element.Attributes)
         {
             // Namespace declarations are not properties of the control, they are how the file names
@@ -163,9 +222,45 @@ public sealed partial class DesignerViewModel
                 continue;
             }
 
-            string name = attribute.Name.ToString();
+            written[attribute.Name.ToString()] = attribute;
+        }
 
-            Properties.Add(RowFor(element, attribute, name, live, session));
+        var offered = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach ((_, string[] names) in Catalogue)
+        {
+            foreach (string name in names)
+            {
+                if (Has(live, session, name) && offered.Add(name))
+                {
+                    Properties.Add(RowFor(element, written.GetValueOrDefault(name), name, live, session));
+                }
+            }
+        }
+
+        foreach ((Type parent, string[] names) in Attached)
+        {
+            if (live?.Parent is null || !parent.IsInstanceOfType(live.Parent))
+            {
+                continue;
+            }
+
+            foreach (string name in names)
+            {
+                if (Has(live, session, name) && offered.Add(name))
+                {
+                    Properties.Add(RowFor(element, written.GetValueOrDefault(name), name, live, session));
+                }
+            }
+        }
+
+        // Whatever else the file says. An inspector that hides it is worse than one showing extra.
+        foreach ((string name, XamlAttribute attribute) in written)
+        {
+            if (offered.Add(name))
+            {
+                Properties.Add(RowFor(element, attribute, name, live, session));
+            }
         }
 
         // Grouped in the design's order, and a section with nothing in it is not drawn: an inspector
@@ -179,6 +274,29 @@ public sealed partial class DesignerViewModel
             {
                 PropertyGroups.Add(new PropertyGroup(heading, rows));
             }
+        }
+    }
+
+    /// <summary>Whether this control has such a property at all.</summary>
+    /// <remarks>
+    /// Asked of the member resolver, so the candidate list stays a list of candidates: a Border is
+    /// offered <c>CornerRadius</c> and a TextBlock is not, and neither of them is offered a name
+    /// this designer happened to write down but Avalonia does not have.
+    /// </remarks>
+    private static bool Has(Control? live, XamlLoadSession? session, string name)
+    {
+        if (live is null || session is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return session.GetMember(live, name) is { IsResolved: true, CanWrite: true, IsReadOnly: false };
+        }
+        catch (Exception error) when (error is InvalidOperationException or NotSupportedException)
+        {
+            return false;
         }
     }
 
@@ -200,23 +318,24 @@ public sealed partial class DesignerViewModel
     /// </remarks>
     private PropertyRow RowFor(
         XamlElement element,
-        XamlAttribute attribute,
+        XamlAttribute? attribute,
         string name,
         Control? live,
         XamlLoadSession? session)
     {
-        string text = attribute.GetValueText();
+        string text = attribute?.GetValueText() ?? string.Empty;
+        bool isDirective = attribute?.IsDirective ?? false;
 
         // An expression is not a value, and a row that let one be typed over would replace a
         // binding with whatever the text happened to look like.
-        if (attribute.GetValue() is XamlMarkupExtensionValue)
+        if (attribute?.GetValue() is XamlMarkupExtensionValue)
         {
             return Row(PropertyEditor.Expression, [], isReadOnly: true, static _ => null);
         }
 
         XamlMemberDescriptor? member = null;
 
-        if (live is not null && session is not null && !attribute.IsDirective)
+        if (live is not null && session is not null && !isDirective)
         {
             try
             {
@@ -230,7 +349,7 @@ public sealed partial class DesignerViewModel
 
         if (member is not { IsResolved: true })
         {
-            return Row(PropertyEditor.Text, [], attribute.IsDirective, static _ => null);
+            return Row(PropertyEditor.Text, [], isDirective, static _ => null);
         }
 
         Type value = Nullable.GetUnderlyingType(member.ValueType) ?? member.ValueType;
@@ -274,7 +393,7 @@ public sealed partial class DesignerViewModel
             var row = new PropertyRow(
                 name,
                 text,
-                attribute.IsDirective,
+                isDirective,
                 editor,
                 choices,
                 isReadOnly,
@@ -287,6 +406,15 @@ public sealed partial class DesignerViewModel
         }
     }
 
+    /// <summary>
+    /// Writes a property, or takes it out when it is cleared.
+    /// </summary>
+    /// <remarks>
+    /// Emptying a field is how a user says "I do not want this set", and writing <c>Width=""</c>
+    /// would say something else — a value the loader has to reject. Now that the inspector offers
+    /// properties the document has not written, clearing one has to be able to put it back to
+    /// unwritten.
+    /// </remarks>
     private async System.Threading.Tasks.Task SetPropertyAsync(XamlElement element, string name, string value)
     {
         if (ActiveForm is not { } form)
@@ -294,10 +422,22 @@ public sealed partial class DesignerViewModel
             return;
         }
 
+        XamlQualifiedName qualified = XamlQualifiedName.Parse(name);
+
         await ApplyAsync(
             form,
-            editor => editor.SetAttribute(element, XamlQualifiedName.Parse(name), value),
-            $"set {name}");
+            editor =>
+            {
+                if (value.Length == 0)
+                {
+                    editor.RemoveAttribute(element, qualified);
+                }
+                else
+                {
+                    editor.SetAttribute(element, qualified, value);
+                }
+            },
+            value.Length == 0 ? $"clear {name}" : $"set {name}");
     }
 
     private async System.Threading.Tasks.Task AddPropertyAsync()
