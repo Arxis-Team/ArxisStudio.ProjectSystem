@@ -29,16 +29,21 @@ public sealed partial class DesignerViewModel
     /// <summary>Every markup document the open project declares.</summary>
     public ObservableCollection<FormFile> ProjectForms { get; } = [];
 
+    /// <summary>Files an open is already under way for.</summary>
+    private readonly HashSet<CanonicalPath> _opening = [];
+
+    /// <summary>What the project pane has selected.</summary>
+    /// <remarks>
+    /// Selecting is state; opening is an act, and <see cref="OpenFile"/> performs it. Assigning
+    /// used to open, and that is how one double-click opened the same form twice: the caller set
+    /// this and then opened, not knowing the setter had already started an open of its own, and two
+    /// detached opens both read an empty <c>Forms</c> before either added to it. Rebuilding the
+    /// project tree assigns this too, and a refresh has no business reopening anything.
+    /// </remarks>
     public FormFile? SelectedProjectForm
     {
         get;
-        set
-        {
-            if (Set(ref field, value) && value is not null)
-            {
-                RunDetached(() => OpenFormAsync(value));
-            }
-        }
+        set => Set(ref field, value);
     }
 
     private bool CanSave => ActiveForm is { IsDirty: true };
@@ -121,6 +126,27 @@ public sealed partial class DesignerViewModel
 
             return;
         }
+
+        // The "already open" test above is read before the first await and acted on long after it,
+        // so it cannot settle a race on its own: two opens of one file both find nothing and both
+        // add. One form per file is the invariant, and this is where it is kept.
+        if (!_opening.Add(form.Path))
+        {
+            return;
+        }
+
+        try
+        {
+            await OpenFormCoreAsync(form).ConfigureAwait(true);
+        }
+        finally
+        {
+            _opening.Remove(form.Path);
+        }
+    }
+
+    private async Task OpenFormCoreAsync(FormFile form)
+    {
 
         if (_workspace.CurrentSnapshot is not { } snapshot)
         {

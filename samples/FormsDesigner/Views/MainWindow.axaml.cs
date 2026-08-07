@@ -102,9 +102,11 @@ public sealed partial class MainWindow : Window
     /// nothing.
     /// </para>
     /// <para>
-    /// A row with nothing live behind it at all leaves the canvas as it was rather than clearing it,
-    /// and says so, because a selection that silently does not happen is indistinguishable from a
-    /// designer that has stopped responding.
+    /// A row with nothing live behind it at all leaves the canvas as it was, and says so — because a
+    /// selection that silently does not happen is indistinguishable from a designer that has stopped
+    /// responding. Leaving it is a choice, not a limit: clearing the canvas is
+    /// <c>surface.SelectedItems.Clear()</c>, which drops the design targets with it. Keeping the
+    /// last selection is the friendlier answer to "that row names nothing you can point at".
     /// </para>
     /// </remarks>
     private void ShowOnCanvas(DesignEditor surface, XamlElement element)
