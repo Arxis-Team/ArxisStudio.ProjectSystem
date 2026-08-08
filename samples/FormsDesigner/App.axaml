@@ -5,6 +5,17 @@
 
   <Application.Styles>
     <FluentTheme />
+
+    <!--
+      The colour picker's own theme, which FluentTheme does not carry: the controls live in a package
+      of their own and so do their templates. Without this a ColorView is a control with no template
+      — it measures 70×15, draws nothing, and the flyout opens on an empty rectangle.
+
+      Here rather than on the window, because the flyout it appears in is a platform popup: a window
+      of its own, whose styles come from the application and not from the window that opened it.
+    -->
+    <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
+
     <StyleInclude Source="avares://FormsDesigner/Views/Styles.axaml" />
   </Application.Styles>
 

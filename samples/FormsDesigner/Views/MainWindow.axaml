@@ -782,9 +782,35 @@
 
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Height="26"
                                       IsVisible="{Binding IsColour}">
-                                  <Border Width="16" Height="16" CornerRadius="4" VerticalAlignment="Center"
-                                          Background="{Binding Swatch}"
-                                          BorderBrush="{DynamicResource Brd2}" BorderThickness="1" />
+                                  <!--
+                                    The swatch is the button. A colour is the one kind of value
+                                    nobody should have to spell, and the thing already showing which
+                                    colour it is is the obvious place to press.
+
+                                    A ColorView in a flyout rather than the ColorPicker control,
+                                    which is the same view behind a drop-down of its own: that one
+                                    writes on every colour the pointer crosses, and every write
+                                    rebuilds these rows — so the picker would delete itself, and its
+                                    open flyout, on the first movement of the spectrum. Here the
+                                    picking moves the swatch and the text, and closing the flyout is
+                                    what writes the document.
+                                  -->
+                                  <Button Classes="swatch" VerticalAlignment="Center"
+                                          IsEnabled="{Binding !IsReadOnly}"
+                                          ToolTip.Tip="Pick a colour">
+                                    <Border Width="16" Height="16" CornerRadius="4"
+                                            Background="{Binding Swatch}"
+                                            BorderBrush="{DynamicResource Brd2}" BorderThickness="1" />
+                                    <Button.Flyout>
+                                      <Flyout Placement="BottomEdgeAlignedRight" Closed="OnColourPicked">
+                                        <ColorView Color="{Binding Colour, Mode=TwoWay}"
+                                                   IsAlphaEnabled="True"
+                                                   IsColorPaletteVisible="True"
+                                                   IsColorSpectrumVisible="True"
+                                                   IsColorComponentsVisible="True" />
+                                      </Flyout>
+                                    </Button.Flyout>
+                                  </Button>
                                   <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" Height="26"
                                            IsReadOnly="{Binding IsReadOnly}"
                                            FontFamily="{DynamicResource MonoFont}" FontWeight="Medium" />

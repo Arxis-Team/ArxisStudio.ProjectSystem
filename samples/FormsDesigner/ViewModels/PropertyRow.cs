@@ -191,6 +191,56 @@ public sealed class PropertyRow : Observable
         }
     }
 
+    /// <summary>
+    /// The same value as a colour, for the picker to edit.
+    /// </summary>
+    /// <remarks>
+    /// Setting this does not write the document, which is the difference between this and
+    /// <see cref="Value"/> and the reason it exists. A spectrum reports every colour the pointer
+    /// crosses, and each write rebuilds the inspector — including the picker being dragged in, which
+    /// would take its own flyout down with it on the first movement. So the picker moves the swatch
+    /// and the text, and <see cref="CommitColour"/> writes the one colour the user stopped on.
+    /// </remarks>
+    public Color Colour
+    {
+        get => Color.TryParse(_value, out Color parsed) ? parsed : Colors.Transparent;
+        set
+        {
+            string written = Text(value);
+
+            if (string.Equals(written, _value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _value = written;
+
+            Raise(nameof(Colour));
+            Raise(nameof(Value));
+
+            Error = _validate(written);
+            Swatch = BrushFor(written);
+        }
+    }
+
+    /// <summary>Writes the colour the picker was left on, once the picking is over.</summary>
+    /// <remarks>
+    /// A pick that changed nothing still arrives here, and costs nothing: the edit produces no
+    /// change and the document is not replaced.
+    /// </remarks>
+    public void CommitColour()
+    {
+        if (!HasError)
+        {
+            _commit(this, _value);
+        }
+    }
+
+    /// <summary>The colour as a document writes one, which drops the alpha when there is none.</summary>
+    private static string Text(Color colour) => colour.A == 255
+        ? string.Create(CultureInfo.InvariantCulture, $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}")
+        : string.Create(CultureInfo.InvariantCulture, $"#{colour.A:X2}{colour.R:X2}{colour.G:X2}{colour.B:X2}");
+
     /// <summary>The flag's state, for a checkbox, which is the value read as a boolean.</summary>
     public bool Flag
     {

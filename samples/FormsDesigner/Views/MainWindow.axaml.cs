@@ -164,6 +164,22 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Writes the colour a picker was left on.
+    /// </summary>
+    /// <remarks>
+    /// On close rather than on change, because a change arrives for every colour the pointer crosses
+    /// in the spectrum and each one rebuilds the inspector's rows — which would take away the picker
+    /// mid-gesture. The row has been showing the colour all along; this is where it becomes an edit.
+    /// </remarks>
+    private void OnColourPicked(object? sender, System.EventArgs e)
+    {
+        if (sender is Flyout { Target.DataContext: PropertyRow row })
+        {
+            row.CommitColour();
+        }
+    }
+
     private void OnDeleteRequested(object? sender, DesignEditorDeleteRequestedEventArgs e)
     {
         if (Designer is not { } designer)

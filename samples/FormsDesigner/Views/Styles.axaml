@@ -113,6 +113,22 @@
     <Setter Property="Foreground" Value="{DynamicResource Fg}" />
   </Style>
 
+  <!-- The swatch in a colour row, which is a button so that it can open the picker. -->
+  <Style Selector="Button.swatch">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.swatch:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Bg3}" />
+  </Style>
+
   <!-- The close button turns red under the pointer, as every window's does. -->
   <Style Selector="Button.closeButton:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Red}" />
