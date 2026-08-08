@@ -70,6 +70,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
             if (Set(ref field, value))
             {
                 Raise(nameof(SizeText));
+                FollowTheCard();
             }
         }
     } = 480;
@@ -82,9 +83,47 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
             if (Set(ref field, value))
             {
                 Raise(nameof(SizeText));
+                FollowTheCard();
             }
         }
     } = 360;
+
+    /// <summary>
+    /// Makes the form the size the card is, as the card is dragged.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The card follows the pointer, and the form inside it used to follow the document — which does
+    /// not change until the drag ends. So a resize showed the form at its old size inside a card at
+    /// its new one: growing left a form too small for its card, and shrinking left one hanging out
+    /// past every edge, until the button came up and it snapped into place. The size in the caption
+    /// was the card's and the size in the inspector was the document's, and for the length of the
+    /// gesture they disagreed.
+    /// </para>
+    /// <para>
+    /// This is the one thing the designer writes to the live tree, and it writes nothing else and
+    /// nowhere else: a preview lasts as long as the gesture, and the document edit on completion is
+    /// what makes it true. The document remains the only thing an edit touches — a preview that was
+    /// never committed is corrected by the next load, which reads the file.
+    /// </para>
+    /// </remarks>
+    private void FollowTheCard()
+    {
+        if (Root is not { } root)
+        {
+            return;
+        }
+
+        if (double.IsFinite(Width) && Width > 0)
+        {
+            root.Width = Width;
+        }
+
+        if (double.IsFinite(Height) && Height > 0)
+        {
+            root.Height = Height;
+        }
+    }
 
     /// <summary>The document, which is the only thing any edit touches.</summary>
     public XamlDocument? Document
