@@ -371,6 +371,11 @@ public sealed partial class DesignerViewModel
 
         Selected = null;
 
+        // And the canvas too. Clearing the inspector left the editor holding the control that has
+        // just been removed, so its frame stayed on screen over the space where the control had
+        // been, until a click elsewhere replaced the selection.
+        CanvasSelectionCleared?.Invoke(this, EventArgs.Empty);
+
         Log($"  removed {element.Name}");
     }
 

@@ -57,6 +57,10 @@ public sealed partial class MainWindow : Window
                     this.GetControl<TextBox>("ToolboxSearch").Focus();
 
                 designer.CanvasSelectionRequested += (_, element) => ShowOnCanvas(surface, element);
+
+                // The documented way to clear the canvas: dropping the item selection takes the
+                // design targets with it, which is what the frame is drawn from.
+                designer.CanvasSelectionCleared += (_, _) => surface.SelectedItems?.Clear();
             }
         };
     }

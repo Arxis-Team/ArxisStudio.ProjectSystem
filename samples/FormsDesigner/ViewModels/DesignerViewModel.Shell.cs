@@ -98,6 +98,18 @@ public sealed partial class DesignerViewModel
     /// </remarks>
     public event EventHandler<XamlElement>? CanvasSelectionRequested;
 
+    /// <summary>
+    /// Raised when what the canvas has selected has stopped existing.
+    /// </summary>
+    /// <remarks>
+    /// The other half of the pair above, and needed for the same reason: the canvas cannot know. A
+    /// deleted control leaves the tree, but the editor is still holding it as the selected target and
+    /// goes on drawing the frame it had — over nothing, until the next click happens to reselect and
+    /// the frame quietly disappears. Clearing is the host's to do, because the host is what knows the
+    /// control was removed rather than merely detached for a moment.
+    /// </remarks>
+    public event EventHandler? CanvasSelectionCleared;
+
     public HierarchyRow? SelectedHierarchyRow
     {
         get;
