@@ -280,6 +280,21 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// found no declaration for — but it answers a question about provenance, and this one is about
     /// editability, which is what an element is.
     /// </para>
+    /// <para>
+    /// The root is the one document object deliberately left unmarked, because the card already
+    /// stands for it. Marking it too gave the form two frames that both said <c>UserControl</c> and
+    /// both edited the same element, and the inner one was the worse of the two: it is a control
+    /// inside a container, so its handles could not take the form past the card it sits in — they
+    /// re-measured it against the card instead. The card is the frame whose size <em>is</em> the
+    /// form's, and resizing it writes the root's <c>Width</c> and <c>Height</c>.
+    /// </para>
+    /// <para>
+    /// Everything else keeps working through the map rather than through this flag: a drop still
+    /// finds the root as a container, the inspector still edits the root's own properties, and
+    /// selecting the root row still lands on the card — <c>SelectDesignTarget</c> refuses an unmarked
+    /// control and <c>ShowOnCanvas</c> falls through to the card, which is the answer it already gave
+    /// for a window-rooted form.
+    /// </para>
     /// </remarks>
     internal static void MarkEditable(XamlLoadSession session)
     {
@@ -287,6 +302,11 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
 
         foreach (object produced in map.Objects)
         {
+            if (ReferenceEquals(produced, session.RootObject))
+            {
+                continue;
+            }
+
             if (produced is Control control
                 && map.GetElement(control) is { } element
                 && ReferenceEquals(map.GetObject(element), control))
