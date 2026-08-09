@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using Microsoft.Build.Framework;
 
@@ -97,6 +98,24 @@ internal static class MSBuildOperationRunner
             cancellationToken.ThrowIfCancellationRequested();
 
             using CancellationTokenRegistration registration = cancellationToken.Register(Cancel);
+
+            // The engine keeps what it evaluated, and this process is long-lived: a build manager
+            // that has seen a project once will build the files it saw, whatever the file system now
+            // says. A tool that creates a file and then builds — which is what a designer adding a
+            // form does — got a build of the file set from before the file existed, reported as a
+            // success, with the class missing from the assembly it produced.
+            //
+            // So each operation starts from the project as it is on disk. The cost is one
+            // evaluation per operation, which is the price of being right in a process that outlives
+            // the files it is looking at.
+            BuildManager.DefaultBuildManager.ResetCaches();
+
+            // And the projects the engine is holding evaluations for. A build asked for by path
+            // loads through the global collection, and a collection that already has that path
+            // returns what it evaluated before — items and all. Globs are part of an evaluation, so
+            // a file created since then is not in the build, which is reported as a success with the
+            // file simply absent from what it produced.
+            ProjectCollection.GlobalProjectCollection.UnloadAllProjects();
 
             BuildResult result = BuildManager.DefaultBuildManager.Build(parameters, request);
 

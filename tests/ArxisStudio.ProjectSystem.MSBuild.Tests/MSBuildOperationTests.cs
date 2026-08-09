@@ -44,6 +44,50 @@ public sealed class MSBuildOperationTests
         await new MSBuildProjectProvider().ExecuteAsync(
             request, progress: null, TestContext.Current.CancellationToken);
 
+    /// <summary>
+    /// A file created between two builds is in the second one.
+    /// </summary>
+    /// <remarks>
+    /// The engine caches what it evaluated, and this process outlives the files it is looking at: a
+    /// second build of a project it has already seen used to be a build of the file set from the
+    /// first, reported as a success. A designer that creates a form and then builds got an assembly
+    /// without the form's class in it, and an error saying the class was not in any assembly —
+    /// which was true, and about a build that had just said it succeeded.
+    /// </remarks>
+    [Fact]
+    public async Task AnOperation_SeesFilesThatAppearedSinceTheLastOne()
+    {
+        string counted = Path.Combine(Path.GetDirectoryName(Buildable.Value)!, "counted");
+
+        Directory.CreateDirectory(counted);
+
+        foreach (string stale in Directory.EnumerateFiles(counted, "*.txt"))
+        {
+            File.Delete(stale);
+        }
+
+        await File.WriteAllTextAsync(
+            Path.Combine(counted, "first.txt"), "1", TestContext.Current.CancellationToken);
+
+        Assert.Equal("counted 1", await CountAsync());
+
+        await File.WriteAllTextAsync(
+            Path.Combine(counted, "second.txt"), "2", TestContext.Current.CancellationToken);
+
+        Assert.Equal("counted 2", await CountAsync());
+
+        // Reported as a warning, because that is what reaches a caller: an MSBuild message is for
+        // whoever hosts a console and this provider does not have one.
+        async Task<string> CountAsync()
+        {
+            ProjectOperationResult result = await ExecuteAsync(Request(properties: ("CountGlob", "true")));
+
+            return result.Diagnostics
+                .First(diagnostic => diagnostic.Message.StartsWith("counted", StringComparison.Ordinal))
+                .Message;
+        }
+    }
+
     [Fact]
     public void TheProvider_PerformsEveryKindItModels()
     {

@@ -9,8 +9,19 @@
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
   </PropertyGroup>
 
+  <!--
+    What a glob matches right now. Items are evaluated when the project is, so a build that reports
+    a count from before a file appeared is a build working from an evaluation older than the file
+    system — which is exactly what a designer that creates a file and then builds would get if the
+    engine's caches were carried from one operation to the next.
+  -->
+  <ItemGroup>
+    <Counted Include="$(MSBuildThisFileDirectory)counted/*.txt" />
+  </ItemGroup>
+
   <Target Name="Build">
     <Message Text="Buildable built in $(Configuration)" Importance="High" />
+    <Warning Text="counted @(Counted->Count())" Code="APSTEST03" Condition="'$(CountGlob)' == 'true'" />
     <Warning Text="a warning that does not fail the build" Code="APSTEST01" Condition="'$(EmitWarning)' == 'true'" />
     <Error Text="asked to fail" Code="APSTEST02" Condition="'$(EmitError)' == 'true'" />
   </Target>
