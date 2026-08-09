@@ -52,6 +52,9 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         SaveCommand = new RelayCommand(() => Run(SaveAsync), () => CanSave);
         NewFormCommand = new RelayCommand(() => Run(NewFormAsync), () => IsLoaded);
 
+        UndoCommand = new RelayCommand(() => StepHistory(back: true), () => ActiveForm is { CanUndo: true });
+        RedoCommand = new RelayCommand(() => StepHistory(back: false), () => ActiveForm is { CanRedo: true });
+
         RestoreCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Restore)), CanOperate);
         BuildCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Build)), CanOperate);
 
@@ -86,6 +89,12 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
     public RelayCommand SaveCommand { get; }
 
     public RelayCommand NewFormCommand { get; }
+
+    /// <summary>Goes back one edit.</summary>
+    public RelayCommand UndoCommand { get; }
+
+    /// <summary>And forward again.</summary>
+    public RelayCommand RedoCommand { get; }
 
     public RelayCommand RestoreCommand { get; }
 
@@ -381,6 +390,8 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         RunCommand.RaiseCanExecuteChanged();
         StopCommand.RaiseCanExecuteChanged();
         PauseCommand.RaiseCanExecuteChanged();
+        UndoCommand.RaiseCanExecuteChanged();
+        RedoCommand.RaiseCanExecuteChanged();
         RefreshPackageCommands();
     }
 

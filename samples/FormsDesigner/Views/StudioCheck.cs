@@ -172,6 +172,52 @@ internal static class StudioCheck
             Fail(ref failures, "no Button to edit");
         }
 
+        // 4b. Undone and redone, which is the same path an edit takes and had better be.
+        designer.UndoCommand.Execute(null);
+
+        if (!await Until(() => !Text(form).Contains("Поехали", StringComparison.Ordinal), 30))
+        {
+            Fail(ref failures, "undo did not take the edit back");
+        }
+
+        designer.RedoCommand.Execute(null);
+
+        if (!await Until(() => Text(form).Contains("Поехали", StringComparison.Ordinal), 30))
+        {
+            Fail(ref failures, "redo did not put the edit back");
+        }
+
+        // And far enough back that the form is the file again, which is what a clean form means.
+        int steps = 0;
+
+        while (designer.UndoCommand.CanExecute(null) && steps++ < 20)
+        {
+            designer.UndoCommand.Execute(null);
+
+            await Until(() => !designer.IsBusy, 10);
+            await Task.Delay(150);
+        }
+
+        if (form.IsDirty)
+        {
+            Fail(ref failures, "a form undone to where it started still says it has unsaved edits");
+        }
+
+        Say($"undone {steps} step(s) back to the file; document: {Summary(designer)}");
+
+        for (int forward = 0; forward < steps && designer.RedoCommand.CanExecute(null); forward++)
+        {
+            designer.RedoCommand.Execute(null);
+
+            await Until(() => !designer.IsBusy, 10);
+            await Task.Delay(150);
+        }
+
+        if (!Text(form).Contains("Поехали", StringComparison.Ordinal))
+        {
+            Fail(ref failures, "redoing every step did not get back to the laid-out form");
+        }
+
         // 5. Saved, so that the build has something to compile.
         designer.SaveCommand.Execute(null);
 

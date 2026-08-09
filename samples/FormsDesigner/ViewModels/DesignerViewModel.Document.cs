@@ -182,6 +182,27 @@ public sealed partial class DesignerViewModel
 
         XamlDocument updated = editor.Apply();
 
+        form.Remember(document);
+
+        await ApplyDocumentAsync(form, updated, what);
+    }
+
+    /// <summary>
+    /// Puts a document in place of the one the form is showing.
+    /// </summary>
+    /// <remarks>
+    /// The half of an edit that is not about what changed: the session rebuilds what it must, the
+    /// canvas is told, the tree and the inspector are rebuilt, and the form finds out whether it now
+    /// differs from its file. Undo and redo are edits by this definition — they hand over a document
+    /// somebody was holding rather than one an editor just produced.
+    /// </remarks>
+    private async Task ApplyDocumentAsync(FormViewModel form, XamlDocument updated, string what)
+    {
+        if (form.Session is not { } session)
+        {
+            return;
+        }
+
         // The window gets its content back before the update and lends it again after.
         //
         // A window-rooted form is shown by taking the window's content out of it and hosting that,
@@ -199,7 +220,7 @@ public sealed partial class DesignerViewModel
         XamlUpdateResult result = await session.ApplyDocumentUpdateAsync(updated, _shutdown.Token);
 
         form.Adopt(session.Document);
-        form.IsDirty = true;
+        form.Restated();
 
         RebuildHierarchy();
 
@@ -401,6 +422,32 @@ public sealed partial class DesignerViewModel
             $"move {element.Name}"));
     }
 
+    /// <summary>Goes back one edit, and forward again.</summary>
+    /// <remarks>
+    /// Both go through the same path every other change goes through, so an undone insert takes its
+    /// control off the canvas, out of the tree and out of the inspector exactly the way deleting it
+    /// would — there is no second definition of what applying a document means.
+    /// </remarks>
+    private void StepHistory(bool back)
+    {
+        if (ActiveForm is not { Document: { } current } form)
+        {
+            return;
+        }
+
+        if ((back ? form.StepBack(current) : form.StepForward(current)) is not { } document)
+        {
+            return;
+        }
+
+        RunDetached(async () =>
+        {
+            await ApplyDocumentAsync(form, document, back ? "undo" : "redo");
+
+            Log(back ? "Undone." : "Redone.");
+        });
+    }
+
     /// <summary>Answers the editor's delete request. Called by the view.</summary>
     public void DeleteFromCanvas(FormViewModel form, Control control)
     {
@@ -440,7 +487,7 @@ public sealed partial class DesignerViewModel
 
         await System.IO.File.WriteAllTextAsync(form.File.Value, document.SourceText.ToString(), _shutdown.Token);
 
-        form.IsDirty = false;
+        form.MarkSaved();
 
         Log($"Saved {form.Name}");
 

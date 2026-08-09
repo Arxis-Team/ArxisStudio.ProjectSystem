@@ -208,6 +208,71 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// <summary>The map between the two, in both directions.</summary>
     public XamlObjectMap? Objects => Session?.Objects;
 
+    /// <summary>
+    /// What the document was before each edit, and what it was before each undo.
+    /// </summary>
+    /// <remarks>
+    /// Documents rather than a list of what changed, because a document already is one: every edit
+    /// produces a whole new immutable one, so remembering the previous is remembering everything,
+    /// and going back is applying it the same way any other change is applied. An editor that
+    /// recorded inverse operations would have to be right about each of them; this cannot be wrong
+    /// about what the file said, because it is what the file said.
+    /// </remarks>
+    private readonly System.Collections.Generic.Stack<XamlDocument> _undo = new();
+
+    private readonly System.Collections.Generic.Stack<XamlDocument> _redo = new();
+
+    /// <summary>The document as the file has it, for telling an edited form from a returned one.</summary>
+    private XamlDocument? _saved;
+
+    internal bool CanUndo => _undo.Count > 0;
+
+    internal bool CanRedo => _redo.Count > 0;
+
+    /// <summary>Records where an edit started from. A new edit is the end of any redo path.</summary>
+    internal void Remember(XamlDocument before)
+    {
+        _undo.Push(before);
+        _redo.Clear();
+    }
+
+    /// <summary>The document to go back to, if there is one.</summary>
+    internal XamlDocument? StepBack(XamlDocument current)
+    {
+        if (_undo.Count == 0)
+        {
+            return null;
+        }
+
+        _redo.Push(current);
+
+        return _undo.Pop();
+    }
+
+    /// <summary>And the one to come forward to.</summary>
+    internal XamlDocument? StepForward(XamlDocument current)
+    {
+        if (_redo.Count == 0)
+        {
+            return null;
+        }
+
+        _undo.Push(current);
+
+        return _redo.Pop();
+    }
+
+    /// <summary>A form freshly loaded or freshly saved has nothing behind it and nothing pending.</summary>
+    internal void MarkSaved()
+    {
+        _saved = Document;
+
+        IsDirty = false;
+    }
+
+    /// <summary>Whether the document differs from what the file holds, which an undo can undo.</summary>
+    internal void Restated() => IsDirty = !ReferenceEquals(Document, _saved);
+
     /// <summary>Whether the document has edits the file does not have yet.</summary>
     public bool IsDirty
     {
@@ -271,6 +336,12 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
         Problem = Root is null
             ? $"The document's root is {session.RootObject.GetType().Name}, which is not a Control."
             : null;
+
+        // A form that has just been loaded is the file, and has no history behind it.
+        _undo.Clear();
+        _redo.Clear();
+
+        MarkSaved();
 
         if (previous is not null)
         {
