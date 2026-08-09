@@ -205,9 +205,15 @@ restore is not done twice.
 
 **It follows the files.** A change to an open `.axaml` is applied to the form as a document update,
 so the session, the canvas and the tabs survive and the change joins the undo history — an edit made
-in the other editor can be taken back here. A change to a project file re-reads the workspace. Edits
-are coalesced over a quarter of a second, because an editor writes a temporary file and renames it
-over the original, which arrives as several events for one save.
+in the other editor can be taken back here. A file appearing, going away or being renamed re-reads
+the workspace whatever its extension is, because an SDK project takes its items from globs: a class
+added in Rider is a new item, and the panel that lists them is stale until the evaluation is done
+again. A file merely saved is not, because that changes no glob. And a form deleted while it is open
+here closes its tab, rather than leaving one editing a document with nowhere to save to.
+
+Events are coalesced over a quarter of a second, and the noise is dropped first: builds write under
+`bin` and `obj`, tools keep state in dot-directories, and editors save through temporary files —
+re-evaluating a project for any of those would be a second of nothing, repeatedly.
 
 **It does not overwrite your unsaved work.** A form with edits that are not in the file is not
 reloaded; it says so, and the next save is the person's decision.

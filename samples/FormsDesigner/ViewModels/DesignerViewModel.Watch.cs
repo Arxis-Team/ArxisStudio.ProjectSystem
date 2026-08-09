@@ -111,29 +111,61 @@ public sealed partial class DesignerViewModel
         _settle?.Stop();
     }
 
-    /// <summary>Notes what changed and waits for the writing to stop.</summary>
+    /// <summary>
+    /// Notes what changed and waits for the writing to stop.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two different facts arrive on this one event. A file whose <em>contents</em> changed matters
+    /// only if this designer has it open. A file that <em>appeared, went away or was renamed</em>
+    /// changes what the project consists of, whatever its extension is — an SDK project takes its
+    /// items from globs, so a new class is a new item and the panel that lists them is stale until
+    /// the evaluation is done again. That is why a created <c>.cs</c> counts and a saved one does
+    /// not: the second changes no glob.
+    /// </para>
+    /// <para>
+    /// The noise is filtered out first. Builds write under <c>bin</c> and <c>obj</c>, tools keep
+    /// their state in dot-directories, and editors save through temporary files whose names they do
+    /// not intend anybody to see — re-evaluating a project for any of those would be a second of
+    /// nothing, repeatedly.
+    /// </para>
+    /// </remarks>
     private void OnFileTouched(object sender, FileSystemEventArgs e)
     {
-        string path = e.FullPath;
-
-        if (path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
-            || path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+        if (IsNoise(e.FullPath))
         {
-            // A build writes hundreds of files under these and none of them is a document.
             return;
         }
 
+        bool structural = e.ChangeType is not WatcherChangeTypes.Changed;
+
+        string[] paths = e is RenamedEventArgs renamed
+            ? [renamed.FullPath, renamed.OldFullPath]
+            : [e.FullPath];
+
         Dispatcher.UIThread.Post(() =>
         {
-            if (IsProjectFile(path))
+            var noted = false;
+
+            foreach (string path in paths)
+            {
+                if (IsMarkupPath(path))
+                {
+                    _touched.Add(path);
+
+                    noted = true;
+                }
+            }
+
+            // Appearing and disappearing is the project's business; a save is not.
+            if (structural)
             {
                 _projectTouched = true;
+
+                noted = true;
             }
-            else if (IsMarkupPath(path))
-            {
-                _touched.Add(path);
-            }
-            else
+
+            if (!noted)
             {
                 return;
             }
@@ -143,8 +175,24 @@ public sealed partial class DesignerViewModel
         });
     }
 
-    private static bool IsProjectFile(string path) =>
-        Path.GetExtension(path).ToUpperInvariant() is ".CSPROJ" or ".SLN" or ".SLNX" or ".PROPS";
+    /// <summary>What gets written under a project that nobody is editing.</summary>
+    private static bool IsNoise(string path)
+    {
+        foreach (string part in path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            if (part is "bin" or "obj" || (part.Length > 1 && part[0] == '.'))
+            {
+                return true;
+            }
+        }
+
+        string name = Path.GetFileName(path);
+
+        // JetBrains saves through these two, and every editor saves through something.
+        return name.Contains("___jb_", StringComparison.Ordinal)
+            || name.EndsWith('~')
+            || name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool IsMarkupPath(string path) =>
         Path.GetExtension(path).ToUpperInvariant() is ".AXAML" or ".XAML";
@@ -168,7 +216,14 @@ public sealed partial class DesignerViewModel
 
         foreach (string path in documents)
         {
-            await ReloadIfOpenAsync(path);
+            if (File.Exists(path))
+            {
+                await ReloadIfOpenAsync(path);
+            }
+            else
+            {
+                CloseIfOpen(path);
+            }
         }
 
         if (project && IsLoaded)
@@ -177,6 +232,30 @@ public sealed partial class DesignerViewModel
 
             await _workspace.RefreshAsync(_shutdown.Token);
         }
+    }
+
+    /// <summary>
+    /// Closes a form whose file has gone.
+    /// </summary>
+    /// <remarks>
+    /// Deleted in the other editor, or renamed, which arrives as the same thing. A tab editing a
+    /// document with nowhere to save to is worse than no tab: the next save would put the file back,
+    /// which is not what deleting it meant. Unsaved edits go with it — there is nothing left to
+    /// reconcile them against — and the console says so, because a tab that closes itself without a
+    /// word looks like a crash.
+    /// </remarks>
+    private void CloseIfOpen(string path)
+    {
+        if (!CanonicalPath.TryCreate(path, out CanonicalPath file)
+            || Forms.FirstOrDefault(open => open.File == file) is not { } form)
+        {
+            return;
+        }
+
+        Log($"{form.Name} was deleted outside — closing it"
+            + (form.IsDirty ? ", with unsaved edits" : string.Empty));
+
+        CloseForm(form);
     }
 
     /// <summary>

@@ -417,6 +417,58 @@ internal static class StudioCheck
             Say("a change to the project file was picked up");
         }
 
+        // 10. A form added by the other editor: a file appearing is a change to what the project is.
+        string outsideForm = System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(project!)!, "MadeOutside.axaml");
+
+        await System.IO.File.WriteAllTextAsync(
+            outsideForm,
+            """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         Width="300" Height="200">
+              <TextBlock Text="made outside" />
+            </UserControl>
+            """);
+
+        if (!await Until(() => designer.ProjectForms.Any(entry => entry.Name == "MadeOutside.axaml"), 180))
+        {
+            Fail(ref failures, "a form added outside never appeared in the project");
+        }
+        else
+        {
+            Say("a form added outside appeared in the project");
+
+            // 11. And taken away again while it is open here, which has to take the tab with it.
+            if (System.Linq.Enumerable.FirstOrDefault(
+                designer.ProjectFiles, tile => tile.Name == "MadeOutside.axaml") is { } tile)
+            {
+                designer.OpenFile(tile);
+
+                if (!await Until(() => designer.Forms.Any(open => open.Name == "MadeOutside.axaml"), 120))
+                {
+                    Fail(ref failures, "the form added outside would not open");
+                }
+                else
+                {
+                    System.IO.File.Delete(outsideForm);
+
+                    if (!await Until(() => designer.Forms.All(open => open.Name != "MadeOutside.axaml"), 120))
+                    {
+                        Fail(ref failures, "a form deleted outside is still open in the designer");
+                    }
+                    else
+                    {
+                        Say("a form deleted outside closed its tab");
+                    }
+                }
+            }
+            else
+            {
+                Fail(ref failures, "the form added outside is not a tile in the project pane");
+            }
+        }
+
         return failures;
     }
 
