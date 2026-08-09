@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using FormsDesigner.ViewModels;
@@ -13,41 +14,101 @@ public sealed partial class App : Application
 {
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
+    /// <summary>
+    /// Starts the studio, which means the welcome screen unless a project was named on the way in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Opening straight into an empty canvas answered "which project?" by not asking it. The welcome
+    /// screen asks, and the designer is built only once there is an answer — which also keeps MSBuild
+    /// out of the path to the first window being on screen.
+    /// </para>
+    /// <para>
+    /// A path on the command line skips it, because somebody who typed a path has already answered.
+    /// That is also what makes this application scriptable, which is how its own screenshots are
+    /// taken.
+    /// </para>
+    /// <para>
+    /// Shutdown follows the last window rather than the main one: the welcome closes when the
+    /// designer opens, and with the default mode that would take the application with it.
+    /// </para>
+    /// </remarks>
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var designer = new DesignerViewModel();
-
-            desktop.MainWindow = new MainWindow { DataContext = designer };
-
-            var window = (MainWindow)desktop.MainWindow;
+            desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
 
             string[] args = desktop.Args ?? [];
             int shot = Array.IndexOf(args, "--shot");
+            string? shotPath = shot >= 0 && shot + 1 < args.Length ? args[shot + 1] : null;
 
-            if (shot >= 0 && shot + 1 < args.Length)
+            int verify = Array.IndexOf(args, "--verify");
+
+            if (verify >= 0 && verify + 1 < args.Length)
             {
-                WindowShot.TakeAfterLoad(window, designer, args[shot + 1]);
-            }
+                var model = new DesignerViewModel();
+                var window = new MainWindow { DataContext = model };
 
-            // Positional arguments are whatever is left once every switch and the value it takes has
-            // been removed. Skipping only the switches is not enough: `--shot out.png` then donates
-            // `out.png` to the form name, and the designer reports that no form is called that --
-            // which is true, and entirely the tool's own doing.
-            if (Positional(args) is [{ Length: > 0 } path, .. var rest])
+                StudioCheck.RunWhenShown(window, model, args[verify + 1]);
+
+                desktop.Exit += (_, _) => model.Dispose();
+                desktop.MainWindow = window;
+            }
+            else if (Positional(args) is [{ Length: > 0 } path, .. var rest])
             {
-                designer.OpenAtStartup(path, rest.FirstOrDefault());
+                desktop.MainWindow = Designer(desktop, path, rest.FirstOrDefault(), shotPath);
             }
+            else
+            {
+                var welcome = new WelcomeWindow { DataContext = new WelcomeViewModel() };
 
-            desktop.Exit += (_, _) => designer.Dispose();
+                if (shotPath is { Length: > 0 })
+                {
+                    WindowShot.TakeWhenShown(welcome, shotPath);
+                }
+
+                ((WelcomeViewModel)welcome.DataContext).ProjectChosen += (_, chosen) =>
+                {
+                    MainWindow designer = Designer(desktop, chosen, form: null, shotPath: null);
+
+                    desktop.MainWindow = designer;
+
+                    designer.Show();
+                    welcome.Close();
+                };
+
+                desktop.MainWindow = welcome;
+            }
         }
 
         base.OnFrameworkInitializationCompleted();
     }
 
+    /// <summary>Builds the designer window around a project, and disposes it when the studio exits.</summary>
+    private static MainWindow Designer(
+        IClassicDesktopStyleApplicationLifetime desktop,
+        string path,
+        string? form,
+        string? shotPath)
+    {
+        var model = new DesignerViewModel();
+        var window = new MainWindow { DataContext = model };
+
+        if (shotPath is { Length: > 0 })
+        {
+            WindowShot.TakeAfterLoad(window, model, shotPath);
+        }
+
+        model.OpenAtStartup(path, form);
+
+        desktop.Exit += (_, _) => model.Dispose();
+
+        return window;
+    }
+
     /// <summary>The arguments that are not a switch and are not a switch's value.</summary>
-    /// <remarks>Every switch this sample takes takes a value; there is one, and it is `--shot`.</remarks>
+    /// <remarks>Every switch this sample takes takes a value: `--shot` and `--verify`.</remarks>
     private static string[] Positional(string[] args)
     {
         var positional = new List<string>();

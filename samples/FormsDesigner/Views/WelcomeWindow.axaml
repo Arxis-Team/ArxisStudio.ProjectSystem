@@ -1,0 +1,193 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FormsDesigner.ViewModels"
+        x:Class="FormsDesigner.Views.WelcomeWindow"
+        x:DataType="vm:WelcomeViewModel"
+        Title="ArxisStudio 2026.2 — Welcome"
+        Width="1180" Height="815"
+        MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource Bg1}">
+
+  <!--
+    The window the studio opens on. Everything here is chrome — there is no document on this page —
+    so the root carries the class the tool's own control rules are scoped to.
+  -->
+  <Grid Classes="chrome" ColumnDefinitions="200,*">
+
+    <!-- The rail: what the studio is, and what it can show you. -->
+    <Border Grid.Column="0" Background="{DynamicResource Bg2}"
+            BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,1,0">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="14,16,14,18">
+          <Border Width="32" Height="32" CornerRadius="8" Background="{DynamicResource Acc}">
+            <TextBlock Text="Ax" Foreground="White" FontWeight="Bold" FontSize="12.5"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="ArxisStudio" FontWeight="SemiBold" FontSize="13" />
+            <TextBlock Text="{Binding Edition}" FontSize="10.5" Foreground="{DynamicResource Fg3}" />
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Spacing="2" Margin="8,0">
+          <Border Classes="rail" Classes.active="{Binding IsProjects}" Tag="projects" PointerPressed="OnSectionPressed">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+              <Path Data="M2 4.5h4.2l1.3 1.6H14v6.4H2z" Width="15" Height="15" Stretch="Uniform"
+                    Stroke="{DynamicResource Fg2}" StrokeThickness="1.2" />
+              <TextBlock Text="Projects" FontSize="12.5" />
+            </StackPanel>
+          </Border>
+          <Border Classes="rail" Classes.active="{Binding IsTemplates}" Tag="templates" PointerPressed="OnSectionPressed">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+              <Path Data="M2.5 3h11v10h-11zM2.5 6.5h11M6 6.5v6.5" Width="15" Height="15" Stretch="Uniform"
+                    Stroke="{DynamicResource Fg2}" StrokeThickness="1.2" />
+              <TextBlock Text="Templates" FontSize="12.5" />
+            </StackPanel>
+          </Border>
+          <Border Classes="rail" Classes.active="{Binding IsLearn}" Tag="learn" PointerPressed="OnSectionPressed">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+              <Path Data="M5.2 3.4v9.2L12.6 8z" Width="15" Height="15" Stretch="Uniform"
+                    Stroke="{DynamicResource Fg2}" StrokeThickness="1.2" />
+              <TextBlock Text="Learn" FontSize="12.5" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Margin="8,0,8,12" Spacing="4">
+          <Border BorderBrush="{DynamicResource Brd}" BorderThickness="0,1,0,0" Margin="6,0,6,8" />
+          <StackPanel Orientation="Horizontal" Spacing="10" Margin="12,6">
+            <Path Data="M3 5h10M3 11h10M4.5 5a1.7 1.7 0 1 0 3.4 0a1.7 1.7 0 1 0-3.4 0
+                        M8.1 11a1.7 1.7 0 1 0 3.4 0a1.7 1.7 0 1 0-3.4 0"
+                  Width="15" Height="15" Stretch="Uniform"
+                  Stroke="{DynamicResource Fg3}" StrokeThickness="1.2" />
+            <TextBlock Text="Settings" FontSize="12.5" Foreground="{DynamicResource Fg2}" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="10" Margin="12,6">
+            <Border Width="20" Height="20" CornerRadius="10" Background="{DynamicResource Pur}">
+              <TextBlock Text="FF" Foreground="White" FontSize="9" FontWeight="Bold"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="FibonacciFox" FontSize="12.5" Foreground="{DynamicResource Fg2}"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </StackPanel>
+
+      </Grid>
+    </Border>
+
+    <!-- The page. -->
+    <ScrollViewer Grid.Column="1" Padding="30,26,30,30">
+      <StackPanel Spacing="0">
+
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,22">
+          <TextBox Grid.Column="0" Width="264" Height="30" PlaceholderText="Search projects"
+                   Text="{Binding Search, Mode=TwoWay}" />
+
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+            <Button Classes="accent" Height="30" Content="+  New Project"
+                    Command="{Binding NewProjectCommand}" />
+            <Button Classes="quiet" Height="30" Content="Open" Command="{Binding OpenCommand}" />
+            <Button Classes="quiet" Height="30" Content="Clone from Git" Command="{Binding CloneCommand}" />
+          </StackPanel>
+        </Grid>
+
+        <TextBlock Text="{Binding Problem}" Foreground="{DynamicResource Red}" TextWrapping="Wrap"
+                   Margin="0,0,0,14" IsVisible="{Binding HasProblem}" />
+
+        <TextBlock Text="Создаём проект…" Foreground="{DynamicResource Fg3}" Margin="0,0,0,14"
+                   IsVisible="{Binding IsBusy}" />
+
+        <!-- Recent -->
+        <StackPanel IsVisible="{Binding IsProjects}">
+          <TextBlock Classes="section" Text="RECENT" Margin="0,0,0,10" IsVisible="{Binding HasRecent}" />
+
+          <TextBlock Text="Ещё ничего не открывали. Начните с шаблона ниже или откройте проект."
+                     Foreground="{DynamicResource Fg3}" Margin="0,0,0,10"
+                     IsVisible="{Binding !HasRecent}" />
+
+          <ItemsControl ItemsSource="{Binding Recent}" Margin="0,0,0,26">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:RecentProject">
+                <Border Classes="recent" DoubleTapped="OnRecentOpened" Cursor="Hand"
+                        ToolTip.Tip="Двойной клик — открыть">
+                  <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="12">
+                    <Border Width="30" Height="30" CornerRadius="7" VerticalAlignment="Center"
+                            Background="{Binding Hue, Converter={x:Static vm:Converters.Hue}}">
+                      <TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11"
+                                 FontWeight="SemiBold"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                      <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="Medium" />
+                      <TextBlock Text="{Binding Location}" Classes="mono" FontSize="10.5"
+                                 Foreground="{DynamicResource Fg3}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <Border Grid.Column="2" Classes="chip2" VerticalAlignment="Center"
+                            IsVisible="{Binding Framework, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                      <TextBlock Text="{Binding Framework}" FontSize="10.5"
+                                 Foreground="{DynamicResource Fg2}" />
+                    </Border>
+
+                    <TextBlock Grid.Column="3" Text="{Binding Ago}" FontSize="11"
+                               Foreground="{DynamicResource Fg3}" VerticalAlignment="Center"
+                               Width="110" TextAlignment="Right" />
+
+                    <Button Grid.Column="4" Classes="tabClose" Content="×" Click="OnRecentForgotten"
+                            VerticalAlignment="Center" ToolTip.Tip="Убрать из списка" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+        <!-- Templates -->
+        <StackPanel IsVisible="{Binding ShowTemplates}">
+        <TextBlock Classes="section" Text="START FROM TEMPLATE" Margin="0,0,0,10" />
+
+        <ItemsControl ItemsSource="{Binding Templates}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ProjectTemplate">
+              <Border Classes="template" Width="172" Height="86" Margin="0,0,12,12"
+                      Tapped="OnTemplateChosen" Cursor="Hand">
+                <StackPanel Margin="14,12" Spacing="10">
+                  <Path Data="M2.5 3h11v10h-11zM2.5 6h11" Width="16" Height="16" Stretch="Uniform"
+                        HorizontalAlignment="Left"
+                        Stroke="{DynamicResource Fg2}" StrokeThickness="1.2" />
+                  <StackPanel Spacing="3">
+                    <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="Medium" />
+                    <TextBlock Text="{Binding Summary}" FontSize="10.5"
+                               Foreground="{DynamicResource Fg3}" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        </StackPanel>
+
+        <!-- Learn -->
+        <StackPanel IsVisible="{Binding IsLearn}" Spacing="8" Margin="0,4,0,0">
+          <TextBlock Classes="section" Text="ГДЕ ЧИТАТЬ" />
+          <TextBlock Text="Документация Avalonia — https://docs.avaloniaui.net" Classes="mono"
+                     FontSize="11" Foreground="{DynamicResource Fg2}" Tapped="OnLinkPressed"
+                     Cursor="Hand" Tag="https://docs.avaloniaui.net" />
+          <TextBlock Text="XAML в Avalonia — https://docs.avaloniaui.net/docs/basics/user-interface"
+                     Classes="mono" FontSize="11" Foreground="{DynamicResource Fg2}"
+                     Tapped="OnLinkPressed" Cursor="Hand"
+                     Tag="https://docs.avaloniaui.net/docs/basics/user-interface" />
+        </StackPanel>
+
+      </StackPanel>
+    </ScrollViewer>
+
+  </Grid>
+
+</Window>

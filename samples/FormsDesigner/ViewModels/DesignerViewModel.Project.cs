@@ -302,6 +302,24 @@ public sealed partial class DesignerViewModel
     }
 
     /// <summary>
+    /// Whether the project has an assets file, which is what a build needs and a new project lacks.
+    /// </summary>
+    /// <remarks>
+    /// Asked of MSBuild's own property when the evaluation carried one, and of the default location
+    /// otherwise. Both are guesses at the same fact and the cost of guessing wrong is one restore
+    /// that was not needed.
+    /// </remarks>
+    private static bool IsRestored(ProjectSnapshot project)
+    {
+        string assets = project.Properties.TryGetValue("ProjectAssetsFile", out string? declared)
+            && declared is { Length: > 0 }
+                ? declared
+                : System.IO.Path.Combine(project.ProjectDirectory.Value, "obj", "project.assets.json");
+
+        return System.IO.File.Exists(assets);
+    }
+
+    /// <summary>
     /// Builds one project and returns the snapshot to load against.
     /// </summary>
     /// <remarks>
@@ -318,6 +336,18 @@ public sealed partial class DesignerViewModel
         }
 
         Log($"  {owner.Name} has not been built — building it first");
+
+        // A project that has never been restored cannot be built: there is no assets file, and
+        // MSBuild says so in a sentence about NETSDK1004 that a person opening a form has no reason
+        // to be reading. A project this designer has just created from a template is exactly that
+        // project, so the restore comes first and only when the build was going to happen anyway.
+        if (!IsRestored(owner) && await ExecuteAsync(ProjectOperationKind.Restore, owner)
+            != ProjectOperationStatus.Succeeded)
+        {
+            Log("  the restore failed — the form is opened anyway, and will say what it could not find");
+
+            return null;
+        }
 
         if (await ExecuteAsync(ProjectOperationKind.Build, owner) != ProjectOperationStatus.Succeeded)
         {

@@ -182,6 +182,20 @@ public sealed partial class DesignerViewModel
 
         XamlDocument updated = editor.Apply();
 
+        // The window gets its content back before the update and lends it again after.
+        //
+        // A window-rooted form is shown by taking the window's content out of it and hosting that,
+        // because a window cannot be a child of anything. An update reads the live tree to work out
+        // what to change — and the live window it reads had no content, so an edit to anything
+        // inside it was applied to nothing: the document gained a control, the canvas did not, and
+        // the object map came back holding the window and its template alone. Every drop after the
+        // first then had no container to land in.
+        //
+        // Detach is what the surface offers for exactly this, and Attach — which detaches first —
+        // is how the new tree is borrowed once the update has built it. RefreshRoot below does the
+        // second half.
+        form.Surface.Detach();
+
         XamlUpdateResult result = await session.ApplyDocumentUpdateAsync(updated, _shutdown.Token);
 
         form.Adopt(session.Document);
@@ -226,18 +240,18 @@ public sealed partial class DesignerViewModel
     /// toolbox appeared, got a row in the tree, and could not be clicked, resized or deleted until
     /// the form was reopened.
     /// </para>
+    /// <para>
+    /// And the stand-in is re-attached whether or not the root object changed, which is the whole of
+    /// what a window-rooted form needs to survive being edited. The surface hosts a window by taking
+    /// its content out of it; an update that rebuilds that content puts the new tree into the window,
+    /// where nothing is looking — so the canvas went on showing the tree from before the edit, the
+    /// object map came back holding the window and its template and nothing else, and the next drop
+    /// had no container to land in. <c>Attach</c> gives back what it borrowed before borrowing again,
+    /// so calling it after every update is the supported way to say "the root has new content".
+    /// </para>
     /// </remarks>
-    private static void RefreshRoot(FormViewModel form, XamlLoadSession session)
-    {
-        if (!ReferenceEquals(form.Root, session.RootObject))
-        {
-            form.AdoptRoot(session);
-
-            return;
-        }
-
-        FormViewModel.MarkEditable(session);
-    }
+    private static void RefreshRoot(FormViewModel form, XamlLoadSession session) =>
+        form.AdoptRoot(session);
 
     /// <summary>
     /// Writes a control's geometry into the document after the editor has moved or resized it.

@@ -187,6 +187,69 @@
     <Setter Property="MinHeight" Value="0" />
   </Style>
 
+  <!-- The welcome screen's rail, its recent rows, and the cards it starts projects from. -->
+  <Style Selector="Border.rail">
+    <Setter Property="Height" Value="32" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Border.rail:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Bg3}" />
+  </Style>
+
+  <Style Selector="Border.rail.active">
+    <Setter Property="Background" Value="{DynamicResource Sel}" />
+  </Style>
+
+  <Style Selector="Border.recent">
+    <Setter Property="Height" Value="52" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="10,0,12,0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Border.recent:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Bg2}" />
+  </Style>
+
+  <Style Selector="Border.chip2">
+    <Setter Property="Height" Value="20" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="9,0" />
+    <Setter Property="Background" Value="{DynamicResource Bg3}" />
+  </Style>
+
+  <Style Selector="Border.template">
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="{DynamicResource Bg2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brd}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="Border.template:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Bg3}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Acc}" />
+  </Style>
+
+  <!-- A second-rank action beside the accented one. -->
+  <Style Selector="Button.quiet">
+    <Setter Property="Background" Value="{DynamicResource Bg2}" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brd2}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="14,0" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.quiet:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Bg3}" />
+  </Style>
+
   <!-- Panels: one border colour, one radius, nothing else. -->
   <Style Selector="Border.panel">
     <Setter Property="Background" Value="{DynamicResource Bg2}" />

@@ -29,6 +29,38 @@ internal static class WindowShot
     public static void TakeAfterLoad(Window window, DesignerViewModel designer, string path) =>
         window.Opened += (_, _) => _ = TakeAsync(window, designer, path);
 
+    /// <summary>The same for a window with nothing to load, which is the one the studio opens on.</summary>
+    public static void TakeWhenShown(Window window, string path) =>
+        window.Opened += (_, _) => _ = TakeShownAsync(window, path);
+
+    private static async Task TakeShownAsync(Window window, string path)
+    {
+        for (int drawing = 0; drawing < 40; drawing++)
+        {
+            await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+        }
+
+        var size = new PixelSize((int)window.Bounds.Width, (int)window.Bounds.Height);
+
+        if (size.Width <= 0 || size.Height <= 0)
+        {
+            Console.WriteLine("! the window has no size to capture");
+
+            window.Close();
+
+            return;
+        }
+
+        using var bitmap = new RenderTargetBitmap(size, new Vector(96, 96));
+
+        bitmap.Render(window);
+        bitmap.Save(path, new PngBitmapEncoderOptions());
+
+        Console.WriteLine($"shot {size.Width}×{size.Height} → {path}");
+
+        window.Close();
+    }
+
     private static async Task TakeAsync(Window window, DesignerViewModel designer, string path)
     {
         // Bounded, because a project that never finishes loading must not leave a process that never
