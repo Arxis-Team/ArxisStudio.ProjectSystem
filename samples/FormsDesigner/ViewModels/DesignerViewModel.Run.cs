@@ -303,6 +303,7 @@ public sealed partial class DesignerViewModel
                 Workspace = _workspace.Identity,
                 EntryPointPath = EntryPoint,
                 Configuration = Configuration,
+                GlobalProperties = DesignerOutput,
 
                 // The one project rather than the whole solution: a designer builds what it is
                 // showing, and waiting for everything else is a wait nobody asked for.
@@ -314,6 +315,7 @@ public sealed partial class DesignerViewModel
         Log($"  {result.Status} — {Describe(result.Diagnostics.Length, "diagnostic")}");
 
         ShowDiagnostics(result.Diagnostics);
+        ExplainLocks(result.Diagnostics);
 
         if (kind == ProjectOperationKind.Restore && result.Status == ProjectOperationStatus.Succeeded)
         {
@@ -321,6 +323,29 @@ public sealed partial class DesignerViewModel
         }
 
         return result.Status;
+    }
+
+    /// <summary>
+    /// Says in one sentence what a dozen lines of MSB3026 mean.
+    /// </summary>
+    /// <remarks>
+    /// A build that cannot write its own output is nearly always an application still running from
+    /// it, and MSBuild says so ten times over while it retries and then once more when it gives up.
+    /// The designer builds into a folder of its own so that the other tool's running application is
+    /// not the cause — which leaves its own, and the answer to that is Stop.
+    /// </remarks>
+    private void ExplainLocks(System.Collections.Immutable.ImmutableArray<ProjectDiagnostic> diagnostics)
+    {
+        if (!diagnostics.Any(diagnostic =>
+                diagnostic.Message.Contains("MSB3027", StringComparison.Ordinal)
+                || diagnostic.Message.Contains("MSB3026", StringComparison.Ordinal)
+                || diagnostic.Message.Contains("MSB3021", StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        Log("  the output file is held by something that is running it —"
+            + (IsRunning ? " press Stop and build again" : " close the application that is using it"));
     }
 
     /// <summary>The project everything acts on: whichever one owns the form being designed.</summary>

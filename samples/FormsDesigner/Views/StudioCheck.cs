@@ -291,6 +291,28 @@ internal static class StudioCheck
             Fail(ref failures, "the form never saved");
         }
 
+        // 5a. Changed from outside, the way the IDE beside this one changes it.
+        if (form.File.Value is { Length: > 0 } onDisk)
+        {
+            string outside = (await System.IO.File.ReadAllTextAsync(onDisk))
+                .Replace("Поехали", "Извне", StringComparison.Ordinal);
+
+            await System.IO.File.WriteAllTextAsync(onDisk, outside);
+
+            if (!await Until(() => Text(form).Contains("Извне", StringComparison.Ordinal), 30))
+            {
+                Fail(ref failures, "an edit made outside never reached the open form");
+            }
+            else if (form.IsDirty)
+            {
+                Fail(ref failures, "a form reloaded from disk still calls itself edited");
+            }
+            else
+            {
+                Say("an edit made outside the designer arrived in the open form");
+            }
+        }
+
         // 6. Restored and built, which is the claim that what was laid out is a real application.
         designer.RestoreCommand.Execute(null);
 
@@ -379,6 +401,20 @@ internal static class StudioCheck
                     Say("a second form was created and deleted again");
                 }
             }
+        }
+
+        // 9. And the project file, whose change means the evaluation is stale.
+        string wasSaying = designer.Status;
+
+        System.IO.File.SetLastWriteTimeUtc(project!, DateTime.UtcNow);
+
+        if (!await Until(() => designer.Status != wasSaying, 180))
+        {
+            Fail(ref failures, "a change to the project file did not re-read it");
+        }
+        else
+        {
+            Say("a change to the project file was picked up");
         }
 
         return failures;

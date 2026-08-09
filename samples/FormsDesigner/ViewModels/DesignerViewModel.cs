@@ -223,6 +223,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
 
         _shutdown.Cancel();
 
+        StopWatching();
         StopProject();
         CloseAllForms();
         ReleaseFeed();
@@ -234,6 +235,34 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
     }
 
     private CanonicalPath EntryPoint { get; set; }
+
+    /// <summary>
+    /// What this designer adds to every evaluation, build and run: an output folder of its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This tool is used beside an IDE, and both build the same project. They cannot both own
+    /// <c>bin\Debug</c>: the moment one of them has the application running, the other's build stops
+    /// with a dozen lines of MSB3026 and then MSB3027 — "the file is locked by .NET Host" — which is
+    /// true, unactionable, and looks like the designer is broken.
+    /// </para>
+    /// <para>
+    /// So the designer builds into <c>bin\ArxisStudio</c> and runs what it built there. The property
+    /// is relative, so every project in the solution resolves it against itself, and it is passed to
+    /// the evaluation as well as to the operations — the run path starts what the evaluation says the
+    /// project produces, and the two would disagree if only one of them knew.
+    /// </para>
+    /// <para>
+    /// The intermediate folder is deliberately left shared. That is where the restore writes its
+    /// assets file, and a second copy of it would mean restoring the same packages twice for no
+    /// benefit — the file both tools read is the same file, and neither writes it while the other is
+    /// building.
+    /// </para>
+    /// </remarks>
+    private static readonly ProjectMetadata DesignerOutput = ProjectMetadata.Create(
+    [
+        new System.Collections.Generic.KeyValuePair<string, string>("BaseOutputPath", "bin/ArxisStudio/"),
+    ]);
 
     private bool CanOperate() => IsLoaded && !IsBusy;
 
@@ -323,6 +352,10 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
                 // evaluation says the project produces.
                 Configuration = Configuration,
 
+                // And an output folder of its own, so that building here never fights the IDE that
+                // has the same project open.
+                GlobalProperties = DesignerOutput,
+
                 // Items are how the Project panel finds the forms, so the designer asks for them.
                 Options = new WorkspaceLoadOptions { IncludeItems = true },
             },
@@ -331,6 +364,10 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         Log($"  {result.Status} — {result.Diagnostics.Length} diagnostic(s)");
 
         IsLoaded = result.Snapshot is not null;
+
+        // Watched from here on, because this designer is used beside an IDE and the IDE writes to
+        // the same files.
+        WatchProject();
 
         Raise(nameof(StatusLeft));
         Raise(nameof(ProjectName));

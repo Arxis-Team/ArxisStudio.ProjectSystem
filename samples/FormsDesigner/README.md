@@ -190,6 +190,28 @@ content had nothing to change — so the document gained a control, the canvas d
 drop had no container to land into. The content goes back for the length of the update and is
 borrowed again afterwards.
 
+### Beside another IDE
+
+The designer is meant to sit next to Rider or Visual Studio: the layout is done here, the code is
+written there, and the same files are open in both. Three things follow from that, and all three
+were reported as bugs before they were features.
+
+**It builds into `bin/ArxisStudio`.** Two tools cannot own `bin/Debug`: the moment one of them has
+the application running, the other's build stops with a dozen lines of MSB3026 and then MSB3027 —
+"the file is locked by .NET Host" — which is true, unactionable, and looks like the designer is
+broken. The property is passed to the evaluation as well as to the build, because the run path
+starts what the evaluation says the project produces. The intermediate folder stays shared, so the
+restore is not done twice.
+
+**It follows the files.** A change to an open `.axaml` is applied to the form as a document update,
+so the session, the canvas and the tabs survive and the change joins the undo history — an edit made
+in the other editor can be taken back here. A change to a project file re-reads the workspace. Edits
+are coalesced over a quarter of a second, because an editor writes a temporary file and renames it
+over the original, which arrives as several events for one save.
+
+**It does not overwrite your unsaved work.** A form with edits that are not in the file is not
+reloaded; it says so, and the next save is the person's decision.
+
 ### The check that says it works
 
 ```bash
