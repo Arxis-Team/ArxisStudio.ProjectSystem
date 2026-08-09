@@ -35,6 +35,7 @@ public sealed partial class MainWindow : Window
         surface.DesignSelectionChanged += OnDesignSelectionChanged;
         surface.EditCompleted += OnEditCompleted;
         surface.DeleteRequested += OnDeleteRequested;
+        surface.ContextMenuRequesting += OnContextMenuRequesting;
         surface.ReorderRequested += OnReorderRequested;
 
         // Drag out of the toolbox, drop onto the surface. Avalonia's own drag-and-drop rather than a
@@ -61,6 +62,35 @@ public sealed partial class MainWindow : Window
                 // The documented way to clear the canvas: dropping the item selection takes the
                 // design targets with it, which is what the frame is drawn from.
                 designer.CanvasSelectionCleared += (_, _) => surface.SelectedItems?.Clear();
+
+                // The clipboard belongs to the top level, so the window is what reaches for it.
+                // Avalonia 12 puts data transfers on it rather than strings: an item carries the
+                // text and the clipboard owns it once it has been handed over.
+                designer.PutOnClipboard = async markup =>
+                {
+                    if (Clipboard is { } clipboard)
+                    {
+                        var transfer = new DataTransfer();
+
+                        transfer.Add(DataTransferItem.Create(DataFormat.Text, markup));
+
+                        await clipboard.SetDataAsync(transfer);
+                    }
+                };
+
+                designer.TakeFromClipboard = async () =>
+                {
+                    if (Clipboard is not { } clipboard)
+                    {
+                        return null;
+                    }
+
+                    // Returned rather than lent: what comes off the clipboard is the caller's to
+                    // dispose, which is the opposite of what goes on to it.
+                    using IAsyncDataTransfer? transfer = await clipboard.TryGetDataAsync();
+
+                    return transfer is null ? null : await transfer.TryGetTextAsync();
+                };
             }
         };
     }
@@ -187,6 +217,48 @@ public sealed partial class MainWindow : Window
         {
             row.CommitColour();
         }
+    }
+
+    /// <summary>
+    /// Fills the canvas's context menu with what this designer can do to a control.
+    /// </summary>
+    /// <remarks>
+    /// The editor asks and the host answers, which is the right way round: the editor knows a right
+    /// click happened over a target and nothing about clipboards or documents. Availability is asked
+    /// of the commands themselves, so the menu cannot offer a paste when there is nothing to paste
+    /// into.
+    /// </remarks>
+    private void OnContextMenuRequesting(object? sender, DesignEditorContextRequestingEventArgs e)
+    {
+        if (Designer is not { } designer)
+        {
+            return;
+        }
+
+        e.Actions =
+        [
+            Action("copy", "Копировать", "Ctrl+C", designer.CopyCommand, 0),
+            Action("cut", "Вырезать", "Ctrl+X", designer.CutCommand, 1),
+            Action("paste", "Вставить", "Ctrl+V", designer.PasteCommand, 2),
+            Action("duplicate", "Дублировать", "Ctrl+D", designer.DuplicateCommand, 3),
+            new DesignEditorContextAction { Id = "-", IsSeparator = true, Group = "edit", Order = 4 },
+            Action("undo", "Отменить", "Ctrl+Z", designer.UndoCommand, 5),
+            Action("redo", "Вернуть", "Ctrl+Y", designer.RedoCommand, 6),
+            new DesignEditorContextAction { Id = "--", IsSeparator = true, Group = "edit", Order = 7 },
+            Action("delete", "Удалить", "Del", designer.DeleteSelectedCommand, 8),
+        ];
+
+        static DesignEditorContextAction Action(
+            string id, string header, string gesture, FormsDesigner.ViewModels.RelayCommand command, int order) =>
+            new()
+            {
+                Id = id,
+                Header = $"{header}   {gesture}",
+                Group = "edit",
+                Order = order,
+                Command = command,
+                IsEnabled = command.CanExecute(null),
+            };
     }
 
     private void OnDeleteRequested(object? sender, DesignEditorDeleteRequestedEventArgs e)

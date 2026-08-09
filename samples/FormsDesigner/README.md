@@ -1,15 +1,16 @@
 # FormsDesigner — the visual designer sample
 
-A form designer built on all three families at once: an infinite canvas holding live Avalonia
-controls, a property inspector, a toolbox you drag from, and the project machinery to restore, build
-and run what you are designing.
+A studio built on all three families at once: a welcome screen that creates and opens projects, an
+infinite canvas holding live Avalonia controls, a property inspector, a toolbox you drag from, and
+the project machinery to restore, build and run what you are designing.
 
 ```bash
 dotnet run --project samples/FormsDesigner
 ```
 
-Pass a project to skip the dialog, and a form name to open one straight away — the output pane is
-mirrored to standard output, so this doubles as a smoke test:
+That opens the welcome screen: the projects you had open, four templates to start from, Open, and
+Clone from Git. Pass a project to skip it, and a form name to open one straight away — the output
+pane is mirrored to standard output, so this doubles as a smoke test:
 
 ```bash
 dotnet run --project samples/FormsDesigner -- C:\src\App\App.csproj MainView.axaml
@@ -147,6 +148,46 @@ document. It uses the request's `Anchor` rather than its index, because the edit
 children and the document counts its content elements, and the two disagree the moment a parent
 holds a property element — which a `Grid` with row definitions does.
 
+## Making an application in it
+
+New Project writes a real Avalonia application — `csproj`, `Program`, `App`, a window and a view
+model — rather than shelling out to `dotnet new`, whose Avalonia templates are a workload a machine
+need not have. Four shapes: an empty application, a chat, a dashboard and a media player. The
+generated project turns central package management off for itself, or being created inside a
+repository that manages versions centrally would fail to restore for a reason no dialog mentioned.
+
+From there it is the designer: drag controls from the toolbox onto the form, arrange them, edit
+their properties in the inspector, `Ctrl+Z` and `Ctrl+Y`, copy, cut, paste and duplicate, save, and
+press Run.
+
+Two things had to be true for that to work at all, and both are about a window-rooted form — which
+is what every template's main form is:
+
+**A project that has never been restored cannot be built**, and the designer builds before opening a
+form whose `x:Class` names a type. So the restore comes first, and only when the build was going to
+happen anyway.
+
+**A window is whole while it is being updated.** The stand-in shows a window by taking its content
+out of it; an update reads the live tree to work out what to change, and a live window with no
+content had nothing to change — so the document gained a control, the canvas did not, and the next
+drop had no container to land into. The content goes back for the length of the update and is
+borrowed again afterwards.
+
+### The check that says it works
+
+```bash
+dotnet run --project samples/FormsDesigner -- --verify <folder>
+```
+
+Creates a project through the welcome screen, opens its window, drops three controls from the
+toolbox into it, edits one through the inspector's own rows, duplicates and pastes a control, undoes
+and redoes every step, saves, restores, builds, runs the result and stops it. Every step goes
+through the view model rather than around it — a check that wrote the markup itself would only prove
+that the check can write XAML.
+
+It ends with one line: `VERDICT ok — a project was created, laid out, built and run`. Both of the
+window-rooted defects above were found by it.
+
 ## Five things it demonstrates on purpose
 
 **A click on screen finds the line that drew it.** `XamlObjectMap` runs both ways. Templates produce
@@ -154,9 +195,12 @@ controls no element made — a button's own border, the text inside it — so th
 the parents until it finds one that is mapped, which is how clicking a button's label selects the
 button.
 
-**The inspector shows what the file sets, not what the control has.** A `Button` has upwards of a
-hundred properties and an author wrote three of them. Listing all hundred tells nobody which ones
-matter.
+**The inspector offers a short list and asks the control about every name on it.** A `Button` has
+upwards of a hundred properties and listing all of them tells nobody which ones matter — but an
+inspector that shows only what the file already sets is a text editor with extra steps, because
+nothing new can be added without typing the property name. So there is a curated list per group,
+every name on it is offered only when the member resolver says this control has it, and anything the
+document sets that is not on the list is appended.
 
 **A move is written only where a position means something.** Inside a `Canvas` it becomes
 `Canvas.Left` and `Canvas.Top`. Inside a `StackPanel` there is nothing to write — the panel owns the
@@ -169,6 +213,13 @@ what it does is edit the document.
 
 **An edit is applied to the document first and to the live objects second.** `ApplyDocumentUpdateAsync`
 works out what actually changed, so setting one property does not tear down the form around it.
+
+**Undo is documents, not operations.** Every edit produces a whole new immutable document, so the
+history is the documents themselves and going back is applying one the designer was already holding
+— through the same path every other change takes. Nothing has to be right about inverting an insert.
+And the selection is a `XamlElementPath` rather than an element or a control, because both of those
+are replaced by the edit: it survives, and when what was selected has just been deleted the path's
+parent is the answer.
 
 ## What it is not
 

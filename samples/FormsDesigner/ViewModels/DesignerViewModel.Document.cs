@@ -113,6 +113,11 @@ public sealed partial class DesignerViewModel
     /// </remarks>
     public void SelectFromCanvas(FormViewModel form, Control? control)
     {
+        if (_syncingCanvas)
+        {
+            return;
+        }
+
         ActiveForm = form;
 
         // Remembered because an element does not survive an edit and a control does. Elements are
@@ -203,6 +208,15 @@ public sealed partial class DesignerViewModel
             return;
         }
 
+        // Where the selection is, said in a way that survives the edit. Elements belong to the parse
+        // they came from, so after this there is no "the same element" to hold on to — only the same
+        // position. Re-resolving through the live control instead worked until the control was
+        // replaced as well, and then the walk found nothing mapped and fell back to the root: edit a
+        // button and the inspector was suddenly describing the window.
+        XamlElementPath? selection = Selected is { IsPropertyElementSyntax: false } element
+            ? XamlElementPath.Of(element)
+            : null;
+
         // The window gets its content back before the update and lends it again after.
         //
         // A window-rooted form is shown by taking the window's content out of it and hosting that,
@@ -228,13 +242,12 @@ public sealed partial class DesignerViewModel
         // is holding the old one until it is told.
         RefreshRoot(form, session);
 
-        // And the inspector is holding an element from the document that has just been replaced, so
-        // it goes on showing the values the form had before the edit — and, worse, the next edit it
-        // makes addresses an element the document no longer contains. Re-resolving through the
-        // control puts it back on the live one.
-        if (_selectedControl is { } selected)
+        // And the inspector is put back on the same position in the new document — or, when what was
+        // selected has just been deleted, on what it was inside, which is the answer a path gives
+        // for free and the friendlier of the two.
+        if (selection is not null && form.Document is { } document)
         {
-            SelectFromCanvas(form, selected);
+            Reselect(form, selection.Resolve(document) ?? selection.Parent?.Resolve(document));
         }
 
         if (!result.Applied)
@@ -421,6 +434,48 @@ public sealed partial class DesignerViewModel
             editor => editor.MoveElement(element, parent, index),
             $"move {element.Name}"));
     }
+
+    /// <summary>
+    /// Puts the selection back on an element after the document behind it has been replaced.
+    /// </summary>
+    /// <remarks>
+    /// Both halves, because the canvas holds a control and the inspector holds an element, and after
+    /// an update the control the canvas was holding may not exist. The canvas is asked through the
+    /// same event the tree uses, which is the one path that knows how to select a form's root.
+    /// </remarks>
+    private void Reselect(FormViewModel form, XamlElement? element)
+    {
+        Selected = element;
+
+        if (element is null)
+        {
+            _selectedControl = null;
+
+            return;
+        }
+
+        _selectedControl = ControlFor(form, element);
+
+        // The canvas is asked to follow, and its answer is not listened to. Selecting a control
+        // makes the editor report a selection, that report comes back through SelectFromCanvas, and
+        // its walk answers with the nearest thing it considers a target — which, for a control the
+        // editor has only just been given, is the panel above it. The element resolved here is the
+        // better answer and this is where it was resolved, so the echo is ignored. The tree is kept
+        // in step the same way, by the same kind of flag.
+        _syncingCanvas = true;
+
+        try
+        {
+            CanvasSelectionRequested?.Invoke(this, element);
+        }
+        finally
+        {
+            _syncingCanvas = false;
+        }
+    }
+
+    /// <summary>Whether the canvas's selection is currently this designer's own doing.</summary>
+    private bool _syncingCanvas;
 
     /// <summary>Goes back one edit, and forward again.</summary>
     /// <remarks>

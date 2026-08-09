@@ -172,6 +172,47 @@ internal static class StudioCheck
             Fail(ref failures, "no Button to edit");
         }
 
+        // 4a. Duplicated and pasted, which is how a form with one of something gets three.
+        if (Find(designer, "Button") is { } original)
+        {
+            designer.SelectFromCanvas(form, original);
+
+            int buttons = Count(designer, "Button");
+
+            designer.DuplicateCommand.Execute(null);
+
+            if (!await Until(() => Count(designer, "Button") == buttons + 1, 30))
+            {
+                Fail(ref failures, "duplicate did not add a second Button");
+            }
+
+            Say($"  after duplicate the selection is {designer.Selected?.Name.LocalName ?? "none"}");
+
+            designer.CopyCommand.Execute(null);
+
+            await Task.Delay(300);
+
+            designer.PasteCommand.Execute(null);
+
+            if (!await Until(() => Count(designer, "Button") == buttons + 2, 30))
+            {
+                Fail(ref failures, "paste did not add a third Button");
+            }
+
+            // And back, so that what is built is the form that was laid out.
+            designer.UndoCommand.Execute(null);
+            await Until(() => Count(designer, "Button") == buttons + 1, 30);
+
+            designer.UndoCommand.Execute(null);
+
+            if (!await Until(() => Count(designer, "Button") == buttons, 30))
+            {
+                Fail(ref failures, "undo did not take the copies back");
+            }
+
+            Say($"duplicated and pasted, then undone: {Summary(designer)}");
+        }
+
         // 4b. Undone and redone, which is the same path an edit takes and had better be.
         designer.UndoCommand.Execute(null);
 

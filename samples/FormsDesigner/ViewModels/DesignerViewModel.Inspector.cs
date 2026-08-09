@@ -458,47 +458,6 @@ public sealed partial class DesignerViewModel
         NewPropertyName = string.Empty;
         NewPropertyValue = string.Empty;
 
-        // The element object is replaced by the edit, so the inspector is rebuilt from whatever the
-        // new document has in its place rather than from the stale one still being pointed at.
-        Reselect(form, element);
     }
 
-    /// <summary>
-    /// Finds the selected element again in a document that has just been rebuilt.
-    /// </summary>
-    /// <remarks>
-    /// Every edit produces a new document with new element objects, so the selection has to be
-    /// re-established rather than kept. Position in the tree is what identifies it — the same walk
-    /// the old element took from the root — because a name is optional and a reference is stale.
-    /// </remarks>
-    private void Reselect(FormViewModel form, XamlElement previous)
-    {
-        if (form.Document is not { } document)
-        {
-            return;
-        }
-
-        int[] path = [.. PathTo(previous)];
-
-        XamlElement? found = document.Root;
-
-        foreach (int step in path)
-        {
-            found = found?.ContentElements.ElementAtOrDefault(step);
-        }
-
-        Selected = found;
-    }
-
-    private static System.Collections.Generic.Stack<int> PathTo(XamlElement element)
-    {
-        var steps = new System.Collections.Generic.Stack<int>();
-
-        for (XamlElement? current = element; current?.Parent is XamlElement parent; current = parent)
-        {
-            steps.Push(parent.ContentElements.ToList().IndexOf(current));
-        }
-
-        return steps;
-    }
 }
