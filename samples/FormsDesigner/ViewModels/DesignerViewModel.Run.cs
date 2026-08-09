@@ -17,6 +17,9 @@ public sealed partial class DesignerViewModel
 
     public RelayCommand StopCommand { get; private set; } = null!;
 
+    /// <summary>Holds the running application still, and lets it go again.</summary>
+    public RelayCommand PauseCommand { get; private set; } = null!;
+
     public bool IsRunning
     {
         get;
@@ -29,10 +32,57 @@ public sealed partial class DesignerViewModel
         }
     }
 
+    /// <summary>Whether the running application is currently held.</summary>
+    public bool IsPaused
+    {
+        get;
+        private set
+        {
+            if (Set(ref field, value))
+            {
+                Raise(nameof(PauseTip));
+                RefreshAllCommands();
+            }
+        }
+    }
+
+    /// <summary>What the pause button would do if pressed now.</summary>
+    public string PauseTip => IsPaused ? "Resume" : "Pause";
+
+    /// <summary>How many of the running process's threads the system reports as suspended.</summary>
+    /// <remarks>Diagnostic only, and the only way to see from here that a pause actually took.</remarks>
+    internal int SuspendedThreadCount
+    {
+        get
+        {
+            if (_running is not { HasExited: false } process)
+            {
+                return 0;
+            }
+
+            process.Refresh();
+
+            int suspended = 0;
+
+            foreach (ProcessThread thread in process.Threads)
+            {
+                if (OperatingSystem.IsWindows()
+                    && thread.ThreadState == System.Diagnostics.ThreadState.Wait
+                    && thread.WaitReason == ThreadWaitReason.Suspended)
+                {
+                    suspended++;
+                }
+            }
+
+            return suspended;
+        }
+    }
+
     private void InitialiseRun()
     {
         RunCommand = new RelayCommand(() => Run(RunProjectAsync), () => CanOperate() && !IsRunning);
         StopCommand = new RelayCommand(StopProject, () => IsRunning);
+        PauseCommand = new RelayCommand(PauseProject, () => IsRunning);
     }
 
     /// <summary>
@@ -113,6 +163,7 @@ public sealed partial class DesignerViewModel
             Log($"  {name} exited with code {process.ExitCode}");
 
             IsRunning = false;
+            IsPaused = false;
             _running = null;
 
             StopClock();
@@ -139,6 +190,102 @@ public sealed partial class DesignerViewModel
             Log($"  │ {line}");
         }
     }
+
+    /// <summary>
+    /// Holds the running application, or lets it go.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This suspends the process, which is what a tool without a debugger can honestly offer: every
+    /// thread stops where it is and continues from there. It is not a breakpoint — nothing is
+    /// inspected and no line is shown — and a suspended window stops repainting, so the application
+    /// looks frozen, because it is.
+    /// </para>
+    /// <para>
+    /// The two platforms have different words for it and the same meaning. Windows has no supported
+    /// managed call, so it goes through <c>ntdll</c>, which is what every process explorer on the
+    /// system does. Elsewhere it is the signal pair that has meant this since v7 Unix.
+    /// </para>
+    /// </remarks>
+    private void PauseProject()
+    {
+        if (_running is not { HasExited: false } process)
+        {
+            return;
+        }
+
+        bool resuming = IsPaused;
+
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                int status = resuming ? NtResumeProcess(process.Handle) : NtSuspendProcess(process.Handle);
+
+                if (status != 0)
+                {
+                    Log($"  the process refused to {(resuming ? "resume" : "pause")} (0x{status:X8})");
+
+                    return;
+                }
+            }
+            else if (!Signal(process.Id, resuming ? "-CONT" : "-STOP"))
+            {
+                return;
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
+        {
+            Log($"  already gone ({exception.GetType().Name})");
+
+            return;
+        }
+
+        IsPaused = !resuming;
+
+        Log(resuming ? "Resumed." : "Paused.");
+
+        if (resuming)
+        {
+            ResumeClock();
+        }
+        else
+        {
+            PauseClock();
+        }
+    }
+
+    /// <summary>Sends a signal the way a shell would, because .NET has no call for these two.</summary>
+    private bool Signal(int pid, string signal)
+    {
+        using var kill = Process.Start(new ProcessStartInfo("kill", $"{signal} {pid}")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        });
+
+        if (kill is null)
+        {
+            Log("  kill is not available here");
+
+            return false;
+        }
+
+        kill.WaitForExit();
+
+        return kill.ExitCode == 0;
+    }
+
+    // DllImport rather than LibraryImport: the generated marshalling stub needs the whole project
+    // compiled with AllowUnsafeBlocks, and one handle passed by value does not need marshalling at
+    // all. Two entry points are not a reason to open a sample's compilation.
+#pragma warning disable SYSLIB1054
+    [System.Runtime.InteropServices.DllImport("ntdll.dll")]
+    private static extern int NtSuspendProcess(IntPtr process);
+
+    [System.Runtime.InteropServices.DllImport("ntdll.dll")]
+    private static extern int NtResumeProcess(IntPtr process);
+#pragma warning restore SYSLIB1054
 
     private void StopProject()
     {

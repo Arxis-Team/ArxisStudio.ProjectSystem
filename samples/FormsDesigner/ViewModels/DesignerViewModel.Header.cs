@@ -100,6 +100,26 @@ public sealed partial class DesignerViewModel
 
     private void StopClock() => _clock.Stop();
 
+    /// <summary>Freezes the badge while the application is held, because nothing is running to time.</summary>
+    private void PauseClock()
+    {
+        _clock.Stop();
+
+        RunningText = $"Paused · {DateTime.UtcNow - _startedAt:mm\\:ss}";
+    }
+
+    /// <summary>And starts it again from where the application actually started.</summary>
+    /// <remarks>
+    /// The text is written here as well as by the tick, because the first tick is a second away and
+    /// a badge that still says Paused is the one thing a person checks after pressing resume.
+    /// </remarks>
+    private void ResumeClock()
+    {
+        RunningText = $"Running · {DateTime.UtcNow - _startedAt:mm\\:ss}";
+
+        _clock.Start();
+    }
+
     /// <summary>
     /// The solution's runnable projects, in the order the snapshot has them.
     /// </summary>

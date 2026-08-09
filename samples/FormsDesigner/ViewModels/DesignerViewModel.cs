@@ -376,6 +376,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         BuildCommand.RaiseCanExecuteChanged();
         RunCommand.RaiseCanExecuteChanged();
         StopCommand.RaiseCanExecuteChanged();
+        PauseCommand.RaiseCanExecuteChanged();
         RefreshPackageCommands();
     }
 

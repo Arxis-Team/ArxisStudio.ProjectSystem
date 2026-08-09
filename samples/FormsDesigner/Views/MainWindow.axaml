@@ -195,6 +195,18 @@
                 <Path Data="M13 8a5 5 0 1 1-1.6-3.7M13.3 2.9v2.7h-2.7" Width="14" Height="14"
                       Stretch="Uniform" Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" />
               </Button>
+              <!-- Pause and resume are one button, because they are one decision seen twice. -->
+              <Button Classes="icon" Width="30" Height="24" Command="{Binding PauseCommand}"
+                      ToolTip.Tip="{Binding PauseTip}">
+                <Panel>
+                  <Path Data="M6 3.4v9.2M10 3.4v9.2" Width="13" Height="13" Stretch="Uniform"
+                        Stroke="{DynamicResource Fg2}" StrokeThickness="1.7"
+                        IsVisible="{Binding !IsPaused}" />
+                  <Path Data="M5.4 3.4v9.2L12.6 8z" Width="13" Height="13" Stretch="Uniform"
+                        Fill="{DynamicResource Grn}" IsVisible="{Binding IsPaused}" />
+                </Panel>
+              </Button>
+
               <Button Classes="icon" Width="30" Height="24" Command="{Binding StopCommand}"
                       ToolTip.Tip="Stop">
                 <Path Data="M4 4h8v8h-8z" Width="13" Height="13" Stretch="Uniform"
