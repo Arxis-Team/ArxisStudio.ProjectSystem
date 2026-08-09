@@ -829,11 +829,19 @@
                           <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PropertyRow">
                               <StackPanel Margin="0,0,10,8" Spacing="3">
-                                <TextBlock Text="{Binding Name}" FontSize="10.5"
+                                <TextBlock Text="{Binding Heading}" FontSize="10.5"
                                            Foreground="{DynamicResource Fg3}"
                                            TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
 
-                                <TextBox Text="{Binding Value, Mode=TwoWay}" Height="26"
+                                <!--
+                                  Written when the field is left or Enter is pressed, not on every
+                                  character. Every write rebuilds these rows — that is how the
+                                  inspector shows what the document now says — and a row rebuilt
+                                  under the caret takes the caret with it, so typing a width meant
+                                  clicking back into the field after every digit.
+                                -->
+                                <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                         Height="26" KeyDown="OnPropertyKeyDown"
                                          IsVisible="{Binding IsText}" IsReadOnly="{Binding IsReadOnly}"
                                          FontFamily="{DynamicResource MonoFont}" FontWeight="Medium" />
 
@@ -876,7 +884,8 @@
                                       </Flyout>
                                     </Button.Flyout>
                                   </Button>
-                                  <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" Height="26"
+                                  <TextBox Grid.Column="1" Height="26" KeyDown="OnPropertyKeyDown"
+                                           Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                            IsReadOnly="{Binding IsReadOnly}"
                                            FontFamily="{DynamicResource MonoFont}" FontWeight="Medium" />
                                 </Grid>
@@ -893,7 +902,7 @@
                           <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:PropertyRow">
                               <StackPanel Margin="0,0,0,8" Spacing="3">
-                                <TextBlock Text="{Binding Name}" FontSize="10.5"
+                                <TextBlock Text="{Binding Heading}" FontSize="10.5"
                                            Foreground="{DynamicResource Fg3}"
                                            TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
 

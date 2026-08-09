@@ -647,6 +647,23 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>Enter writes the value, by leaving the field the way a click elsewhere would.</summary>
+    /// <remarks>
+    /// The binding commits on lost focus, so this does not need to know about bindings: moving the
+    /// focus is the same event, and it leaves the caret somewhere a person expects after Enter.
+    /// </remarks>
+    private void OnPropertyKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter && sender is Control field)
+        {
+            field.Focus(NavigationMethod.Unspecified);
+
+            this.GetControl<DesignEditor>("Surface").Focus();
+
+            e.Handled = true;
+        }
+    }
+
     private void OnProjectFileMenuOpen(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: FileTile file })

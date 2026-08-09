@@ -259,6 +259,30 @@ internal static class StudioCheck
             Fail(ref failures, "redoing every step did not get back to the laid-out form");
         }
 
+        // 4c. Named, because a control nothing can find by name is a control code-behind cannot use.
+        if (Find(designer, "Button") is { } toName)
+        {
+            designer.SelectFromCanvas(form, toName);
+
+            if (designer.Properties.FirstOrDefault(row => row.Name == "x:Name") is not { } named)
+            {
+                Fail(ref failures, "the inspector offers no name for a Button");
+            }
+            else
+            {
+                named.Value = "GoButton";
+
+                if (!await Until(() => Text(form).Contains("x:Name=\"GoButton\"", StringComparison.Ordinal), 30))
+                {
+                    Fail(ref failures, "naming the button never reached the document");
+                }
+                else
+                {
+                    Say($"named the button, and the inspector calls the row \"{named.Heading}\"");
+                }
+            }
+        }
+
         // 5. Saved, so that the build has something to compile.
         designer.SaveCommand.Execute(null);
 

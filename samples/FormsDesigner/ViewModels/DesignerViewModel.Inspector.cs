@@ -119,8 +119,13 @@ public sealed partial class DesignerViewModel
         (typeof(DockPanel), ["DockPanel.Dock"]),
     ];
 
+    /// <summary>How a document names a control.</summary>
+    private const string NameDirective = "x:Name";
+
     private static string GroupOf(string name) => name switch
     {
+        NameDirective => "Identity",
+
         "Width" or "Height" or "MinWidth" or "MinHeight" or "MaxWidth" or "MaxHeight"
             or "Margin" or "Padding" or "HorizontalAlignment" or "VerticalAlignment"
             or "HorizontalContentAlignment" or "VerticalContentAlignment"
@@ -227,6 +232,23 @@ public sealed partial class DesignerViewModel
 
         var offered = new HashSet<string>(StringComparer.Ordinal);
 
+        // The name comes first, and it is offered whether or not the document has one. Every control
+        // can be named and a named control is what code-behind and bindings reach for, so an
+        // inspector that only showed it once somebody had typed it into the file by hand was hiding
+        // the one property that has to be set before the file is useful.
+        //
+        // Written as the directive rather than as the Name property: x:Name is what a document says,
+        // and Avalonia lets a control's Name be set once, which an update to a control that already
+        // has one would fall foul of.
+        offered.Add(NameDirective);
+
+        PropertyRow named = RowFor(
+            element, written.GetValueOrDefault(NameDirective), NameDirective, live, session);
+
+        named.Label = "Name";
+
+        Properties.Add(named);
+
         foreach ((_, string[] names) in Catalogue)
         {
             foreach (string name in names)
@@ -266,7 +288,7 @@ public sealed partial class DesignerViewModel
         // Grouped in the design's order, and a section with nothing in it is not drawn: an inspector
         // showing three empty headings tells somebody the control has no properties, which is the
         // opposite of what it means.
-        foreach (string heading in new[] { "Layout", "Appearance", "Content & Interaction" })
+        foreach (string heading in new[] { "Identity", "Layout", "Appearance", "Content & Interaction" })
         {
             PropertyRow[] rows = [.. Properties.Where(row => GroupOf(row.Name) == heading)];
 

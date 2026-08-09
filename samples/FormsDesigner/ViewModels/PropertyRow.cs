@@ -106,6 +106,16 @@ public sealed class PropertyRow : Observable
 
     public string Name { get; }
 
+    /// <summary>What the row is called on screen, when that is not what it is called in the file.</summary>
+    /// <remarks>
+    /// One name for one thing: <c>x:Name</c> is how a document names a control and "Name" is what a
+    /// person calls it. The row writes the first and shows the second.
+    /// </remarks>
+    public string Label { get; internal set; } = string.Empty;
+
+    /// <summary>The row's heading, which is its label when it has one and its name otherwise.</summary>
+    public string Heading => Label is { Length: > 0 } ? Label : Name;
+
     /// <summary>Whether this is <c>x:Name</c> and its kind rather than an ordinary property.</summary>
     public bool IsDirective { get; }
 

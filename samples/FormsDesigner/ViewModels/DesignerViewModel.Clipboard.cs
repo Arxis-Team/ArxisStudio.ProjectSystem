@@ -88,7 +88,62 @@ public sealed partial class DesignerViewModel
     /// selection when the selection can hold children, and beside it otherwise. Pasting into a
     /// Button would mean replacing its content, which is not what anybody means by paste.
     /// </remarks>
-    private async Task PasteAsync()
+    private async Task PasteAsync() => await PasteCoreAsync();
+
+    /// <summary>
+    /// The markup of a copy, which is the markup of the original without the names in it.
+    /// </summary>
+    /// <remarks>
+    /// A name identifies one control in one form: two controls called <c>GoButton</c> is not a form
+    /// with two buttons, it is a form the loader refuses — and the refusal arrives as an update the
+    /// live tree could not follow, long after the paste looked like it had worked. Rider drops the
+    /// name for the same reason. Every element in the fragment is stripped, not just its root,
+    /// because a copied panel carries its children's names with it.
+    /// <para>
+    /// Parsed and edited rather than pattern-matched out of the text: <c>x:Name</c> can be written
+    /// with any prefix bound to the XAML namespace, and the editor already knows how to take an
+    /// attribute out without disturbing anything around it.
+    /// </para>
+    /// </remarks>
+    private static string WithoutNames(string markup)
+    {
+        try
+        {
+            XamlDocument fragment = XamlDocument.Parse(markup);
+
+            if (fragment.Root is not { } root)
+            {
+                return markup;
+            }
+
+            XamlDocumentEditor editor = fragment.Edit();
+
+            Strip(root);
+
+            return editor.HasChanges ? editor.Apply().SourceText.ToString() : markup;
+
+            void Strip(XamlElement element)
+            {
+                if (element.GetDirectiveAttribute("Name") is { } named)
+                {
+                    editor.RemoveAttribute(element, named.Name);
+                }
+
+                foreach (XamlElement child in element.ContentElements)
+                {
+                    Strip(child);
+                }
+            }
+        }
+        catch (Exception error) when (error is InvalidOperationException or ArgumentException)
+        {
+            // A fragment this cannot parse is a fragment somebody put on the clipboard by hand. It
+            // goes in as it stands and the loader says what is wrong with it.
+            return markup;
+        }
+    }
+
+    private async Task PasteCoreAsync()
     {
         if (ActiveForm is not { Document.Root: { } root } form || TakeFromClipboard is not { } take)
         {
@@ -104,7 +159,10 @@ public sealed partial class DesignerViewModel
 
         (XamlElement parent, int index) = Landing(root);
 
-        await ApplyAsync(form, editor => editor.InsertElement(parent, index, text.Trim()), "paste");
+        await ApplyAsync(
+            form,
+            editor => editor.InsertElement(parent, index, WithoutNames(text.Trim())),
+            "paste");
 
         Log($"Pasted into {parent.Name}.");
     }
@@ -128,7 +186,8 @@ public sealed partial class DesignerViewModel
 
         await ApplyAsync(
             form,
-            editor => editor.InsertElement(parent, index < 0 ? IndexAtEnd(parent) : index + 1, markup),
+            editor => editor.InsertElement(
+                parent, index < 0 ? IndexAtEnd(parent) : index + 1, WithoutNames(markup)),
             $"duplicate {element.Name}");
 
         Log($"Duplicated {element.Name}.");
