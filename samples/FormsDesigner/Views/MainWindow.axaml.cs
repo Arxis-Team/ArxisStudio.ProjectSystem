@@ -174,7 +174,16 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private void OnColourPicked(object? sender, System.EventArgs e)
     {
-        if (sender is Flyout { Target.DataContext: PropertyRow row })
+        if (sender is not Flyout { Target.DataContext: PropertyRow row } || Designer is not { } designer)
+        {
+            return;
+        }
+
+        // Only if this row is still the one the inspector is showing. A flyout also closes because
+        // the rows were rebuilt under it — any edit does that, and the row then holds an element the
+        // document has replaced, whose spans point into text that is no longer there. Writing
+        // through it would address the wrong document; skipping is the only correct answer left.
+        if (designer.Properties.Contains(row))
         {
             row.CommitColour();
         }

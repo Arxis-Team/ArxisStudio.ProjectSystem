@@ -49,35 +49,6 @@ public sealed partial class DesignerViewModel
     /// <summary>What the pause button would do if pressed now.</summary>
     public string PauseTip => IsPaused ? "Resume" : "Pause";
 
-    /// <summary>How many of the running process's threads the system reports as suspended.</summary>
-    /// <remarks>Diagnostic only, and the only way to see from here that a pause actually took.</remarks>
-    internal int SuspendedThreadCount
-    {
-        get
-        {
-            if (_running is not { HasExited: false } process)
-            {
-                return 0;
-            }
-
-            process.Refresh();
-
-            int suspended = 0;
-
-            foreach (ProcessThread thread in process.Threads)
-            {
-                if (OperatingSystem.IsWindows()
-                    && thread.ThreadState == System.Diagnostics.ThreadState.Wait
-                    && thread.WaitReason == ThreadWaitReason.Suspended)
-                {
-                    suspended++;
-                }
-            }
-
-            return suspended;
-        }
-    }
-
     private void InitialiseRun()
     {
         RunCommand = new RelayCommand(() => Run(RunProjectAsync), () => CanOperate() && !IsRunning);

@@ -68,6 +68,7 @@ public sealed partial class DesignerViewModel
             {
                 if (item.FullPath.IsEmpty
                     || !IsMarkup(item.FullPath)
+                    || !IsDesignable(item.FullPath)
                     || !item.FullPath.StartsWith(project.ProjectDirectory))
                 {
                     continue;
@@ -100,6 +101,61 @@ public sealed partial class DesignerViewModel
     private static bool IsMarkup(CanonicalPath file) =>
         file.Extension.Equals(".axaml", StringComparison.OrdinalIgnoreCase)
             || file.Extension.Equals(".xaml", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Avalonia's own roots that declare no control, and so no form.</summary>
+    private static readonly string[] NotAForm =
+        ["Application", "ResourceDictionary", "Styles", "Style", "ControlTheme"];
+
+    /// <summary>
+    /// Whether a markup document is one this designer can put on the canvas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A project's markup is not all forms. <c>App.axaml</c> declares the application — the styles
+    /// and resources every form is then drawn with — and a resource dictionary or a style sheet
+    /// declares no control at all. Loading one produces an object that is not a <c>Control</c>, so
+    /// the canvas showed a card with an error written across it, the tab strip offered it beside the
+    /// real forms, and the status bar counted it as one.
+    /// </para>
+    /// <para>
+    /// The root element is what answers this, and it is read with an XML reader rather than by
+    /// parsing the document: the answer is the first tag, and a designer that parsed every markup
+    /// file in the solution to build a list would pay for it again on every refresh.
+    /// </para>
+    /// <para>
+    /// The list is of Avalonia's own non-visual roots, so a document rooted in anything else is still
+    /// offered — including a control this designer has never heard of. The test on the way in is a
+    /// convenience; the open path remains the authority and still says, in words, when a document
+    /// turned out to produce something that cannot be shown.
+    /// </para>
+    /// </remarks>
+    private static bool IsDesignable(CanonicalPath file)
+    {
+        try
+        {
+            using System.Xml.XmlReader reader = System.Xml.XmlReader.Create(
+                file.Value,
+                new System.Xml.XmlReaderSettings
+                {
+                    DtdProcessing = System.Xml.DtdProcessing.Ignore,
+                    IgnoreComments = true,
+                    IgnoreProcessingInstructions = true,
+                    IgnoreWhitespace = true,
+                });
+
+            return reader.MoveToContent() != System.Xml.XmlNodeType.Element
+                || !NotAForm.Contains(reader.LocalName, StringComparer.Ordinal);
+        }
+        catch (Exception error)
+            when (error is System.IO.IOException
+                or UnauthorizedAccessException
+                or System.Xml.XmlException)
+        {
+            // A file that cannot be read is not a file to hide. Offering it puts the reason in front
+            // of somebody, in words, instead of leaving a document silently missing from the list.
+            return true;
+        }
+    }
 
     /// <summary>
     /// Opens a form: read the file, parse it, build the live objects, put it on the canvas.

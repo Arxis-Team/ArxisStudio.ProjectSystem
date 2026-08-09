@@ -32,7 +32,13 @@
       coordinates, through the editor's own viewport transform.
     -->
     <DataTemplate x:Key="FormChromeTemplate" DataType="vm:FormViewModel">
-      <StackPanel Width="{Binding Width}" Spacing="2">
+      <!--
+        Chrome, and it says so: this is drawn over the canvas rather than inside a panel, so without
+        the class the tool's own type rules do not reach it and its title took the theme's font and
+        colour instead of the designer's. The class stops at this layer, which holds no part of any
+        document — the forms are below it, in the editor.
+      -->
+      <StackPanel Classes="chrome" Width="{Binding Width}" Spacing="2">
 
         <StackPanel Orientation="Horizontal" Spacing="8" Height="20" HorizontalAlignment="Left">
           <TextBlock Text="{Binding Caption}" Classes="mono" FontSize="11" FontWeight="Medium"

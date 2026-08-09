@@ -205,6 +205,11 @@ public sealed partial class DesignerViewModel
             return;
         }
 
-        Log($"! {file.Name} is not markup — this designer opens .axaml and .xaml");
+        // Markup that is not on the list is markup that declares no form -- App.axaml and its kind.
+        // Saying which of the two it is, rather than one message for both, is the difference between
+        // "this designer cannot open that" and "that is not a thing to open".
+        Log(IsMarkup(file.Path)
+            ? $"! {file.Name} declares the application's styles and resources, not a form"
+            : $"! {file.Name} is not markup — this designer opens .axaml and .xaml");
     }
 }
