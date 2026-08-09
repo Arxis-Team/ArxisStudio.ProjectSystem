@@ -83,6 +83,9 @@ public sealed partial class MainWindow : Window
                 designer.PickEntryPoint = PickEntryPointAsync;
                 designer.AskForName = AskForNameAsync;
                 designer.AskToConfirm = AskToConfirmAsync;
+                designer.AskToSave = AskToSaveAsync;
+
+                designer.ZoomToFitRequested += (_, _) => OnZoomToFit(this, new RoutedEventArgs());
                 designer.SearchRequested += (_, _) =>
                     this.GetControl<TextBox>("ToolboxSearch").Focus();
 
@@ -643,8 +646,125 @@ public sealed partial class MainWindow : Window
     {
         if (sender is Control { DataContext: FormViewModel form } && Designer is { } designer)
         {
-            designer.CloseForm(form);
+            designer.CloseForm(form, ask: true);
         }
+    }
+
+    /// <summary>Opens the tree's filter and puts the caret in it.</summary>
+    private void OnFindInTree(object? sender, RoutedEventArgs e)
+    {
+        if (Designer is not { } designer)
+        {
+            return;
+        }
+
+        designer.IsHierarchySearchOpen = !designer.IsHierarchySearchOpen;
+
+        if (designer.IsHierarchySearchOpen)
+        {
+            this.GetControl<TextBox>("TreeSearch").Focus();
+        }
+    }
+
+    /// <summary>
+    /// Fits the form to the window.
+    /// </summary>
+    /// <remarks>
+    /// The zoom that makes the card fit with a margin around it, and then the viewport moved onto
+    /// it. Worked out here rather than in the view model because it is a question about a viewport:
+    /// the editor knows how big it is on screen and the form knows how big it is in its own
+    /// coordinates, and nothing else needs to know either.
+    /// </remarks>
+    private void OnZoomToFit(object? sender, RoutedEventArgs e)
+    {
+        if (Designer is not { ActiveForm: { } form } designer)
+        {
+            return;
+        }
+
+        DesignEditor surface = this.GetControl<DesignEditor>("Surface");
+
+        double width = form.Width;
+        double height = form.Height;
+
+        if (width <= 0 || height <= 0 || surface.Bounds.Width <= 0 || surface.Bounds.Height <= 0)
+        {
+            return;
+        }
+
+        // A tenth of the smaller side as breathing room, and never magnified past life size: a form
+        // smaller than the window is easier to work on at 100% than blown up to fill it.
+        double fit = Math.Min(
+            (surface.Bounds.Width * 0.9) / width,
+            (surface.Bounds.Height * 0.9) / height);
+
+        designer.Zoom = Math.Clamp(fit, 0.1, 1);
+
+        surface.CenterOnSelection();
+    }
+
+    /// <summary>
+    /// Asks what to do with a form that is about to be closed with unsaved edits.
+    /// </summary>
+    /// <remarks>
+    /// Three answers, because two of them are wrong on their own: a dialog without Cancel makes the
+    /// cross on a tab dangerous, and one without Discard makes it impossible to throw away an
+    /// experiment. Cancel is the default, as it is for every question that can lose work.
+    /// </remarks>
+    private async Task<DesignerViewModel.SaveAnswer> AskToSaveAsync(string name)
+    {
+        var save = new Button { Content = "Сохранить" };
+        var discard = new Button { Content = "Не сохранять" };
+        var cancel = new Button { Content = "Отмена", IsCancel = true, IsDefault = true };
+
+        var dialog = new Window
+        {
+            Title = "Несохранённые изменения",
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 14,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = $"В {name} есть правки, которых нет в файле.",
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                    },
+                    new StackPanel
+                    {
+                        Orientation = Avalonia.Layout.Orientation.Horizontal,
+                        Spacing = 6,
+                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                        Children = { save, discard, cancel },
+                    },
+                },
+            },
+        };
+
+        DesignerViewModel.SaveAnswer answer = DesignerViewModel.SaveAnswer.Cancel;
+
+        save.Click += (_, _) =>
+        {
+            answer = DesignerViewModel.SaveAnswer.Save;
+            dialog.Close();
+        };
+
+        discard.Click += (_, _) =>
+        {
+            answer = DesignerViewModel.SaveAnswer.Discard;
+            dialog.Close();
+        };
+
+        cancel.Click += (_, _) => dialog.Close();
+
+        await dialog.ShowDialog(this);
+
+        return answer;
     }
 
     /// <summary>Enter writes the value, by leaving the field the way a click elsewhere would.</summary>

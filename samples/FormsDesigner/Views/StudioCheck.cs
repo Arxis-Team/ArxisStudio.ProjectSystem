@@ -403,6 +403,98 @@ internal static class StudioCheck
             }
         }
 
+        // 8a. The tree's filter, save-all, and a close that asks about unsaved work.
+        int allRows = designer.Hierarchy.Count;
+
+        designer.IsHierarchySearchOpen = true;
+        designer.HierarchyFilter = "Button";
+
+        if (designer.Hierarchy.Count >= allRows || designer.Hierarchy.Count == 0)
+        {
+            Fail(ref failures, $"filtering the tree for Button left {designer.Hierarchy.Count} of {allRows} rows");
+        }
+
+        designer.IsHierarchySearchOpen = false;
+
+        if (designer.Hierarchy.Count != allRows)
+        {
+            Fail(ref failures, "closing the tree's filter did not bring the rows back");
+        }
+        else
+        {
+            Say($"the tree filters to a few rows out of {allRows} and back");
+        }
+
+        // An edit, so that there is something to save and something to ask about.
+        if (Find(designer, "Button") is { } dirtied)
+        {
+            designer.SelectFromCanvas(form, dirtied);
+
+            if (designer.Properties.FirstOrDefault(row => row.Name == "Content") is { } content)
+            {
+                content.Value = "Ещё раз";
+
+                await Until(() => form.IsDirty, 30);
+            }
+        }
+
+        if (!form.IsDirty)
+        {
+            Fail(ref failures, "nothing to save after an edit");
+        }
+        else
+        {
+            designer.SaveAllCommand.Execute(null);
+
+            if (!await Until(() => designer.Forms.All(open => !open.IsDirty), 60))
+            {
+                Fail(ref failures, "save all left a form unsaved");
+            }
+            else
+            {
+                Say("save all wrote every form that had edits");
+            }
+        }
+
+        // Cancel keeps the tab; discard takes it away. Both are asked for.
+        if (Find(designer, "Button") is { } again)
+        {
+            designer.SelectFromCanvas(form, again);
+
+            if (designer.Properties.FirstOrDefault(row => row.Name == "Content") is { } content)
+            {
+                content.Value = "И ещё";
+
+                await Until(() => form.IsDirty, 30);
+            }
+        }
+
+        designer.AskToSave = _ => Task.FromResult(DesignerViewModel.SaveAnswer.Cancel);
+        designer.CloseForm(form, ask: true);
+
+        await Task.Delay(400);
+
+        if (!designer.Forms.Contains(form))
+        {
+            Fail(ref failures, "cancelling the close still closed the form");
+        }
+        else
+        {
+            Say("a close that was cancelled kept the form");
+        }
+
+        designer.AskToSave = _ => Task.FromResult(DesignerViewModel.SaveAnswer.Discard);
+        designer.CloseForm(form, ask: true);
+
+        if (!await Until(() => !designer.Forms.Contains(form), 30))
+        {
+            Fail(ref failures, "discarding the edits did not close the form");
+        }
+        else
+        {
+            Say("a close that discarded the edits closed the form");
+        }
+
         // 9. And the project file, whose change means the evaluation is stale.
         string wasSaying = designer.Status;
 

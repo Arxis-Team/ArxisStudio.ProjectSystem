@@ -163,6 +163,16 @@ public sealed partial class DesignerViewModel
 
     public RelayCommand ZoomResetCommand { get; private set; } = null!;
 
+    /// <summary>Asks the canvas to fit the form to the window.</summary>
+    /// <remarks>
+    /// A command here and the arithmetic in the view, because fitting is a question about a viewport
+    /// — how big the canvas is on screen — and that is the one thing a view model does not know.
+    /// </remarks>
+    public RelayCommand ZoomToFitCommand { get; private set; } = null!;
+
+    /// <summary>Raised when the canvas should fit the form to the window.</summary>
+    public event EventHandler? ZoomToFitRequested;
+
     public RelayCommand ToggleThemeCommand { get; private set; } = null!;
 
     /// <summary>Which pane of the bottom dock is showing.</summary>
@@ -272,6 +282,7 @@ public sealed partial class DesignerViewModel
         ZoomInCommand = new RelayCommand(() => Zoom = Math.Min(4, Zoom * 1.1));
         ZoomOutCommand = new RelayCommand(() => Zoom = Math.Max(0.1, Zoom / 1.1));
         ZoomResetCommand = new RelayCommand(() => Zoom = 1);
+        ZoomToFitCommand = new RelayCommand(() => ZoomToFitRequested?.Invoke(this, EventArgs.Empty));
 
         ToggleThemeCommand = new RelayCommand(SwitchTheme);
 
@@ -313,6 +324,53 @@ public sealed partial class DesignerViewModel
     /// structure — a template's parts are not in it, and neither is anything a control invented for
     /// itself — which is also why every row can be selected and edited.
     /// </remarks>
+    /// <summary>
+    /// What the tree is filtered by, which is the magnifier beside it.
+    /// </summary>
+    /// <remarks>
+    /// A form of thirty controls is a tree nobody scrolls twice, and the name of the one being
+    /// looked for is usually known. Rows are dropped rather than folded away: the indent still says
+    /// how deep each one is, so what is left reads as a tree with the middle taken out rather than a
+    /// flat list.
+    /// </remarks>
+    public string HierarchyFilter
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                Raise(nameof(IsHierarchyFiltered));
+                RebuildHierarchy();
+            }
+        }
+    } = string.Empty;
+
+    /// <summary>Whether the tree is showing part of the form rather than all of it.</summary>
+    public bool IsHierarchyFiltered => HierarchyFilter.Length > 0;
+
+    /// <summary>Whether the filter box is on screen at all.</summary>
+    /// <remarks>
+    /// Hidden until it is asked for, and closing it clears what was typed — a filter left in place
+    /// behind a hidden box is a tree that is missing rows for no reason anybody can see.
+    /// </remarks>
+    public bool IsHierarchySearchOpen
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value) && !value)
+            {
+                HierarchyFilter = string.Empty;
+            }
+        }
+    }
+
+    private bool Matches(HierarchyRow row) =>
+        HierarchyFilter is not { Length: > 0 } filter
+            || row.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || row.TypeLabel.Contains(filter, StringComparison.OrdinalIgnoreCase);
+
     private void RebuildHierarchy()
     {
         Hierarchy.Clear();
@@ -334,8 +392,12 @@ public sealed partial class DesignerViewModel
         void Walk(XamlElement element, int depth)
         {
             List<XamlElement> children = [.. element.ContentElements];
+            var row = new HierarchyRow(element, depth, children.Count > 0);
 
-            Hierarchy.Add(new HierarchyRow(element, depth, children.Count > 0));
+            if (Matches(row))
+            {
+                Hierarchy.Add(row);
+            }
 
             foreach (XamlElement child in children)
             {

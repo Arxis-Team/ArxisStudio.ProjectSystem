@@ -137,7 +137,10 @@ public sealed partial class DesignerViewModel
             return;
         }
 
-        bool structural = e.ChangeType is not WatcherChangeTypes.Changed;
+        // Appearing, going away or being renamed changes what the project consists of. So does a
+        // project file being written to — a reference added by hand in the other editor is a change
+        // to the project and to nothing else, and it arrives as a plain save.
+        bool structural = e.ChangeType is not WatcherChangeTypes.Changed || IsProjectFile(e.FullPath);
 
         string[] paths = e is RenamedEventArgs renamed
             ? [renamed.FullPath, renamed.OldFullPath]
@@ -193,6 +196,9 @@ public sealed partial class DesignerViewModel
             || name.EndsWith('~')
             || name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsProjectFile(string path) =>
+        Path.GetExtension(path).ToUpperInvariant() is ".CSPROJ" or ".SLN" or ".SLNX" or ".PROPS" or ".TARGETS";
 
     private static bool IsMarkupPath(string path) =>
         Path.GetExtension(path).ToUpperInvariant() is ".AXAML" or ".XAML";

@@ -538,7 +538,48 @@ public sealed partial class DesignerViewModel
     /// designer saves on Ctrl+S and a close that silently wrote to a file would be worse.
     /// </para>
     /// </remarks>
-    public void CloseForm(FormViewModel form)
+    public void CloseForm(FormViewModel form) => CloseForm(form, ask: false);
+
+    /// <summary>
+    /// Closes a form, asking about unsaved edits when there is somebody to ask.
+    /// </summary>
+    /// <remarks>
+    /// Asked on the gesture and not asked otherwise. Pressing the cross on a tab with edits in it is
+    /// the one time a person can still change their mind; a form whose file has been deleted
+    /// underneath it has nothing left to save to, and a project being closed has already been
+    /// answered for.
+    /// </remarks>
+    public void CloseForm(FormViewModel form, bool ask)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        if (ask && form.IsDirty && AskToSave is not null)
+        {
+            RunDetached(async () =>
+            {
+                switch (await AskToSave(form.Name))
+                {
+                    case SaveAnswer.Cancel:
+                        return;
+
+                    case SaveAnswer.Save:
+                        await SaveAsync(form);
+                        break;
+
+                    default:
+                        break;
+                }
+
+                CloseForm(form, ask: false);
+            });
+
+            return;
+        }
+
+        CloseFormCore(form);
+    }
+
+    private void CloseFormCore(FormViewModel form)
     {
         int index = Forms.IndexOf(form);
 

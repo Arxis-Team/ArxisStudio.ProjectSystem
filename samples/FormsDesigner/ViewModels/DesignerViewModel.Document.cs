@@ -533,9 +533,12 @@ public sealed partial class DesignerViewModel
     /// editor got here and the document is what it means. A form saved this way keeps every scrap of
     /// formatting the user wrote, because the document was only ever edited where it was edited.
     /// </remarks>
-    private async Task SaveAsync()
+    private async Task SaveAsync() => await SaveAsync(ActiveForm);
+
+    /// <summary>Writes one form back to its file.</summary>
+    private async Task SaveAsync(FormViewModel? which)
     {
-        if (ActiveForm is not { Document: { } document } form)
+        if (which is not { Document: { } document } form)
         {
             return;
         }

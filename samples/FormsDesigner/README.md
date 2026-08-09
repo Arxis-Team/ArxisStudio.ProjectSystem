@@ -136,6 +136,10 @@ Configured as `ArxisStudio.DesignEditor` documents them, mapped for a form desig
 | arrows / `Shift` + arrows | nudge by 1px / 10px, and each press is one edit |
 | `Alt` | bypasses snapping for the length of one gesture |
 | `Delete`, `Esc`, `Ctrl+A` | remove, deselect, select every form |
+| `Ctrl+Z`, `Ctrl+Y` | back through the documents, and forward |
+| `Ctrl+C`, `Ctrl+X`, `Ctrl+V`, `Ctrl+D` | copy, cut, paste, duplicate — copies carry no names |
+| `Ctrl+S`, `Ctrl+Shift+S` | save this form, save every form that has edits |
+| `Ctrl+0` | fit the form to the window |
 
 Snapping is on — to the grid and to the neighbours' edges and centres — and both are checkboxes on
 the toolbar. Resize is contained to the form, because a button hanging outside the window it belongs

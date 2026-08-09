@@ -52,6 +52,10 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         SaveCommand = new RelayCommand(() => Run(SaveAsync), () => CanSave);
         NewFormCommand = new RelayCommand(() => Run(NewFormAsync), () => IsLoaded);
 
+        SaveAllCommand = new RelayCommand(
+            () => Run(SaveAllAsync),
+            () => Forms.Any(form => form.IsDirty));
+
         UndoCommand = new RelayCommand(() => StepHistory(back: true), () => ActiveForm is { CanUndo: true });
         RedoCommand = new RelayCommand(() => StepHistory(back: false), () => ActiveForm is { CanRedo: true });
 
@@ -90,6 +94,9 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
     public RelayCommand SaveCommand { get; }
 
     public RelayCommand NewFormCommand { get; }
+
+    /// <summary>Writes every form that has unsaved edits.</summary>
+    public RelayCommand SaveAllCommand { get; }
 
     /// <summary>Goes back one edit.</summary>
     public RelayCommand UndoCommand { get; }
@@ -428,6 +435,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         RunCommand.RaiseCanExecuteChanged();
         StopCommand.RaiseCanExecuteChanged();
         PauseCommand.RaiseCanExecuteChanged();
+        SaveAllCommand.RaiseCanExecuteChanged();
         UndoCommand.RaiseCanExecuteChanged();
         RedoCommand.RaiseCanExecuteChanged();
         CopyCommand.RaiseCanExecuteChanged();
@@ -435,6 +443,26 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         PasteCommand.RaiseCanExecuteChanged();
         DuplicateCommand.RaiseCanExecuteChanged();
         RefreshPackageCommands();
+    }
+
+    /// <summary>What to do about a form with unsaved edits that is being closed.</summary>
+    public enum SaveAnswer
+    {
+        Save,
+        Discard,
+        Cancel,
+    }
+
+    /// <summary>Asked of the view before unsaved work is thrown away.</summary>
+    public Func<string, Task<SaveAnswer>>? AskToSave { get; set; }
+
+    /// <summary>Writes every form that has something to write.</summary>
+    private async Task SaveAllAsync()
+    {
+        foreach (FormViewModel form in Forms.Where(form => form.IsDirty).ToArray())
+        {
+            await SaveAsync(form);
+        }
     }
 
     /// <summary>Says something in the console. Internal, because the view has things to say too.</summary>
