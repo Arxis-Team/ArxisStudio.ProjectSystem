@@ -404,6 +404,47 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// The load scope puts contextual reflection on the context's own load context.
+    /// </summary>
+    /// <remarks>
+    /// This is what makes the runtime XAML compiler's emitted code bind assembly references inside
+    /// the generation that is loading, rather than in whichever context the process compiled for
+    /// first. The reset half of the scope — Avalonia's own static state — is not asserted here,
+    /// because reaching it would mean running a real XAML compile; the studio's end-to-end check is
+    /// what covers that path.
+    /// </remarks>
+    [Fact]
+    public void EnterLoadScope_PutsContextualReflectionOnThisGeneration()
+    {
+        CanonicalPath output = CopyRealAssembly("scope");
+
+        using ProjectAssemblyContext context = ProjectAssemblyContext.Create(
+            Snapshot(output), Identity("App"), "scope-test");
+
+        Assert.Null(AssemblyLoadContext.CurrentContextualReflectionContext);
+
+        using (context.EnterLoadScope())
+        {
+            Assert.Equal("scope-test", AssemblyLoadContext.CurrentContextualReflectionContext?.Name);
+        }
+
+        Assert.Null(AssemblyLoadContext.CurrentContextualReflectionContext);
+    }
+
+    [Fact]
+    public void EnterLoadScope_RefusesAnUnloadedContext()
+    {
+        CanonicalPath output = CopyRealAssembly("scope-disposed");
+
+        ProjectAssemblyContext context = ProjectAssemblyContext.Create(
+            Snapshot(output), Identity("App"));
+
+        context.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => context.EnterLoadScope());
+    }
+
     private SolutionSnapshot Snapshot(CanonicalPath output)
     {
         var project = new ProjectSnapshotBuilder

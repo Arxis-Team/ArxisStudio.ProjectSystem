@@ -200,6 +200,99 @@ public sealed class ProjectAssemblyContext : IDisposable
         }
     }
 
+    /// <summary>
+    /// Puts the process's runtime XAML compiler into this context for the length of a load.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Avalonia's runtime XAML compiler keeps one reflection-emit type system for the whole process:
+    /// created on the first load, never replaced, and remembering every assembly by simple name.
+    /// The generated code references the document's types through it — so after a rebuild, a class
+    /// that exists only in the new build is compiled against the copy the process saw first, and
+    /// creating the object fails with <c>Could not load type</c> naming an assembly that plainly
+    /// contains the type. The designer's whole reason for collectible contexts is that a rebuilt
+    /// assembly is a different assembly; the compiler's cache is the one place that disagreed.
+    /// </para>
+    /// <para>
+    /// So a load runs inside this scope. Entering it does two things: if the compiler's emitted
+    /// state lives in some other context — an older generation, or the default — that state is
+    /// reset, so the next load rebuilds it from scratch; and contextual reflection is entered on
+    /// this context, so the rebuilt dynamic assembly is created <em>inside</em> it and every
+    /// assembly reference the generated code makes binds here first. Two open forms from two
+    /// generations each re-enter their own context, at the cost of the compiler re-initialising
+    /// when the generation actually changes.
+    /// </para>
+    /// <para>
+    /// The reset reaches into the compiler's non-public state by name, which is as fragile as it
+    /// sounds and is recorded as such: if a future Avalonia renames the fields, the reset quietly
+    /// does nothing and the pre-existing behaviour returns — stale, but not broken in any new way.
+    /// See <c>docs/adr/0020-the-adapter-resets-avalonias-runtime-xaml-compiler.md</c>.
+    /// </para>
+    /// </remarks>
+    /// <returns>The scope to dispose when the load is done.</returns>
+    /// <exception cref="ObjectDisposedException">This context has been unloaded.</exception>
+    public IDisposable EnterLoadScope()
+    {
+        ObjectDisposedException.ThrowIf(IsUnloaded, this);
+
+        RuntimeXamlCompiler.EnsureEmittedIn(_context);
+
+        return new LoadScope(_context.EnterContextualReflection());
+    }
+
+    private sealed class LoadScope(AssemblyLoadContext.ContextualReflectionScope scope) : IDisposable
+    {
+        public void Dispose() => scope.Dispose();
+    }
+
+    /// <summary>The runtime compiler's static state, reached the only way it can be.</summary>
+    private static class RuntimeXamlCompiler
+    {
+        private static readonly Lock Sync = new();
+
+        private static readonly Type? Compiler = Type.GetType(
+            "Avalonia.Markup.Xaml.XamlIl.AvaloniaXamlIlRuntimeCompiler, Avalonia.Markup.Xaml.Loader",
+            throwOnError: false);
+
+        /// <summary>Every piece of emitted state, of which <c>_sreAsm</c> says where it lives.</summary>
+        private static readonly System.Reflection.FieldInfo[] State = Compiler is null
+            ? []
+            : [.. System.Linq.Enumerable.Where(
+                Compiler.GetFields(
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic),
+                field => field.Name.StartsWith("_sre", StringComparison.Ordinal)
+                    && !field.FieldType.IsValueType)];
+
+        internal static void EnsureEmittedIn(AssemblyLoadContext context)
+        {
+            lock (Sync)
+            {
+                foreach (System.Reflection.FieldInfo field in State)
+                {
+                    if (field.Name == "_sreAsm" && field.GetValue(null) is Assembly emitted)
+                    {
+                        if (ReferenceEquals(AssemblyLoadContext.GetLoadContext(emitted), context))
+                        {
+                            return;
+                        }
+
+                        Reset();
+
+                        return;
+                    }
+                }
+            }
+        }
+
+        private static void Reset()
+        {
+            foreach (System.Reflection.FieldInfo field in State)
+            {
+                field.SetValue(null, null);
+            }
+        }
+    }
+
     /// <summary>Unloads the context, so a rebuild of the same project can be loaded next.</summary>
     /// <remarks>
     /// Asks; it cannot insist. The runtime frees a collectible context only once nothing refers to
