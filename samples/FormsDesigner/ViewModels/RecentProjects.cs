@@ -86,7 +86,25 @@ public sealed record RecentProject(string Name, string Path, DateTimeOffset Open
         }
     }
 
-    private static readonly System.Globalization.CultureInfo Culture = new("ru-RU");
+    /// <summary>The culture the dates are written in, when the machine has it.</summary>
+    /// <remarks>
+    /// Resolved defensively, because this runs in a static initializer: a culture that cannot be
+    /// found — invariant-globalization mode strips them all — would otherwise take the type down,
+    /// and the welcome screen with it, over a date format.
+    /// </remarks>
+    private static readonly System.Globalization.CultureInfo Culture = ResolveCulture();
+
+    private static System.Globalization.CultureInfo ResolveCulture()
+    {
+        try
+        {
+            return System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
+        }
+        catch (System.Globalization.CultureNotFoundException)
+        {
+            return System.Globalization.CultureInfo.InvariantCulture;
+        }
+    }
 
     /// <summary>Whether the project is still where it was when it was last opened.</summary>
     public bool Exists => File.Exists(Path);
