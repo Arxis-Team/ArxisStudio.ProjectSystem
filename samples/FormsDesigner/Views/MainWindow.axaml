@@ -643,6 +643,19 @@
                               Background="Transparent" Cursor="Hand"
                               DoubleTapped="OnProjectFileOpened"
                               ToolTip.Tip="Double-click to open">
+                        <!--
+                          What can be done to a file, on the button that asks. Delete is offered for
+                          markup only, because a form is what this designer knows how to take apart:
+                          the document, its code-behind and whatever has it open.
+                        -->
+                        <Border.ContextFlyout>
+                          <MenuFlyout>
+                            <MenuItem Header="Открыть" Click="OnProjectFileMenuOpen"
+                                      IsVisible="{Binding IsMarkup}" />
+                            <MenuItem Header="Удалить форму…" Click="OnProjectFileDeleted"
+                                      IsVisible="{Binding IsMarkup}" />
+                          </MenuFlyout>
+                        </Border.ContextFlyout>
                         <StackPanel Spacing="6" HorizontalAlignment="Center">
                           <Path Data="{Binding Glyph}" Width="26" Height="26" Stretch="Uniform"
                                 StrokeThickness="1.1" HorizontalAlignment="Center"

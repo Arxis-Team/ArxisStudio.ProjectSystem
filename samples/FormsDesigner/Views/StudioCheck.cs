@@ -317,6 +317,46 @@ internal static class StudioCheck
             await Until(() => !designer.IsRunning, 30);
         }
 
+        // 8. A form added and taken away again, which is the other half of a project panel.
+        designer.AskForName = _ => Task.FromResult<string?>("SecondForm");
+
+        designer.NewFormCommand.Execute(null);
+
+        if (!await Until(() => designer.ProjectForms.Any(entry => entry.Name == "SecondForm.axaml"), 180))
+        {
+            Fail(ref failures, "the new form never appeared in the project");
+        }
+        else
+        {
+            string added = designer.ProjectForms.First(entry => entry.Name == "SecondForm.axaml").Path.Value;
+
+            designer.AskToConfirm = (_, _) => Task.FromResult(true);
+
+            if (System.Linq.Enumerable.FirstOrDefault(
+                designer.ProjectFiles, tile => tile.Name == "SecondForm.axaml") is not { } offered)
+            {
+                Fail(ref failures, "the new form is not a tile in the project pane");
+            }
+            else
+            {
+                designer.DeleteFile(offered);
+
+                if (!await Until(() => !System.IO.File.Exists(added), 60))
+                {
+                    Fail(ref failures, "the form was not deleted from disk");
+                }
+                else if (!await Until(
+                    () => designer.ProjectForms.All(entry => entry.Name != "SecondForm.axaml"), 180))
+                {
+                    Fail(ref failures, "the deleted form is still listed in the project");
+                }
+                else
+                {
+                    Say("a second form was created and deleted again");
+                }
+            }
+        }
+
         return failures;
     }
 

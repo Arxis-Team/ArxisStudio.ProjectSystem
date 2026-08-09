@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
@@ -27,6 +28,11 @@ public sealed class FileTile(string name, CanonicalPath path, Geometry glyph, st
     public Geometry Glyph { get; } = glyph;
 
     public string Hue { get; } = hue;
+
+    /// <summary>Whether this is markup, and so a form the designer can open and delete.</summary>
+    public bool IsMarkup =>
+        Path.Extension.Equals(".axaml", StringComparison.OrdinalIgnoreCase)
+            || Path.Extension.Equals(".xaml", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Whether this file has a tab, which the grid shows without anybody having to look up.</summary>
     public bool IsOpen
@@ -222,6 +228,83 @@ public sealed partial class DesignerViewModel
                 tile.IsOpen = Forms.Any(form => form.File == tile.Path);
             }
         }
+    }
+
+    /// <summary>Asked of the view: a yes before something on disk is destroyed.</summary>
+    public Func<string, string, Task<bool>>? AskToConfirm { get; set; }
+
+    /// <summary>Deletes a form, the file and its code-behind. Called by the view.</summary>
+    public void DeleteFile(FileTile file) => RunDetached(() => DeleteFileAsync(file));
+
+    /// <summary>
+    /// Takes a form out of the project.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The code-behind goes with it. A form is two files that only mean anything together — a
+    /// <c>MainWindow.axaml</c> with no <c>MainWindow.axaml.cs</c> leaves a partial class nothing
+    /// completes, and the project stops compiling for a reason the person who deleted one file will
+    /// not connect to it. Both are named in the question, so nobody is surprised by the second.
+    /// </para>
+    /// <para>
+    /// Asked before, because this is the one thing this designer does that cannot be undone: Ctrl+Z
+    /// goes back through documents, and a document whose file is gone is not one of them.
+    /// </para>
+    /// <para>
+    /// The workspace is re-read afterwards rather than the lists edited by hand. The project's items
+    /// come from an evaluation, so a file that has gone is still one of them until the evaluation
+    /// says otherwise — the same reason a newly created form needs a refresh before it can be
+    /// opened.
+    /// </para>
+    /// </remarks>
+    private async Task DeleteFileAsync(FileTile file)
+    {
+        if (!file.IsMarkup)
+        {
+            Log($"! {file.Name} is not a form — this designer deletes the forms it can open");
+
+            return;
+        }
+
+        string codeBehind = file.Path.Value + ".cs";
+        bool hasCodeBehind = System.IO.File.Exists(codeBehind);
+
+        string what = hasCodeBehind
+            ? $"{file.Name} и {file.Name}.cs будут удалены с диска."
+            : $"{file.Name} будет удалён с диска.";
+
+        if (AskToConfirm is null
+            || !await AskToConfirm("Удалить форму", what + " Отменить это будет нельзя."))
+        {
+            return;
+        }
+
+        // Closed first. Deleting the file under an open form would leave a tab editing a document
+        // with nowhere to save to, and the canvas showing a form that no longer exists.
+        if (Forms.FirstOrDefault(form => form.File == file.Path) is { } open)
+        {
+            CloseForm(open);
+        }
+
+        try
+        {
+            System.IO.File.Delete(file.Path.Value);
+
+            if (hasCodeBehind)
+            {
+                System.IO.File.Delete(codeBehind);
+            }
+        }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException)
+        {
+            Log($"! {file.Name} could not be deleted: {error.Message}");
+
+            return;
+        }
+
+        Log($"Deleted {file.Name}{(hasCodeBehind ? " and its code-behind" : string.Empty)}.");
+
+        await _workspace.RefreshAsync(_shutdown.Token);
     }
 
     public void OpenFile(FileTile file)

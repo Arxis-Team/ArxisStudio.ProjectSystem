@@ -54,6 +54,7 @@ public sealed partial class MainWindow : Window
             {
                 designer.PickEntryPoint = PickEntryPointAsync;
                 designer.AskForName = AskForNameAsync;
+                designer.AskToConfirm = AskToConfirmAsync;
                 designer.SearchRequested += (_, _) =>
                     this.GetControl<TextBox>("ToolboxSearch").Focus();
 
@@ -561,6 +562,74 @@ public sealed partial class MainWindow : Window
         {
             designer.CloseForm(form);
         }
+    }
+
+    private void OnProjectFileMenuOpen(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: FileTile file })
+        {
+            Designer?.OpenFile(file);
+        }
+    }
+
+    private void OnProjectFileDeleted(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: FileTile file })
+        {
+            Designer?.DeleteFile(file);
+        }
+    }
+
+    /// <summary>
+    /// Asks a yes-or-no question before something is destroyed.
+    /// </summary>
+    /// <remarks>
+    /// Cancel is the default button, because the answer to a question nobody read should be the one
+    /// that changes nothing.
+    /// </remarks>
+    private async Task<bool> AskToConfirmAsync(string title, string question)
+    {
+        var yes = new Button { Content = "Удалить" };
+        var no = new Button { Content = "Отмена", IsCancel = true, IsDefault = true };
+
+        var dialog = new Window
+        {
+            Title = title,
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 14,
+                Children =
+                {
+                    new TextBlock { Text = question, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                    new StackPanel
+                    {
+                        Orientation = Avalonia.Layout.Orientation.Horizontal,
+                        Spacing = 6,
+                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                        Children = { yes, no },
+                    },
+                },
+            },
+        };
+
+        var answer = false;
+
+        yes.Click += (_, _) =>
+        {
+            answer = true;
+            dialog.Close();
+        };
+
+        no.Click += (_, _) => dialog.Close();
+
+        await dialog.ShowDialog(this);
+
+        return answer;
     }
 
     private void OnProjectFileOpened(object? sender, TappedEventArgs e)
