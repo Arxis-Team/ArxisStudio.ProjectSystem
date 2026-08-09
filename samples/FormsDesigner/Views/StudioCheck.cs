@@ -394,6 +394,25 @@ internal static class StudioCheck
                 Say("the new form is a window with a class and a code-behind");
             }
 
+            // And it opened. A form whose class the project has not compiled yet is the one every
+            // designer gets wrong: the assembly is there, so nothing looks stale, and the load
+            // answers that x:Class names a type no assembly has.
+            if (!await Until(
+                () => designer.Forms.FirstOrDefault(open => open.Name == "SecondForm.axaml")
+                    is { Problem: null, Root: not null },
+                240))
+            {
+                Fail(
+                    ref failures,
+                    "the new window did not load: "
+                        + (designer.Forms.FirstOrDefault(open => open.Name == "SecondForm.axaml")?.Problem
+                            ?? "it never opened"));
+            }
+            else
+            {
+                Say("the new window loaded, class and all");
+            }
+
             designer.AskToConfirm = (_, _) => Task.FromResult(true);
 
             if (System.Linq.Enumerable.FirstOrDefault(

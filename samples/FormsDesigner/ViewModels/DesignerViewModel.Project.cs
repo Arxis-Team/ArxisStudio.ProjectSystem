@@ -226,7 +226,7 @@ public sealed partial class DesignerViewModel
         // project nobody has compiled does not exist -- so opening a form in a freshly created
         // application failed with "unable to resolve type", which is true, unactionable, and the
         // first thing anybody sees. Building is what a designer does about it.
-        if (NeedsBuilding(snapshot, form.Project, document))
+        if (NeedsBuilding(snapshot, form.Project, document, form.Path))
         {
             snapshot = await BuildBeforeOpeningAsync(snapshot, form.Project) ?? snapshot;
         }
@@ -278,14 +278,27 @@ public sealed partial class DesignerViewModel
     /// Whether this document needs the project compiled before it can produce anything.
     /// </summary>
     /// <remarks>
-    /// Two conditions, and both matter. A document with no <c>x:Class</c> names no type of the
-    /// project's and loads out of Avalonia alone, so building for it would be a wait bought with
-    /// nothing. And a project whose assembly is already there does not need building again — the
-    /// designer is not a build system and pressing Build is still the user's to do when they have
-    /// changed code.
+    /// <para>
+    /// A document with no <c>x:Class</c> names no type of the project's and loads out of Avalonia
+    /// alone, so building for it would be a wait bought with nothing. One that names a class needs
+    /// that class to exist, which means an assembly — and, less obviously, an assembly built since
+    /// the class was last written.
+    /// </para>
+    /// <para>
+    /// That second half is what a freshly created form fell through. The project had been built, so
+    /// the assembly was there and the designer went straight to loading — into an assembly compiled
+    /// before the form's own code-behind existed, which answered exactly as it should have:
+    /// <c>x:Class names 'App.NewWindow', which was not found in any assembly</c>. It is the same for
+    /// a form whose code-behind was edited in the other editor since the last build.
+    /// </para>
+    /// <para>
+    /// Compared by time rather than by asking what is in the assembly: the assembly this would have
+    /// to inspect is the one the designer is about to load, and loading it to find out whether it is
+    /// worth loading is a circle. A file's timestamp answers the same question from outside.
+    /// </para>
     /// </remarks>
     private static bool NeedsBuilding(
-        SolutionSnapshot snapshot, ProjectIdentity project, XamlDocument document)
+        SolutionSnapshot snapshot, ProjectIdentity project, XamlDocument document, CanonicalPath file)
     {
         if (document.Root?.GetDirective("Class") is not { Length: > 0 })
         {
@@ -297,8 +310,18 @@ public sealed partial class DesignerViewModel
             return false;
         }
 
-        return owner.Outputs.FirstOrDefault(o => o.Kind == OutputArtifactKind.Assembly) is not { } assembly
-            || !System.IO.File.Exists(assembly.Path.Value);
+        if (owner.Outputs.FirstOrDefault(o => o.Kind == OutputArtifactKind.Assembly) is not { } assembly
+            || !System.IO.File.Exists(assembly.Path.Value))
+        {
+            return true;
+        }
+
+        DateTime built = System.IO.File.GetLastWriteTimeUtc(assembly.Path.Value);
+
+        return Written(file.Value + ".cs") > built || Written(file.Value) > built;
+
+        static DateTime Written(string path) =>
+            System.IO.File.Exists(path) ? System.IO.File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
     }
 
     /// <summary>
@@ -378,8 +401,21 @@ public sealed partial class DesignerViewModel
         // is for looking at: Design.DataContext, d:DesignWidth, the lot.
         var options = new XamlLoadOptions { Mode = XamlLoadMode.Design };
 
-        (XamlLoadSession? session, XamlLoadResult result) =
-            await XamlLoadSession.TryCreateAsync(document, environment, options, _shutdown.Token);
+        // Inside the generation's load scope, so the runtime XAML compiler emits into this
+        // generation's context rather than whichever one it saw first — see
+        // ProjectAssemblyContext.EnterLoadScope for the failure this prevents.
+        ProjectAssemblyContext? generation = _assemblies;
+
+        XamlLoadSession? session;
+        XamlLoadResult result;
+
+        using (generation?.EnterLoadScope())
+        {
+            (session, result) =
+                await XamlLoadSession.TryCreateAsync(document, environment, options, _shutdown.Token);
+        }
+
+        form.Assemblies = generation;
 
         ShowMarkupDiagnostics(result.Diagnostics, text, form.File);
 
@@ -476,10 +512,20 @@ public sealed partial class DesignerViewModel
             return _environment;
         }
 
-        _assemblies?.Dispose();
+        // The old generation is retired, not disposed: forms loaded under it are still open, their
+        // sessions still resolve through it, and an edit on one of them re-enters its load scope.
+        // Disposing it here made that edit throw ObjectDisposedException — the form looked frozen
+        // and the close-question never fired because the edit that would have made it dirty was the
+        // thing that failed. A generation dies when the last form using it closes.
+        if (_assemblies is { } previous)
+        {
+            _retired.Add(previous);
+        }
 
         (_environment, _assemblies) = ProjectXamlEnvironment.CreateFor(snapshot, project);
         _environmentProject = project;
+
+        SweepRetired();
 
         Log($"  load context “{_assemblies.Name}” — {_assemblies.Assemblies.Length} assemblies");
 
@@ -599,7 +645,32 @@ public sealed partial class DesignerViewModel
 
         Log($"Closed {form.Name}.");
 
-        RunDetached(async () => await form.DisposeAsync());
+        RunDetached(async () =>
+        {
+            await form.DisposeAsync();
+
+            // The form may have been the last user of a retired generation.
+            SweepRetired();
+        });
+    }
+
+    /// <summary>Generations that have been superseded but may still be in use by an open form.</summary>
+    private readonly List<ProjectAssemblyContext> _retired = [];
+
+    /// <summary>Disposes every retired generation no open form is loaded under.</summary>
+    private void SweepRetired()
+    {
+        for (int index = _retired.Count - 1; index >= 0; index--)
+        {
+            ProjectAssemblyContext retired = _retired[index];
+
+            if (Forms.All(form => !ReferenceEquals(form.Assemblies, retired)))
+            {
+                retired.Dispose();
+
+                _retired.RemoveAt(index);
+            }
+        }
     }
 
     private void CloseAllForms()
@@ -610,6 +681,13 @@ public sealed partial class DesignerViewModel
         }
 
         Forms.Clear();
+
+        foreach (ProjectAssemblyContext retired in _retired)
+        {
+            retired.Dispose();
+        }
+
+        _retired.Clear();
 
         _assemblies?.Dispose();
         _assemblies = null;

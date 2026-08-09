@@ -316,6 +316,15 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
 
     internal XamlLoadSession? Session { get; private set; }
 
+    /// <summary>The assembly generation this form was loaded under.</summary>
+    /// <remarks>
+    /// Kept so that every later load through this form's session — an inspector edit, a reload from
+    /// disk — can re-enter the same generation's load scope. Two open forms from two generations
+    /// each compile in their own context; without this, whichever loaded last would claim the
+    /// runtime compiler for both.
+    /// </remarks>
+    internal ArxisStudio.ProjectSystem.Markup.Xaml.ProjectAssemblyContext? Assemblies { get; set; }
+
     /// <summary>
     /// Puts a freshly loaded session in place of whatever was there.
     /// </summary>

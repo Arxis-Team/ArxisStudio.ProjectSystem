@@ -231,7 +231,14 @@ public sealed partial class DesignerViewModel
         // second half.
         form.Surface.Detach();
 
-        XamlUpdateResult result = await session.ApplyDocumentUpdateAsync(updated, _shutdown.Token);
+        // Inside the generation this form was loaded under: an update compiles markup too, and the
+        // runtime compiler must emit into the same context the form's types live in.
+        XamlUpdateResult result;
+
+        using (form.Assemblies?.EnterLoadScope())
+        {
+            result = await session.ApplyDocumentUpdateAsync(updated, _shutdown.Token);
+        }
 
         form.Adopt(session.Document);
         form.Restated();
