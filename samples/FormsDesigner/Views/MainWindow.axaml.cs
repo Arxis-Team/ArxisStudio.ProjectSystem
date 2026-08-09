@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using ArxisStudio;
 using ArxisStudio.Markup.Xaml;
@@ -6,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using FormsDesigner.ViewModels;
@@ -30,6 +32,19 @@ public sealed partial class MainWindow : Window
         AvaloniaXamlLoader.Load(this);
 
         DesignEditor surface = this.GetControl<DesignEditor>("Surface");
+        AvaloniaEdit.TextEditor markup = this.GetControl<AvaloniaEdit.TextEditor>("XamlView");
+
+        // The editor's own XML rules, which is what "colour a tag differently from its attributes"
+        // means without this file inventing a second definition of XAML.
+        markup.SyntaxHighlighting =
+            AvaloniaEdit.Highlighting.HighlightingManager.Instance.GetDefinition("XML");
+
+        // Painted once the window is up, not here: a window that is not attached yet finds none of
+        // the application's resources, so every colour asked for in a constructor comes back unset.
+        Opened += (_, _) => PaintMarkup(markup);
+
+        // And again when the palette changes, because the colours come out of it.
+        ActualThemeVariantChanged += (_, _) => PaintMarkup(markup);
         ItemsControl toolbox = this.GetControl<ItemsControl>("ToolboxList");
 
         surface.DesignSelectionChanged += OnDesignSelectionChanged;
@@ -52,6 +67,19 @@ public sealed partial class MainWindow : Window
         {
             if (DataContext is DesignerViewModel designer)
             {
+                // The pane follows the document rather than binding to it: TextEditor keeps its text
+                // in a document of its own, and assigning only what changed keeps the caret and the
+                // scroll position where the reader left them.
+                ShowMarkup(markup, designer.DocumentText);
+
+                designer.PropertyChanged += (_, changed) =>
+                {
+                    if (changed.PropertyName == nameof(DesignerViewModel.DocumentText))
+                    {
+                        ShowMarkup(markup, designer.DocumentText);
+                    }
+                };
+
                 designer.PickEntryPoint = PickEntryPointAsync;
                 designer.AskForName = AskForNameAsync;
                 designer.AskToConfirm = AskToConfirmAsync;
@@ -97,6 +125,61 @@ public sealed partial class MainWindow : Window
     }
 
     private DesignerViewModel? Designer => DataContext as DesignerViewModel;
+
+    /// <summary>
+    /// Repaints the XAML pane's highlighting in the design's own colours.
+    /// </summary>
+    /// <remarks>
+    /// The editor's XML rules are written for a white page: on this background an attribute value
+    /// came out dark red on near-black and a tag name dark blue, which is a pane nobody can read.
+    /// The rules are kept — what a tag is and where a value starts is exactly what they know — and
+    /// only the colours are replaced, taken from the same tokens as the rest of the window, so the
+    /// pane follows the light and dark palettes with everything else.
+    /// </remarks>
+    private void PaintMarkup(AvaloniaEdit.TextEditor editor)
+    {
+        if (editor.SyntaxHighlighting is not { } rules)
+        {
+            return;
+        }
+
+        Paint("XmlTag", "Pur");
+        Paint("AttributeName", "Acc");
+        Paint("AttributeValue", "Grn");
+        Paint("Comment", "Fg3");
+        Paint("XmlDeclaration", "Fg2");
+        Paint("DocType", "Fg2");
+        Paint("CData", "Yel");
+        Paint("Entity", "Yel");
+        Paint("BrokenEntity", "Red");
+
+        // Re-assigned so the view re-reads the colours it had already cached.
+        editor.SyntaxHighlighting = rules;
+        editor.TextArea.TextView.Redraw();
+
+        void Paint(string token, string key)
+        {
+            // Asked with the variant, because the palette lives in theme dictionaries: a lookup
+            // that does not say which variant it wants finds nothing at all in one.
+            if (rules.GetNamedColor(token) is not { } colour
+                || !this.TryFindResource(key, ActualThemeVariant, out object? resource)
+                || resource is not ISolidColorBrush brush)
+            {
+                return;
+            }
+
+            colour.Foreground = new AvaloniaEdit.Highlighting.SimpleHighlightingBrush(brush.Color);
+        }
+    }
+
+    /// <summary>Puts the document in the XAML pane, and only when it is not already there.</summary>
+    private static void ShowMarkup(AvaloniaEdit.TextEditor editor, string markup)
+    {
+        if (!string.Equals(editor.Text, markup, StringComparison.Ordinal))
+        {
+            editor.Text = markup;
+        }
+    }
 
 
     /// <summary>

@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:FormsDesigner.ViewModels"
+        xmlns:edit="using:AvaloniaEdit"
         xmlns:design="clr-namespace:ArxisStudio;assembly=ArxisStudio.DesignEditor"
         x:Class="FormsDesigner.Views.MainWindow"
         x:DataType="vm:DesignerViewModel"
@@ -537,9 +538,27 @@
 
           <Border Classes="chrome" Grid.Column="2" IsVisible="{Binding IsXamlVisible}" Width="520"
                   Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}" BorderThickness="1,0,0,0">
-            <ScrollViewer>
-              <TextBlock Text="{Binding DocumentText}" Classes="mono" TextWrapping="NoWrap" Margin="14,10" />
-            </ScrollViewer>
+            <!--
+              A code editor rather than a text block. The pane used to be one long line per line of
+              markup with nothing to scroll it sideways, so a document whose attributes ran past the
+              pane's width was simply cut off — and every one of them does. This brings the two
+              things a person reading XAML needs: the text laid out as code, and colour that
+              separates a tag from an attribute from a value.
+
+              Read-only on purpose. The document is edited through the canvas and the inspector, and
+              a pane that also accepted typing would be a second editor of the same file with no
+              answer for what happens when both change it.
+            -->
+            <edit:TextEditor x:Name="XamlView"
+                             IsReadOnly="True"
+                             ShowLineNumbers="True"
+                             FontFamily="{DynamicResource MonoFont}"
+                             FontSize="11.5"
+                             Background="Transparent"
+                             Foreground="{DynamicResource Fg}"
+                             HorizontalScrollBarVisibility="Auto"
+                             VerticalScrollBarVisibility="Auto"
+                             Padding="8,8,8,8" />
           </Border>
 
         </Grid>

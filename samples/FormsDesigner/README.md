@@ -148,6 +148,23 @@ document. It uses the request's `Anchor` rather than its index, because the edit
 children and the document counts its content elements, and the two disagree the moment a parent
 holds a property element — which a `Grid` with row definitions does.
 
+## The XAML pane
+
+`AvaloniaEdit`, read-only, with line numbers and the editor's own XML rules. It used to be a text
+block with nowhere to scroll sideways, so a document whose attributes ran past the pane's width was
+simply cut off — and every one of them does.
+
+Only the colours are replaced, and they come from the same tokens as the rest of the window, so the
+pane follows the light and dark palettes with everything else. Two things about that are worth
+knowing, because both cost an attempt: a window that is not attached yet finds none of the
+application's resources, so the painting happens on `Opened` rather than in the constructor; and the
+palette lives in theme dictionaries, so a lookup that does not say which variant it wants finds
+nothing in one.
+
+It stays read-only on purpose. The document is edited through the canvas and the inspector, and a
+pane that also accepted typing would be a second editor of the same file with no answer for what
+happens when both change it.
+
 ## Making an application in it
 
 New Project writes a real Avalonia application — `csproj`, `Program`, `App`, a window and a view

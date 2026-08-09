@@ -16,6 +16,9 @@
     -->
     <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
 
+    <!-- And the XAML pane's editor, for the same reason: its template ships with it. -->
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+
     <StyleInclude Source="avares://FormsDesigner/Views/Styles.axaml" />
   </Application.Styles>
 

@@ -43,6 +43,10 @@ public sealed partial class App : Application
             int shot = Array.IndexOf(args, "--shot");
             string? shotPath = shot >= 0 && shot + 1 < args.Length ? args[shot + 1] : null;
 
+            // Which of the three the middle shows, so that a screenshot can be of the XAML pane.
+            int view = Array.IndexOf(args, "--view");
+            string? viewName = view >= 0 && view + 1 < args.Length ? args[view + 1] : null;
+
             int verify = Array.IndexOf(args, "--verify");
 
             if (verify >= 0 && verify + 1 < args.Length)
@@ -57,7 +61,7 @@ public sealed partial class App : Application
             }
             else if (Positional(args) is [{ Length: > 0 } path, .. var rest])
             {
-                desktop.MainWindow = Designer(desktop, path, rest.FirstOrDefault(), shotPath);
+                desktop.MainWindow = Designer(desktop, path, rest.FirstOrDefault(), shotPath, viewName);
             }
             else
             {
@@ -70,7 +74,7 @@ public sealed partial class App : Application
 
                 ((WelcomeViewModel)welcome.DataContext).ProjectChosen += (_, chosen) =>
                 {
-                    MainWindow designer = Designer(desktop, chosen, form: null, shotPath: null);
+                    MainWindow designer = Designer(desktop, chosen, form: null, shotPath: null, viewName: null);
 
                     desktop.MainWindow = designer;
 
@@ -90,10 +94,21 @@ public sealed partial class App : Application
         IClassicDesktopStyleApplicationLifetime desktop,
         string path,
         string? form,
-        string? shotPath)
+        string? shotPath,
+        string? viewName)
     {
         var model = new DesignerViewModel();
         var window = new MainWindow { DataContext = model };
+
+        if (viewName is { Length: > 0 })
+        {
+            model.View = viewName.ToUpperInvariant() switch
+            {
+                "XAML" => DocumentView.Xaml,
+                "SPLIT" => DocumentView.Split,
+                _ => DocumentView.Design,
+            };
+        }
 
         if (shotPath is { Length: > 0 })
         {
@@ -108,7 +123,7 @@ public sealed partial class App : Application
     }
 
     /// <summary>The arguments that are not a switch and are not a switch's value.</summary>
-    /// <remarks>Every switch this sample takes takes a value: `--shot` and `--verify`.</remarks>
+    /// <remarks>Every switch this sample takes takes a value: `--shot`, `--verify` and `--view`.</remarks>
     private static string[] Positional(string[] args)
     {
         var positional = new List<string>();

@@ -89,6 +89,12 @@
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.1" />
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.1" />
     <PackageVersion Include="Avalonia.Controls.ColorPicker" Version="12.1.1" />
+
+    <!--
+      The XAML pane's editor. Its own major follows Avalonia's, and 12.0.0 asks for Avalonia 12.0.0,
+      which the 12.1.1 above satisfies — one Avalonia in the process, which is the rule that matters.
+    -->
+    <PackageVersion Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
   </ItemGroup>
 
 </Project>
