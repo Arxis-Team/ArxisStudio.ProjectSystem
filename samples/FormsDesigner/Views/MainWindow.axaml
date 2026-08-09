@@ -147,12 +147,18 @@
           </StackPanel>
         </Border>
 
-        <Border Grid.Column="3" Height="28" CornerRadius="6" Padding="10,0" Margin="8,0,0,0"
+        <!--
+          The configuration is chosen, not displayed. Changing it reloads the solution, because it is
+          an evaluation input rather than a label: output paths and conditioned items move with it.
+        -->
+        <Border Grid.Column="3" Height="28" CornerRadius="6" Padding="10,0,2,0" Margin="8,0,0,0"
                 VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-            <TextBlock Text="{Binding ConfigurationName}" FontSize="12" Foreground="{DynamicResource Fg2}" />
-            <Path Data="M4.2 6L8 9.8 11.8 6" Width="12" Height="12" Stretch="Uniform"
-                  Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" VerticalAlignment="Center" />
+          <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <TextBlock Text="Desktop ·" FontSize="12" Foreground="{DynamicResource Fg2}"
+                       VerticalAlignment="Center" />
+            <ComboBox Classes="chip" ItemsSource="{Binding Configurations}"
+                      SelectedItem="{Binding Configuration, Mode=TwoWay}"
+                      ToolTip.Tip="What the designer evaluates, builds and starts" />
           </StackPanel>
         </Border>
 
@@ -179,14 +185,11 @@
                 <Path Data="M13 8a5 5 0 1 1-1.6-3.7M13.3 2.9v2.7h-2.7" Width="14" Height="14"
                       Stretch="Uniform" Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" />
               </Button>
-              <Button Classes="tool" Height="24" Padding="9,0" FontSize="12"
-                      Command="{Binding PickRunTargetCommand}" ToolTip.Tip="What Run would start">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="{Binding RunTargetName}" FontSize="12" />
-                  <Path Data="M4.2 6L8 9.8 11.8 6" Width="11" Height="11" Stretch="Uniform"
-                        Stroke="{DynamicResource Fg2}" StrokeThickness="1.4" VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
+              <!-- Which project Run starts, out of the ones the solution says are startable. -->
+              <ComboBox Classes="chip" Height="24" MinWidth="130" MaxWidth="240"
+                        ItemsSource="{Binding RunTargets}"
+                        SelectedItem="{Binding RunTarget, Mode=TwoWay}"
+                        ToolTip.Tip="What Run would start" />
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" Spacing="2" IsVisible="{Binding IsRunning}">
@@ -371,14 +374,18 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:FormViewModel">
-                <Border Height="36" Padding="12,0" Background="{DynamicResource Bg1}"
-                        BorderBrush="{DynamicResource Acc}" BorderThickness="0,0,0,2">
+                <!--
+                  Pressed rather than clicked, and on the tab rather than on a button around it: the
+                  close button inside handles its own press and stops it here, so pressing the cross
+                  closes the tab without first switching to what it is about to close.
+                -->
+                <Border Classes="tab" Classes.active="{Binding IsActive}" Cursor="Hand"
+                        PointerPressed="OnTabPressed">
                   <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                     <Path Data="M2.5 3h11v10h-11zM2.5 6h11" Width="13" Height="13" Stretch="Uniform"
                           Stroke="{DynamicResource Acc}" StrokeThickness="1.2" />
                     <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="Medium" />
-                    <TextBlock Text="×" FontSize="11" Foreground="{DynamicResource Fg3}"
-                               VerticalAlignment="Center" />
+                    <Button Classes="tabClose" Content="×" Click="OnTabClosed" ToolTip.Tip="Close" />
                   </StackPanel>
                 </Border>
               </DataTemplate>
@@ -449,7 +456,7 @@
           -->
           <Panel Grid.Column="0" ClipToBounds="True" IsVisible="{Binding IsDesignVisible}">
             <design:DesignEditor x:Name="Surface"
-                                 ItemsSource="{Binding Forms}"
+                                 ItemsSource="{Binding Shown}"
                                  SelectedItems="{Binding SelectedForms}"
                                  SelectionMode="Multiple"
                                  ViewportZoom="{Binding Zoom, Mode=TwoWay}">
@@ -483,7 +490,7 @@
               zooms with the forms without knowing how either works, and hit-test invisible, so a
               click always reaches the editor underneath.
             -->
-            <ItemsControl ItemsSource="{Binding Forms}"
+            <ItemsControl ItemsSource="{Binding Shown}"
                           ItemTemplate="{StaticResource FormChromeTemplate}"
                           IsHitTestVisible="False"
                           ClipToBounds="False"
@@ -624,7 +631,8 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:FileTile">
-                      <Border Classes="tile" Width="92" CornerRadius="8" Padding="4,10,4,8" Margin="2"
+                      <Border Classes="tile" Classes.open="{Binding IsOpen}"
+                              Width="92" CornerRadius="8" Padding="4,10,4,8" Margin="2"
                               Background="Transparent" Cursor="Hand"
                               DoubleTapped="OnProjectFileOpened"
                               ToolTip.Tip="Double-click to open">
@@ -930,7 +938,7 @@
           <TextBlock Classes="caption" Text="·" />
           <TextBlock Classes="dim" FontSize="11" Text="net10.0" />
           <TextBlock Classes="caption" Text="·" />
-          <TextBlock Classes="dim" FontSize="11" Text="{Binding ConfigurationName}" />
+          <TextBlock Classes="dim" FontSize="11" Text="{Binding Configuration}" />
           <TextBlock Classes="caption" Text="·" />
           <TextBlock Classes="dim" FontSize="11" Text="UTF-8" />
           <TextBlock Classes="caption" Text="·" />

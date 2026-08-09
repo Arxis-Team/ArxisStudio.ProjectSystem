@@ -89,6 +89,7 @@ public sealed partial class DesignerViewModel
         }
 
         BuildProjectPane(snapshot);
+        MarkOpenFiles();
 
         Log($"  {Describe(ProjectForms.Count, "form")} in the project");
 
@@ -236,6 +237,8 @@ public sealed partial class DesignerViewModel
 
         Forms.Add(opened);
         ActiveForm = opened;
+
+        MarkOpenFiles();
 
         await LoadIntoAsync(opened, snapshot, form.Project, document, text);
     }
@@ -482,19 +485,50 @@ public sealed partial class DesignerViewModel
         }
     }
 
-    /// <summary>A place on the surface where nothing is yet, so two forms never land on each other.</summary>
-    private Point NextFreeSpot()
+    /// <summary>Where a form opens, which is the same place for every one of them.</summary>
+    /// <remarks>
+    /// Forms used to be staggered down the canvas, because the canvas held all of them at once and
+    /// two at one spot would have covered each other. It holds the active one now, so the stagger
+    /// only moved the second form somewhere else for no reason a user could see.
+    /// </remarks>
+    private static Point NextFreeSpot() => new(80, 80);
+
+    /// <summary>
+    /// Closes one form: the tab, the card, and the session behind them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The next form to be active is the one that took its place — the tab to its right, or the last
+    /// one when it was the last. That is what every tab strip does, and it is better than falling
+    /// back to nothing and making the user pick again.
+    /// </para>
+    /// <para>
+    /// The session is disposed after the form has left both collections, because disposing tears
+    /// down objects the canvas may still be walking. Unsaved edits go with it, deliberately: this
+    /// designer saves on Ctrl+S and a close that silently wrote to a file would be worse.
+    /// </para>
+    /// </remarks>
+    public void CloseForm(FormViewModel form)
     {
-        const double Step = 60;
+        int index = Forms.IndexOf(form);
 
-        var spot = new Point(80, 80);
-
-        while (Forms.Any(form => form.Location == spot))
+        if (index < 0)
         {
-            spot += new Point(Step, Step);
+            return;
         }
 
-        return spot;
+        Forms.RemoveAt(index);
+
+        if (ReferenceEquals(ActiveForm, form))
+        {
+            ActiveForm = Forms.Count > 0 ? Forms[Math.Min(index, Forms.Count - 1)] : null;
+        }
+
+        MarkOpenFiles();
+
+        Log($"Closed {form.Name}.");
+
+        RunDetached(async () => await form.DisposeAsync());
     }
 
     private void CloseAllForms()

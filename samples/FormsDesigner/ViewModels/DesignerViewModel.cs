@@ -308,6 +308,11 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
                 Workspace = _workspace.Identity,
                 EntryPointPath = EntryPoint,
 
+                // The configuration the header is showing, because it is what the evaluation is of:
+                // output paths and conditioned items move with it, and the designer starts what the
+                // evaluation says the project produces.
+                Configuration = Configuration,
+
                 // Items are how the Project panel finds the forms, so the designer asks for them.
                 Options = new WorkspaceLoadOptions { IncludeItems = true },
             },
@@ -320,7 +325,6 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         Raise(nameof(StatusLeft));
         Raise(nameof(ProjectName));
         Raise(nameof(EntryPointName));
-        Raise(nameof(ConfigurationName));
         Raise(nameof(RunTargetName));
 
         await ReadBranchAsync(_shutdown.Token).ConfigureAwait(true);
@@ -338,8 +342,8 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
             + (snapshot.HasErrors ? ", with errors" : string.Empty);
 
         BuildProjectTree(snapshot);
+        ShowRunTargets();
         Raise(nameof(StatusLeft));
-        Raise(nameof(RunTargetName));
         RefreshAllCommands();
     }
 

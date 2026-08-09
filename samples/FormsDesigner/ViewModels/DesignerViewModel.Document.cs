@@ -20,6 +20,8 @@ public sealed partial class DesignerViewModel
         {
             if (Set(ref field, value))
             {
+                ShowOnlyTheActiveForm();
+
                 Selected = null;
                 RebuildHierarchy();
                 Raise(nameof(CanvasCaption));
@@ -28,6 +30,36 @@ public sealed partial class DesignerViewModel
                 Raise(nameof(TargetName));
                 RefreshAllCommands();
             }
+        }
+    }
+
+    /// <summary>
+    /// The forms the canvas is showing, which is the active one and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// A tab is a document you are working on, and a canvas holding every open document at once is a
+    /// pile rather than a workspace: opening a second form put it beside the first, both editable,
+    /// with the inspector and the hierarchy describing whichever was last touched. One at a time is
+    /// what the tabs above the canvas have always promised.
+    /// <para>
+    /// A collection rather than a single item because the editor is an items control — the card, its
+    /// selection and its adorners are the container's, and a container is what an item gets.
+    /// </para>
+    /// </remarks>
+    public ObservableCollection<FormViewModel> Shown { get; } = [];
+
+    private void ShowOnlyTheActiveForm()
+    {
+        Shown.Clear();
+
+        foreach (FormViewModel open in Forms)
+        {
+            open.IsActive = ReferenceEquals(open, ActiveForm);
+        }
+
+        if (ActiveForm is { } form)
+        {
+            Shown.Add(form);
         }
     }
 

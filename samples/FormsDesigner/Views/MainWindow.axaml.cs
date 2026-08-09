@@ -473,6 +473,24 @@ public sealed partial class MainWindow : Window
     /// design draws tiles and not rows, and an `ItemsControl` has no selection to bind an open to.
     /// So the gesture arrives here, which is where every other gesture in this window arrives.
     /// </remarks>
+    /// <summary>A press on a tab makes that form the one being edited.</summary>
+    private void OnTabPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Control { DataContext: FormViewModel form } && Designer is { } designer)
+        {
+            designer.ActiveForm = form;
+        }
+    }
+
+    /// <summary>And the cross on it closes that form, whether or not it is the active one.</summary>
+    private void OnTabClosed(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: FormViewModel form } && Designer is { } designer)
+        {
+            designer.CloseForm(form);
+        }
+    }
+
     private void OnProjectFileOpened(object? sender, TappedEventArgs e)
     {
         if (sender is Control { DataContext: FileTile file })

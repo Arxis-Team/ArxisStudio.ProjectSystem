@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -42,6 +44,90 @@ public sealed partial class DesignerViewModel
     /// <summary>Whether there is a branch to show at all.</summary>
     public bool HasBranch => BranchName.Length > 0;
 
+    /// <summary>The configurations a project is built and run in.</summary>
+    /// <remarks>
+    /// The two MSBuild gives every project from its own templates. A solution can define others, and
+    /// reading them out of it would be the fuller answer; these are the two every project has, and
+    /// offering a configuration a project does not define would produce an evaluation nobody asked
+    /// for.
+    /// </remarks>
+    public IReadOnlyList<string> Configurations { get; } = ["Debug", "Release"];
+
+    /// <summary>
+    /// Which of them the designer is working in.
+    /// </summary>
+    /// <remarks>
+    /// Changing it reloads the solution, because a configuration is an evaluation input rather than
+    /// a label: output paths, defined symbols and conditioned items all move with it, and the
+    /// designer builds and starts what the evaluation says the project produces. A chooser that only
+    /// wrote the word somewhere would be showing Release and running Debug.
+    /// </remarks>
+    public string Configuration
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value) && IsLoaded)
+            {
+                RunDetached(LoadAsync);
+            }
+        }
+    } = "Debug";
+
+    /// <summary>The runnable projects, by name, for the header's chooser.</summary>
+    public ObservableCollection<string> RunTargets { get; } = [];
+
+    /// <summary>
+    /// Which of them Run would start.
+    /// </summary>
+    /// <remarks>
+    /// The name rather than the index, because a chooser is filled after it is bound: an index
+    /// pushed into a list that is still empty is coerced to "nothing selected" and written back, and
+    /// nothing re-applies it when the items do arrive — the header then showed an empty box over a
+    /// perfectly good target. A value re-selects itself when the list is refilled.
+    /// <para>
+    /// Two projects in one solution can share a name, and then this picks the first. The header is
+    /// naming what it starts, and a chooser that showed a path would be answering a question nobody
+    /// asked.
+    /// </para>
+    /// </remarks>
+    public string? RunTarget
+    {
+        get => RunTargets.Count > 0 ? RunTargets[Math.Min(_runTarget, RunTargets.Count - 1)] : null;
+        set
+        {
+            int index = value is null ? -1 : RunTargets.IndexOf(value);
+
+            if (index >= 0 && index != _runTarget)
+            {
+                _runTarget = index;
+
+                Raise(nameof(RunTarget));
+                Raise(nameof(RunTargetName));
+            }
+        }
+    }
+
+    /// <summary>Refills the chooser after a load, keeping the chosen project when it is still there.</summary>
+    internal void ShowRunTargets()
+    {
+        string? chosen = SelectedRunTarget()?.Name;
+
+        RunTargets.Clear();
+
+        foreach (ProjectSnapshot project in Runnable())
+        {
+            RunTargets.Add(project.Name);
+        }
+
+        int index = chosen is null ? 0 : Math.Max(0, RunTargets.IndexOf(chosen));
+
+        _runTarget = RunTargets.Count > 0 ? Math.Min(index, RunTargets.Count - 1) : 0;
+
+        Raise(nameof(RunTarget));
+        Raise(nameof(RunTargetName));
+    }
+
     /// <summary>What Run would start, which is a project rather than a form.</summary>
     public string RunTargetName => Runnable() is { Length: > 0 } projects
         ? projects[Math.Min(_runTarget, projects.Length - 1)].Name
@@ -56,9 +142,6 @@ public sealed partial class DesignerViewModel
     /// <summary>Puts the caret in the toolbox filter, which is what the design's magnifier does.</summary>
     public RelayCommand FocusSearchCommand { get; private set; } = null!;
 
-    /// <summary>Moves to the next runnable project in the solution.</summary>
-    public RelayCommand PickRunTargetCommand { get; private set; } = null!;
-
     public RelayCommand ToggleSnapToGridCommand { get; private set; } = null!;
 
     public RelayCommand ToggleSnapToGuidesCommand { get; private set; } = null!;
@@ -69,18 +152,6 @@ public sealed partial class DesignerViewModel
     private void InitialiseHeader()
     {
         FocusSearchCommand = new RelayCommand(() => SearchRequested?.Invoke(this, EventArgs.Empty));
-
-        PickRunTargetCommand = new RelayCommand(() =>
-        {
-            ProjectSnapshot[] projects = Runnable();
-
-            if (projects.Length > 1)
-            {
-                _runTarget = (_runTarget + 1) % projects.Length;
-
-                Raise(nameof(RunTargetName));
-            }
-        });
 
         ToggleSnapToGridCommand = new RelayCommand(() => SnapToGrid = !SnapToGrid);
         ToggleSnapToGuidesCommand = new RelayCommand(() => SnapToGuides = !SnapToGuides);

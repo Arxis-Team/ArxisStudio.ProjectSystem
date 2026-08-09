@@ -12,7 +12,29 @@ namespace FormsDesigner.ViewModels;
 public sealed record FolderRow(string Name, string Path, double Indent, bool HasChildren);
 
 /// <summary>A file, as the design's grid draws it: a large glyph over a wrapped name.</summary>
-public sealed record FileTile(string Name, CanonicalPath Path, Geometry Glyph, string Hue);
+/// <summary>One file in the project pane's grid.</summary>
+/// <remarks>
+/// Observable rather than a record because one of its facts changes while it is on screen: a file
+/// that is open in the editor is drawn as open, and it becomes open and stops being open without the
+/// grid being rebuilt around it.
+/// </remarks>
+public sealed class FileTile(string name, CanonicalPath path, Geometry glyph, string hue) : Observable
+{
+    public string Name { get; } = name;
+
+    public CanonicalPath Path { get; } = path;
+
+    public Geometry Glyph { get; } = glyph;
+
+    public string Hue { get; } = hue;
+
+    /// <summary>Whether this file has a tab, which the grid shows without anybody having to look up.</summary>
+    public bool IsOpen
+    {
+        get;
+        internal set => Set(ref field, value);
+    }
+}
 
 public sealed partial class DesignerViewModel
 {
@@ -190,6 +212,18 @@ public sealed partial class DesignerViewModel
     /// <c>.cs</c> file therefore says why nothing happened, which is the whole difference between a
     /// tool that declined and a tool that is broken.
     /// </remarks>
+    /// <summary>Tells the tiles which files have a tab, so the grid can say so.</summary>
+    internal void MarkOpenFiles()
+    {
+        foreach (List<FileTile> tiles in _filesByFolder.Values)
+        {
+            foreach (FileTile tile in tiles)
+            {
+                tile.IsOpen = Forms.Any(form => form.File == tile.Path);
+            }
+        }
+    }
+
     public void OpenFile(FileTile file)
     {
         if (ProjectForms.FirstOrDefault(form => form.Path == file.Path) is { } form)

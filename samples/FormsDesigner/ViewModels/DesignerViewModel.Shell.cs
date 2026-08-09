@@ -241,11 +241,6 @@ public sealed partial class DesignerViewModel
     /// opened without a configuration evaluates under Debug and says so, and a designer that printed
     /// "Debug" regardless would be wrong for anybody who changed it.
     /// </remarks>
-    public string ConfigurationName =>
-        _workspace.CurrentSnapshot?.Projects.FirstOrDefault()?.ActiveConfiguration is { Length: > 0 } configuration
-            ? $"Desktop · {configuration}"
-            : "Desktop · Debug";
-
     /// <summary>What Run would start, which the design shows in the run bezel.</summary>
     public string TargetName => ActiveForm is { } form ? form.Name : "—";
 

@@ -221,6 +221,18 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
         }
     }
 
+    /// <summary>Whether this is the form the canvas is showing.</summary>
+    /// <remarks>
+    /// Held here rather than worked out in the tab strip, because a tab has to answer it about itself
+    /// and a template comparing its own item to a property of the window's data context needs a
+    /// converter and a second binding to do what a boolean does.
+    /// </remarks>
+    public bool IsActive
+    {
+        get;
+        internal set => Set(ref field, value);
+    }
+
     /// <summary>What the tab and the canvas label show.</summary>
     public string Title => IsDirty ? Name + " •" : Name;
 

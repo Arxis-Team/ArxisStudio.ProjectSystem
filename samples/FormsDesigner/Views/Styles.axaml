@@ -162,6 +162,25 @@
     <Setter Property="FontSize" Value="12" />
   </Style>
 
+  <!--
+    A chooser that is part of the header rather than a field in a form: no box, no fill, just the
+    word and its chevron. It comes after the rule above on purpose — same element, later setters.
+  -->
+  <Style Selector="ComboBox.chip">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="Padding" Value="6,0,4,0" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg2}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="ComboBox.chip:pointerover /template/ Border#Background">
+    <Setter Property="Background" Value="{DynamicResource Bg3}" />
+  </Style>
+
   <Style Selector=".chrome CheckBox">
     <Setter Property="FontSize" Value="11.5" />
     <Setter Property="Foreground" Value="{DynamicResource Fg2}" />
@@ -185,6 +204,52 @@
   <!-- A file in the project grid. Flat until pointed at, because it answers a double click. -->
   <Style Selector="Border.tile:pointerover">
     <Setter Property="Background" Value="{DynamicResource Bg3}" />
+  </Style>
+
+  <!-- And plainly marked while it has a tab, so the grid says what is open without being asked. -->
+  <Style Selector="Border.tile.open">
+    <Setter Property="Background" Value="{DynamicResource Sel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Acc}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <!--
+    A tab. Flat and quiet until it is the one being edited, which is the underline and the lighter
+    background — the same pair the canvas uses, so the eye reads them as one place.
+  -->
+  <Style Selector="Border.tab">
+    <Setter Property="Height" Value="36" />
+    <Setter Property="Padding" Value="12,0,8,0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0,0,0,2" />
+  </Style>
+
+  <Style Selector="Border.tab:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Bg3}" />
+  </Style>
+
+  <Style Selector="Border.tab.active">
+    <Setter Property="Background" Value="{DynamicResource Bg1}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Acc}" />
+  </Style>
+
+  <Style Selector="Button.tabClose">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg3}" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.tabClose:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Bg4}" />
+    <Setter Property="Foreground" Value="{DynamicResource Fg}" />
   </Style>
 
   <!-- One value of an enum, in the row of them the design draws for a small type. -->

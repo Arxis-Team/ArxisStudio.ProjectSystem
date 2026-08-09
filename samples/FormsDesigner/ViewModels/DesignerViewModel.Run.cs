@@ -302,6 +302,7 @@ public sealed partial class DesignerViewModel
                 Kind = kind,
                 Workspace = _workspace.Identity,
                 EntryPointPath = EntryPoint,
+                Configuration = Configuration,
 
                 // The one project rather than the whole solution: a designer builds what it is
                 // showing, and waiting for everything else is a wait nobody asked for.
