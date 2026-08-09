@@ -111,8 +111,6 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
     /// <summary>Set by the view, because picking a file needs a window to hang a dialog off.</summary>
     public Func<Task<string?>>? PickEntryPoint { get; set; }
 
-    /// <summary>Set by the view, for the same reason.</summary>
-    public Func<string, Task<string?>>? AskForName { get; set; }
 
     public bool IsLoaded
     {

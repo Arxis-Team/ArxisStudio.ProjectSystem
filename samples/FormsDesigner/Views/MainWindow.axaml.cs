@@ -81,7 +81,7 @@ public sealed partial class MainWindow : Window
                 };
 
                 designer.PickEntryPoint = PickEntryPointAsync;
-                designer.AskForName = AskForNameAsync;
+                designer.AskForNewForm = AskForNewFormAsync;
                 designer.AskToConfirm = AskToConfirmAsync;
                 designer.AskToSave = AskToSaveAsync;
 
@@ -578,44 +578,86 @@ public sealed partial class MainWindow : Window
         return files.Count == 0 ? null : files[0].TryGetLocalPath();
     }
 
-    /// <summary>Asks for a file name, because a designer that cannot name things is a viewer.</summary>
-    private async Task<string?> AskForNameAsync(string suggestion)
+    /// <summary>
+    /// Asks what to create and what to call it.
+    /// </summary>
+    /// <remarks>
+    /// Two questions in one dialog because they are one decision: a window and a user control are
+    /// different things and are named differently, so the suggestion follows the choice until
+    /// somebody types over it. The dialog before this one asked only for a name and made a user
+    /// control whatever the answer was — which is how a control came to be called NewForm.
+    /// </remarks>
+    private async Task<NewFormRequest?> AskForNewFormAsync(NewFormRequest suggested)
     {
-        var box = new TextBox { Text = suggestion, Width = 260 };
-        var ok = new Button { Content = "Create", IsDefault = true };
-        var cancel = new Button { Content = "Cancel", IsCancel = true };
+        var window = new RadioButton { Content = "Окно", GroupName = "kind", IsChecked = true };
+        var control = new RadioButton { Content = "UserControl", GroupName = "kind" };
+        var name = new TextBox { Text = suggested.Name, Width = 300 };
+
+        var create = new Button { Content = "Создать", IsDefault = true };
+        var cancel = new Button { Content = "Отмена", IsCancel = true };
 
         var dialog = new Window
         {
-            Title = "New form",
-            Width = 320,
+            Title = "Новая форма",
+            Width = 400,
             SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false,
             Content = new StackPanel
             {
-                Margin = new Thickness(12),
-                Spacing = 8,
+                Margin = new Thickness(16),
+                Spacing = 10,
                 Children =
                 {
-                    new TextBlock { Text = "File name" },
-                    box,
+                    new TextBlock { Text = "Что создать" },
+                    new StackPanel
+                    {
+                        Orientation = Avalonia.Layout.Orientation.Horizontal,
+                        Spacing = 16,
+                        Children = { window, control },
+                    },
+                    new TextBlock { Text = "Имя" },
+                    name,
                     new StackPanel
                     {
                         Orientation = Avalonia.Layout.Orientation.Horizontal,
                         Spacing = 6,
                         HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
-                        Children = { ok, cancel },
+                        Children = { create, cancel },
                     },
                 },
             },
         };
 
-        string? answer = null;
+        // The suggestion follows the choice, and stops following it the moment somebody types.
+        var typed = false;
 
-        ok.Click += (_, _) =>
+        name.TextChanged += (_, _) => typed = name.Text is not ("NewWindow" or "NewUserControl");
+
+        window.IsCheckedChanged += (_, _) =>
         {
-            answer = box.Text;
+            if (!typed && window.IsChecked == true)
+            {
+                name.Text = "NewWindow";
+            }
+        };
+
+        control.IsCheckedChanged += (_, _) =>
+        {
+            if (!typed && control.IsChecked == true)
+            {
+                name.Text = "NewUserControl";
+            }
+        };
+
+        NewFormRequest? answer = null;
+
+        create.Click += (_, _) =>
+        {
+            answer = new NewFormRequest(
+                name.Text ?? string.Empty,
+                control.IsChecked == true ? NewFormKind.UserControl : NewFormKind.Window);
+
             dialog.Close();
         };
 

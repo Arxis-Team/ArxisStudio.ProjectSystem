@@ -181,6 +181,12 @@ From there it is the designer: drag controls from the toolbox onto the form, arr
 their properties in the inspector, `Ctrl+Z` and `Ctrl+Y`, copy, cut, paste and duplicate, save, and
 press Run.
 
+The plus over the hierarchy adds a form, and asks which kind: a window is something a user is shown,
+a user control is something a window is made of. Both come with an `x:Class` and a code-behind file,
+because a form without one cannot be shown by the application that owns it — `new SettingsWindow()`
+needs a type — and that class is what the other editor writes code in, which is the point of the two
+tools sitting side by side.
+
 Two things had to be true for that to work at all, and both are about a window-rooted form — which
 is what every template's main form is:
 

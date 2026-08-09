@@ -364,7 +364,8 @@ internal static class StudioCheck
         }
 
         // 8. A form added and taken away again, which is the other half of a project panel.
-        designer.AskForName = _ => Task.FromResult<string?>("SecondForm");
+        designer.AskForNewForm = _ => Task.FromResult<NewFormRequest?>(
+            new NewFormRequest("SecondForm", NewFormKind.Window));
 
         designer.NewFormCommand.Execute(null);
 
@@ -375,6 +376,23 @@ internal static class StudioCheck
         else
         {
             string added = designer.ProjectForms.First(entry => entry.Name == "SecondForm.axaml").Path.Value;
+
+            // What was made: a window, with a class the other editor can write code in.
+            string madeMarkup = await System.IO.File.ReadAllTextAsync(added);
+
+            if (!madeMarkup.Contains("<Window", StringComparison.Ordinal)
+                || !madeMarkup.Contains("x:Class=", StringComparison.Ordinal))
+            {
+                Fail(ref failures, "the new window is not a window with a class");
+            }
+            else if (!System.IO.File.Exists(added + ".cs"))
+            {
+                Fail(ref failures, "the new window has no code-behind");
+            }
+            else
+            {
+                Say("the new form is a window with a class and a code-behind");
+            }
 
             designer.AskToConfirm = (_, _) => Task.FromResult(true);
 
