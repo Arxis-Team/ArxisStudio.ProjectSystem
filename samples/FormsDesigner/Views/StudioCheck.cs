@@ -705,9 +705,60 @@ internal static class StudioCheck
         {
             Fail(ref failures, "the embedded control would not delete");
         }
+        else if (!await Until(() => !OnCanvas(target, "MyControl"), 30, settle: true))
+        {
+            // The document is not the canvas. A session that cannot see an object cannot remove it,
+            // and reported the edit applied while the control went on being drawn — deleted from
+            // the tree, deleted from the markup, still on screen.
+            Fail(ref failures, "the deleted control is gone from the document and still on the canvas");
+        }
         else
         {
-            Say("a placed control deletes like anything else");
+            Say("a placed control deletes from the document and the canvas together");
+        }
+
+        // The same delete on a window whose whole content is that control. Removing it leaves the
+        // window with nothing at all, which is a different update from removing one child of a
+        // panel — and the one the reporter's project is written as.
+        if (!Open(designer, "Hosted.axaml")
+            || !await Until(
+                () => designer.ActiveForm is { Problem: null, Root: not null } h
+                    && h.Name == "Hosted.axaml",
+                300))
+        {
+            return Fail(ref failures, "Hosted.axaml would not open: "
+                + (designer.ActiveForm?.Problem ?? "?"));
+        }
+
+        FormViewModel hosted = designer.ActiveForm!;
+
+        if (!await Until(() => OnCanvas(hosted, "MyControl"), 60))
+        {
+            return Fail(ref failures, "the hosted control never appeared on the canvas");
+        }
+
+        designer.SelectFromCanvas(hosted, Drawn(hosted, "MyControl"));
+
+        if (designer.Selected?.Name.LocalName != "MyControl")
+        {
+            Fail(ref failures, "the window's only content selected as "
+                + (designer.Selected?.Name.ToString() ?? "nothing"));
+        }
+
+        designer.DeleteSelectedCommand.Execute(null);
+
+        if (!await Until(
+            () => !Text(hosted).Contains("<v:MyControl", StringComparison.Ordinal), 30))
+        {
+            Fail(ref failures, "the window's only content would not delete from the document");
+        }
+        else if (!await Until(() => !OnCanvas(hosted, "MyControl"), 30, settle: true))
+        {
+            Fail(ref failures, "a window emptied of its only content still draws it");
+        }
+        else
+        {
+            Say("deleting a window's only content clears the canvas with the document");
         }
 
         return failures;
@@ -749,8 +800,52 @@ internal static class StudioCheck
             }
             """);
 
+        // And a window whose entire content is that control, which is how the reporter's project
+        // is written and a shape the panel case does not cover: removing it leaves the window with
+        // no content at all.
+        await System.IO.File.WriteAllTextAsync(
+            System.IO.Path.Combine(views, "Hosted.axaml"),
+            """
+            <Window xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:v="using:StressApp.Views"
+                    x:Class="StressApp.Views.Hosted"
+                    Width="400" Height="300">
+              <v:MyControl />
+            </Window>
+            """);
+
+        await System.IO.File.WriteAllTextAsync(
+            System.IO.Path.Combine(views, "Hosted.axaml.cs"),
+            """
+            using Avalonia.Controls;
+            using Avalonia.Markup.Xaml;
+
+            namespace StressApp.Views;
+
+            public partial class Hosted : Window
+            {
+                public Hosted() => AvaloniaXamlLoader.Load(this);
+            }
+            """);
+
         return file;
     }
+
+    /// <summary>
+    /// A control the canvas is actually drawing for this form, by type name.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the surface rather than of the root, because a window-rooted form is shown by
+    /// taking the window's content out of it: the window has nothing under it, and a check that
+    /// walked the root would call every control absent — including one still plainly on screen.
+    /// </remarks>
+    private static Control? Drawn(FormViewModel form, string typeName) =>
+        Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(form.Surface)
+            .OfType<Control>()
+            .FirstOrDefault(control => control.GetType().Name == typeName);
+
+    private static bool OnCanvas(FormViewModel form, string typeName) => Drawn(form, typeName) is not null;
 
     /// <summary>Opens a project form by file name, the way a double-click in the pane would.</summary>
     private static bool Open(DesignerViewModel designer, string name)

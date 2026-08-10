@@ -277,6 +277,65 @@ public sealed partial class DesignerViewModel
     }
 
     /// <summary>
+    /// Takes a control off the canvas when the document no longer has anything that made it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The last hiding place of a deleted control of the project's own. An <c>x:Class</c> root is
+    /// built by its own constructor, which loads the markup that was <em>compiled</em> into the
+    /// assembly — so the placed control arrives with the object, not from the document, and no
+    /// update of the document removes it. Rebuilding the session does not help either: the new root
+    /// is built by the same constructor and arrives carrying the same control.
+    /// </para>
+    /// <para>
+    /// So the rule is stated where it can be checked: a control the canvas is drawing that no
+    /// element of this document accounts for is not part of the form, and is taken off. Only
+    /// controls of the deleted type are considered, and only ones that lead back to no element —
+    /// anything the document still declares stays exactly where it is.
+    /// </para>
+    /// </remarks>
+    private static void TakeOffTheCanvas(FormViewModel form, string typeName)
+    {
+        if (form.Objects is not { } map)
+        {
+            return;
+        }
+
+        Control[] orphans =
+        [
+            .. Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(form.Surface)
+                .OfType<Control>()
+                .Where(control => control.GetType().Name == typeName && ElementBehind(map, control) is null),
+        ];
+
+        foreach (Control orphan in orphans)
+        {
+            switch (orphan.Parent)
+            {
+                case Panel panel:
+                    panel.Children.Remove(orphan);
+                    break;
+
+                case ContentControl content when ReferenceEquals(content.Content, orphan):
+                    content.Content = null;
+                    break;
+
+                case Decorator decorator when ReferenceEquals(decorator.Child, orphan):
+                    decorator.Child = null;
+                    break;
+
+                case Avalonia.Controls.Presenters.ContentPresenter presenter
+                    when ReferenceEquals(presenter.Content, orphan):
+                    presenter.Content = null;
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
     /// Rebuilds a form from the document the session would not take, so the edit is not lost.
     /// </summary>
     /// <remarks>
@@ -640,9 +699,20 @@ public sealed partial class DesignerViewModel
     }
 
     /// <summary>Removes the selected element, which is a structural edit and therefore Markup's.</summary>
+    /// <remarks>
+    /// The one edit that has to check whether the session can see what it is removing. A control of
+    /// the project's own was built by its own document, so this session never paired it — and an
+    /// update that removes the element it came from leaves the object exactly where it is. The
+    /// document lost it, the tree lost it, and the canvas went on drawing it. Where there is no
+    /// pair there is nothing to update, so the form is built again from the document instead.
+    /// </remarks>
     private async Task DeleteAsync(FormViewModel form, XamlElement element)
     {
+        string typeName = element.Name.LocalName;
+
         await ApplyAsync(form, editor => editor.RemoveElement(element), "delete");
+
+        TakeOffTheCanvas(form, typeName);
 
         Selected = null;
 
