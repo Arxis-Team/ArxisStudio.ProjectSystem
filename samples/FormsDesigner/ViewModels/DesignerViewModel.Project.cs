@@ -238,6 +238,13 @@ public sealed partial class DesignerViewModel
         Forms.Add(opened);
         ActiveForm = opened;
 
+        // From here the form is in Forms, and that is what a second open of the same file finds —
+        // so the guard has done its job and must let go. Holding it until the load finishes made a
+        // close-and-open-again do nothing at all: the reporting step waits for the dispatcher to go
+        // idle, so the open was still "in progress" long after the form was on screen, and the next
+        // open of that file was dropped in silence.
+        _opening.Remove(form.Path);
+
         MarkOpenFiles();
 
         await LoadIntoAsync(opened, snapshot, form.Project, document, text);

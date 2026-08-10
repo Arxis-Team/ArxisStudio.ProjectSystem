@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using ArxisStudio.Markup.Xaml;
@@ -34,9 +35,18 @@ namespace FormsDesigner.ViewModels;
 public sealed partial class DesignerViewModel
 {
     /// <summary>The element behind a control: the map's answer, or the structure's.</summary>
+    /// <remarks>
+    /// The map's answer is taken only when it round-trips. Asked about a control built by another
+    /// document — anything inside an embedded <c>MyControl</c> — it answers with this document's
+    /// root, which is true about provenance and useless as identity: a click on a button inside the
+    /// embedded control selected the window. The pair that leads back to the same object is the one
+    /// the document actually declared; everything else falls through to the structure below.
+    /// </remarks>
     internal static XamlElement? ElementBehind(XamlObjectMap map, Control control)
     {
-        if (map.GetElement(control) is { } mapped)
+        if (map.GetElement(control) is { } mapped
+            && ReferenceEquals(map.GetObject(mapped), control)
+            && Names(control, mapped))
         {
             return mapped;
         }
@@ -58,9 +68,7 @@ public sealed partial class DesignerViewModel
 
         // The type name is the witness that position told the truth: a candidate that is not even
         // the control's type is a mismatch, and no answer is better than a wrong element.
-        return candidate is not null && candidate.Name.LocalName == control.GetType().Name
-            ? candidate
-            : null;
+        return candidate is not null && Names(control, candidate) ? candidate : null;
     }
 
     /// <summary>The control behind an element, when the map has no answer for it.</summary>
@@ -91,9 +99,30 @@ public sealed partial class DesignerViewModel
 
         Control? candidate = AuthoredChildren(parent).ElementAtOrDefault(index);
 
-        return candidate is not null && element.Name.LocalName == candidate.GetType().Name
-            ? candidate
-            : null;
+        return candidate is not null && Names(candidate, element) ? candidate : null;
+    }
+
+    /// <summary>
+    /// Whether an element could have produced this control — its type, or one it derives from.
+    /// </summary>
+    /// <remarks>
+    /// The round trip alone is not enough of a witness. Asked about a panel inside an embedded
+    /// control the map answers with this document's root and answers back with the panel, so the
+    /// pair agrees with itself and means nothing; a Window element that claims a StackPanel is the
+    /// shape of that. Derivation is what makes it hold for the case it must: an <c>x:Class</c> root
+    /// is written <c>&lt;Window&gt;</c> and built as <c>MainWindow</c>.
+    /// </remarks>
+    private static bool Names(Control control, XamlElement element)
+    {
+        for (Type? type = control.GetType(); type is not null; type = type.BaseType)
+        {
+            if (type.Name == element.Name.LocalName)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

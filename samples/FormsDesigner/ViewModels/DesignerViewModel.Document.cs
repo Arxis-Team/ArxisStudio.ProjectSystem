@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using ArxisStudio;
+using ArxisStudio.Markup;
 using ArxisStudio.Markup.Xaml;
 using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
@@ -268,9 +269,66 @@ public sealed partial class DesignerViewModel
         if (!result.Applied)
         {
             Log($"  {what}: the live tree needed {result.Outcome}");
+
+            await RebuildFromAsync(form, updated, what);
         }
 
         RefreshAllCommands();
+    }
+
+    /// <summary>
+    /// Rebuilds a form from the document the session would not take, so the edit is not lost.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A session refuses an update it cannot express in the objects it is holding, and keeps the
+    /// document it had. That is the right answer for the session and the wrong one for a designer:
+    /// <c>Adopt(session.Document)</c> then quietly rolled the user's edit back, and the clearest
+    /// case of it is deleting a control of the project's own — the session never paired that object
+    /// with an element, so it cannot be told to remove it, and the delete simply did not happen.
+    /// </para>
+    /// <para>
+    /// The edit is real either way, so it is kept and the form is built again from it. That costs
+    /// the incremental update — the whole tree is rebuilt rather than the part that changed — and
+    /// buys an edit that always lands. The history is untouched, because a rebuild is not an edit.
+    /// </para>
+    /// </remarks>
+    private async Task RebuildFromAsync(FormViewModel form, XamlDocument updated, string what)
+    {
+        if (_workspace.CurrentSnapshot is not { } snapshot
+            || ProjectForms.FirstOrDefault(file => file.Path == form.File) is not { } file)
+        {
+            return;
+        }
+
+        XamlLoadEnvironment environment = EnvironmentFor(snapshot, file.Project);
+        var options = new XamlLoadOptions { Mode = XamlLoadMode.Design };
+
+        (XamlLoadSession? session, XamlLoadResult result) =
+            await XamlLoadSession.TryCreateAsync(updated, environment, options, _shutdown.Token);
+
+        if (session is null)
+        {
+            Log($"  ! {what} could not be shown: "
+                + string.Join(
+                    "; ",
+                    result.Diagnostics.Where(static d => d.Severity == MarkupDiagnosticSeverity.Error)
+                        .Select(static d => d.Message)
+                        .DefaultIfEmpty("no diagnostic said why")));
+
+            return;
+        }
+
+        await form.RetireSessionAsync();
+
+        form.Migrate(session);
+        form.Assemblies = _assemblies;
+        form.Restated();
+
+        SizeToContent(form);
+        RebuildHierarchy();
+
+        Log($"  {what}: the form was rebuilt from the document");
     }
 
     /// <summary>
