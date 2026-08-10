@@ -318,10 +318,9 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
 
     /// <summary>The assembly generation this form was loaded under.</summary>
     /// <remarks>
-    /// Kept so that every later load through this form's session — an inspector edit, a reload from
-    /// disk — can re-enter the same generation's load scope. Two open forms from two generations
-    /// each compile in their own context; without this, whichever loaded last would claim the
-    /// runtime compiler for both.
+    /// The compilation scope travels with the environment, so nothing here enters it — this exists
+    /// for lifetime: a superseded generation must stay alive until the last form loaded under it
+    /// closes, and this is how the designer knows which forms those are.
     /// </remarks>
     internal ArxisStudio.ProjectSystem.Markup.Xaml.ProjectAssemblyContext? Assemblies { get; set; }
 

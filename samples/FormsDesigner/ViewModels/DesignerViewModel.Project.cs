@@ -401,21 +401,13 @@ public sealed partial class DesignerViewModel
         // is for looking at: Design.DataContext, d:DesignWidth, the lot.
         var options = new XamlLoadOptions { Mode = XamlLoadMode.Design };
 
-        // Inside the generation's load scope, so the runtime XAML compiler emits into this
-        // generation's context rather than whichever one it saw first — see
-        // ProjectAssemblyContext.EnterLoadScope for the failure this prevents.
-        ProjectAssemblyContext? generation = _assemblies;
+        (XamlLoadSession? session, XamlLoadResult result) =
+            await XamlLoadSession.TryCreateAsync(document, environment, options, _shutdown.Token);
 
-        XamlLoadSession? session;
-        XamlLoadResult result;
-
-        using (generation?.EnterLoadScope())
-        {
-            (session, result) =
-                await XamlLoadSession.TryCreateAsync(document, environment, options, _shutdown.Token);
-        }
-
-        form.Assemblies = generation;
+        // Which generation the form now belongs to. The compilation scope travels with the
+        // environment — the session brackets every compile itself — but the generation's lifetime
+        // is still this designer's to manage: it must outlive the last form loaded under it.
+        form.Assemblies = _assemblies;
 
         ShowMarkupDiagnostics(result.Diagnostics, text, form.File);
 
