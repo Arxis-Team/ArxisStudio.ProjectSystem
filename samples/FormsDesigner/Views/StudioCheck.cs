@@ -367,6 +367,29 @@ internal static class StudioCheck
                     else
                     {
                         Say("a design-sized window resizes: card, document and live window agree");
+
+                        // And an undone resize takes the card back with it. Undo rolls the document
+                        // to the old size and the design values are applied to the live window
+                        // again — the card used to stay where the drag left it, and the form
+                        // overflowed its own frame the moment somebody edited anything else.
+                        designer.UndoCommand.Execute(null);
+
+                        if (!await Until(
+                            () => sized.Root is { Width: > 299 and < 301 }
+                                && sized.Width is > 299 and < 301
+                                && sized.Height is > 199 and < 201,
+                            30))
+                        {
+                            Fail(
+                                ref failures,
+                                "after undoing the resize the card says "
+                                    + $"{sized.Width}×{sized.Height} while the window says "
+                                    + $"{sized.Root?.Width}×{sized.Root?.Height}");
+                        }
+                        else
+                        {
+                            Say("an undone resize takes the card back with the document");
+                        }
                     }
                 }
 

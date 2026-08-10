@@ -542,14 +542,21 @@ public sealed partial class DesignerViewModel
             return;
         }
 
-        if (double.IsFinite(root.Width) && root.Width > 0)
+        // Both read before either is written. Assigning the card's width triggers the drag
+        // preview, which writes the card's — still stale — height back into the root; reading the
+        // root's height after that reads the designer's own echo, and the reconciliation this
+        // method exists for converges on the wrong number.
+        double width = root.Width;
+        double height = root.Height;
+
+        if (double.IsFinite(width) && width > 0)
         {
-            form.Width = root.Width;
+            form.Width = width;
         }
 
-        if (double.IsFinite(root.Height) && root.Height > 0)
+        if (double.IsFinite(height) && height > 0)
         {
-            form.Height = root.Height;
+            form.Height = height;
         }
     }
 

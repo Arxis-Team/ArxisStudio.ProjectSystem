@@ -242,6 +242,14 @@ public sealed partial class DesignerViewModel
         // is holding the old one until it is told.
         RefreshRoot(form, session);
 
+        // And the card follows the document, always. The document is the truth and the card is a
+        // view of it, but nothing was putting the two back together after an update — so any
+        // divergence, however it arose, was permanent and surfaced on the next unrelated edit. An
+        // undone resize is the everyday case: undo rolls the document back, the design sizes are
+        // applied to the live window again, and the card was left holding the size from before the
+        // undo — a form overflowing its own frame the moment somebody edited a Title.
+        SizeToContent(form);
+
         // And the inspector is put back on the same position in the new document — or, when what was
         // selected has just been deleted, on what it was inside, which is the answer a path gives
         // for free and the friendlier of the two.
