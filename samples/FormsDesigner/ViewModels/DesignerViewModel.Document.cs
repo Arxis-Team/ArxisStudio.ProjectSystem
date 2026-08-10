@@ -323,8 +323,8 @@ public sealed partial class DesignerViewModel
 
                 if (resized)
                 {
-                    Set(editor, element, "Width", control.Bounds.Width);
-                    Set(editor, element, "Height", control.Bounds.Height);
+                    WriteSize(editor, element, "Width", "DesignWidth", control.Bounds.Width);
+                    WriteSize(editor, element, "Height", "DesignHeight", control.Bounds.Height);
                 }
             },
             "geometry");
@@ -343,6 +343,40 @@ public sealed partial class DesignerViewModel
                     element,
                     XamlQualifiedName.Parse(name),
                     Math.Round(value).ToString(CultureInfo.InvariantCulture));
+            }
+        }
+
+        // A size goes to the attribute that decides what the designer shows. Every template writes
+        // its windows with d:DesignWidth and d:DesignHeight and no Width at all — and in design
+        // mode those win over Width, applied again on every update. So a resize that wrote Width
+        // put the new number in the document and the card while the live window snapped back to
+        // the design size the moment the update landed: three panels, two answers. When the
+        // element states a design size, the design size is what a resize updates; the plain
+        // attribute is written too when the document already had one, so the file never carries
+        // two different numbers for one fact.
+        static void WriteSize(
+            XamlDocumentEditor editor, XamlElement element, string name, string designName, double value)
+        {
+            if (!double.IsFinite(value))
+            {
+                return;
+            }
+
+            string text = Math.Round(value).ToString(CultureInfo.InvariantCulture);
+
+            XamlAttribute? design = element.Attributes.FirstOrDefault(attribute =>
+                attribute.Name.LocalName == designName
+                && element.NamespaceContext.LookupNamespace(attribute.Name.Prefix)
+                    == XamlNamespaces.Design);
+
+            if (design is not null)
+            {
+                editor.SetAttribute(element, design.Name, text);
+            }
+
+            if (design is null || element.GetAttribute(name) is not null)
+            {
+                editor.SetAttribute(element, XamlQualifiedName.Parse(name), text);
             }
         }
     }

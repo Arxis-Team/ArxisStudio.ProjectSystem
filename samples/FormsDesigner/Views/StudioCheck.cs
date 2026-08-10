@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
+using ArxisStudio;
 using FormsDesigner.ViewModels;
 
 namespace FormsDesigner.Views;
@@ -69,7 +70,7 @@ internal static class StudioCheck
 
         try
         {
-            failures = await StressAsync(designer, folder);
+            failures = await StressAsync(window, designer, folder);
         }
         catch (Exception error)
         {
@@ -94,7 +95,7 @@ internal static class StudioCheck
     /// asserts at every step is the invariant the designer lives by — the document, the live tree
     /// and the panels never disagree, and nothing on the way prints an error.
     /// </remarks>
-    private static async Task<int> StressAsync(DesignerViewModel designer, string folder)
+    private static async Task<int> StressAsync(Window window, DesignerViewModel designer, string folder)
     {
         var failures = 0;
 
@@ -298,6 +299,79 @@ internal static class StudioCheck
             designer.StopCommand.Execute(null);
 
             await Until(() => !designer.IsRunning, 30);
+        }
+
+        // 12. A resize of a form that states only design sizes — the way every template writes its
+        //     windows. The card, the document and the live window must end up saying one number.
+        string designSized = System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(project!)!, "DesignSized.axaml");
+
+        await System.IO.File.WriteAllTextAsync(
+            designSized,
+            """
+            <Window xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                    mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="200">
+              <Canvas />
+            </Window>
+            """);
+
+        if (!await Until(
+            () => System.Linq.Enumerable.Any(designer.ProjectFiles, tile => tile.Name == "DesignSized.axaml"),
+            180))
+        {
+            Fail(ref failures, "the design-sized form never appeared in the project");
+        }
+        else
+        {
+            designer.OpenFile(System.Linq.Enumerable.First(
+                designer.ProjectFiles, tile => tile.Name == "DesignSized.axaml"));
+
+            if (!await Until(
+                () => designer.ActiveForm is { Problem: null, Root: not null } sized
+                    && sized.Name == "DesignSized.axaml",
+                120))
+            {
+                Fail(ref failures, "the design-sized form would not open");
+            }
+            else
+            {
+                FormViewModel sized = designer.ActiveForm!;
+                DesignEditor? editor = window.FindControl<DesignEditor>("Surface");
+
+                sized.Width = 520;
+                sized.Height = 300;
+
+                Control? card = null;
+
+                if (!await Until(
+                    () => (card = editor?.ContainerFromItem(sized) as Control) is { Bounds.Width: > 519 },
+                    30))
+                {
+                    Fail(ref failures, "the card never took the new size");
+                }
+                else
+                {
+                    designer.WriteGeometry(sized, card!, moved: false, resized: true);
+
+                    if (!await Until(
+                        () => sized.Root is { Width: > 519 and < 521, Height: > 299 and < 301 }, 30))
+                    {
+                        Fail(
+                            ref failures,
+                            "after the resize was written, the live window says "
+                                + $"{sized.Root?.Width}×{sized.Root?.Height} while the card says 520×300");
+                    }
+                    else
+                    {
+                        Say("a design-sized window resizes: card, document and live window agree");
+                    }
+                }
+
+                designer.CloseForm(sized);
+            }
         }
 
         return failures;
