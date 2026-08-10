@@ -68,6 +68,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         InitialisePackages();
         InitialiseToolbox();
         InitialiseClipboard();
+        InitialiseStructure();
 
         _workspace.SnapshotChanged += OnSnapshotChanged;
 
@@ -440,6 +441,8 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         CutCommand.RaiseCanExecuteChanged();
         PasteCommand.RaiseCanExecuteChanged();
         DuplicateCommand.RaiseCanExecuteChanged();
+        MoveUpCommand.RaiseCanExecuteChanged();
+        MoveDownCommand.RaiseCanExecuteChanged();
         RefreshPackageCommands();
     }
 

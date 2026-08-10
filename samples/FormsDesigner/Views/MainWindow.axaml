@@ -27,6 +27,8 @@
     <KeyBinding Gesture="Ctrl+D" Command="{Binding DuplicateCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveAllCommand}" />
     <KeyBinding Gesture="Ctrl+D0" Command="{Binding ZoomToFitCommand}" />
+    <KeyBinding Gesture="Alt+Up" Command="{Binding MoveUpCommand}" />
+    <KeyBinding Gesture="Alt+Down" Command="{Binding MoveDownCommand}" />
   </Window.KeyBindings>
 
   <Window.Resources>
@@ -308,8 +310,34 @@
                      IsVisible="{Binding IsHierarchySearchOpen}"
                      Text="{Binding HierarchyFilter, Mode=TwoWay}" />
 
-            <ListBox Grid.Row="2" ItemsSource="{Binding Hierarchy}"
+            <ListBox Grid.Row="2" x:Name="HierarchyTree" ItemsSource="{Binding Hierarchy}"
                      SelectedItem="{Binding SelectedHierarchyRow, Mode=TwoWay}">
+              <!--
+                One flyout on the list rather than one per row: the commands act on the selection,
+                and the right press selects the row under the pointer before the menu opens — the
+                handler in the code-behind is what makes that ordering true.
+              -->
+              <ListBox.ContextFlyout>
+                <MenuFlyout>
+                  <MenuItem Header="Копировать" Command="{Binding CopyCommand}" InputGesture="Ctrl+C" />
+                  <MenuItem Header="Вырезать" Command="{Binding CutCommand}" InputGesture="Ctrl+X" />
+                  <MenuItem Header="Вставить" Command="{Binding PasteCommand}" InputGesture="Ctrl+V" />
+                  <MenuItem Header="Дублировать" Command="{Binding DuplicateCommand}" InputGesture="Ctrl+D" />
+                  <MenuItem Header="-" />
+                  <MenuItem Header="Выше" Command="{Binding MoveUpCommand}" InputGesture="Alt+Up" />
+                  <MenuItem Header="Ниже" Command="{Binding MoveDownCommand}" InputGesture="Alt+Down" />
+                  <MenuItem Header="-" />
+                  <MenuItem Header="Обернуть в">
+                    <MenuItem Header="StackPanel" Click="OnWrap" Tag="StackPanel" />
+                    <MenuItem Header="Grid" Click="OnWrap" Tag="Grid" />
+                    <MenuItem Header="Border" Click="OnWrap" Tag="Border" />
+                    <MenuItem Header="ScrollViewer" Click="OnWrap" Tag="ScrollViewer" />
+                  </MenuItem>
+                  <MenuItem Header="Развернуть" Click="OnUnwrap" />
+                  <MenuItem Header="-" />
+                  <MenuItem Header="Удалить" Command="{Binding DeleteSelectedCommand}" InputGesture="Delete" />
+                </MenuFlyout>
+              </ListBox.ContextFlyout>
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:HierarchyRow">
                   <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*" Height="24">
@@ -819,6 +847,11 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
+
+              <!-- The filter over the rows, because M beats scrolling for Margin. -->
+              <TextBox Height="26" Margin="14,0,14,10" PlaceholderText="Фильтр свойств"
+                       IsVisible="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       Text="{Binding InspectorFilter, Mode=TwoWay}" />
 
               <ItemsControl ItemsSource="{Binding PropertyGroups}">
                 <ItemsControl.ItemTemplate>

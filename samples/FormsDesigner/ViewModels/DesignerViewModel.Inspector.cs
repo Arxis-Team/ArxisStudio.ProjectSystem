@@ -182,6 +182,31 @@ public sealed partial class DesignerViewModel
             () => Selected is not null && ActiveForm is not null);
     }
 
+    /// <summary>
+    /// What the inspector's rows are filtered by.
+    /// </summary>
+    /// <remarks>
+    /// The inspector grew long the day it started offering the standard properties, and a person
+    /// looking for Margin should type M rather than scroll. The filter is over the visible heading
+    /// and the written name both, so "x:Name" is found under "name" as well as under its directive.
+    /// </remarks>
+    public string InspectorFilter
+    {
+        get;
+        set
+        {
+            if (Set(ref field, value))
+            {
+                BuildInspector();
+            }
+        }
+    } = string.Empty;
+
+    private bool MatchesInspectorFilter(PropertyRow row) =>
+        InspectorFilter is not { Length: > 0 } filter
+            || row.Heading.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || row.Name.Contains(filter, StringComparison.OrdinalIgnoreCase);
+
     private void BuildInspector()
     {
         Properties.Clear();
@@ -290,7 +315,8 @@ public sealed partial class DesignerViewModel
         // opposite of what it means.
         foreach (string heading in new[] { "Identity", "Layout", "Appearance", "Content & Interaction" })
         {
-            PropertyRow[] rows = [.. Properties.Where(row => GroupOf(row.Name) == heading)];
+            PropertyRow[] rows =
+                [.. Properties.Where(row => GroupOf(row.Name) == heading && MatchesInspectorFilter(row))];
 
             if (rows.Length > 0)
             {

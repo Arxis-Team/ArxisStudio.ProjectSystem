@@ -140,6 +140,7 @@ Configured as `ArxisStudio.DesignEditor` documents them, mapped for a form desig
 | `Ctrl+C`, `Ctrl+X`, `Ctrl+V`, `Ctrl+D` | copy, cut, paste, duplicate — copies carry no names |
 | `Ctrl+S`, `Ctrl+Shift+S` | save this form, save every form that has edits |
 | `Ctrl+0` | fit the form to the window |
+| `Alt+Up`, `Alt+Down` | move the control among its siblings — one history step each |
 
 Snapping is on — to the grid and to the neighbours' edges and centres — and both are checkboxes on
 the toolbar. Resize is contained to the form, because a button hanging outside the window it belongs
@@ -268,6 +269,12 @@ what it does is edit the document.
 
 **An edit is applied to the document first and to the live objects second.** `ApplyDocumentUpdateAsync`
 works out what actually changed, so setting one property does not tear down the form around it.
+
+**Structure is edited in words, not gestures.** Move up, move down, wrap in a container, unwrap —
+on the canvas's and the hierarchy's context menus. Each is a single document edit and so a single
+history step: a wrap is `ReplaceElement` over the element's own span, which cannot half-happen, and
+an unwrap that would lift three children into a parent that holds one is refused in words rather
+than written into the file for the loader to refuse later.
 
 **Undo is documents, not operations.** Every edit produces a whole new immutable document, so the
 history is the documents themselves and going back is applying one the designer was already holding

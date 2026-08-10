@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using ArxisStudio;
 using ArxisStudio.Markup.Xaml;
@@ -51,6 +52,11 @@ public sealed partial class MainWindow : Window
         surface.EditCompleted += OnEditCompleted;
         surface.DeleteRequested += OnDeleteRequested;
         surface.ContextMenuRequesting += OnContextMenuRequesting;
+
+        // A right press selects the row under the pointer before its menu opens, or the menu would
+        // act on whatever happened to be selected from before.
+        this.GetControl<ListBox>("HierarchyTree").AddHandler(
+            PointerPressedEvent, OnTreePressed, RoutingStrategies.Tunnel);
         surface.ReorderRequested += OnReorderRequested;
 
         // Drag out of the toolbox, drop onto the surface. Avalonia's own drag-and-drop rather than a
@@ -332,7 +338,35 @@ public sealed partial class MainWindow : Window
             Action("undo", "Отменить", "Ctrl+Z", designer.UndoCommand, 5),
             Action("redo", "Вернуть", "Ctrl+Y", designer.RedoCommand, 6),
             new DesignEditorContextAction { Id = "--", IsSeparator = true, Group = "edit", Order = 7 },
-            Action("delete", "Удалить", "Del", designer.DeleteSelectedCommand, 8),
+            Action("up", "Выше", "Alt+Up", designer.MoveUpCommand, 8),
+            Action("down", "Ниже", "Alt+Down", designer.MoveDownCommand, 9),
+            new DesignEditorContextAction
+            {
+                Id = "wrap",
+                Header = "Обернуть в",
+                Group = "edit",
+                Order = 10,
+                Items =
+                [
+                    .. DesignerViewModel.WrapContainers.Select(container =>
+                        new DesignEditorContextAction
+                        {
+                            Id = "wrap:" + container,
+                            Header = container,
+                            Command = new RelayCommand(() => designer.Wrap(container)),
+                        }),
+                ],
+            },
+            new DesignEditorContextAction
+            {
+                Id = "unwrap",
+                Header = "Развернуть",
+                Group = "edit",
+                Order = 11,
+                Command = new RelayCommand(designer.Unwrap),
+            },
+            new DesignEditorContextAction { Id = "---", IsSeparator = true, Group = "edit", Order = 12 },
+            Action("delete", "Удалить", "Del", designer.DeleteSelectedCommand, 13),
         ];
 
         static DesignEditorContextAction Action(
@@ -691,6 +725,37 @@ public sealed partial class MainWindow : Window
             designer.CloseForm(form, ask: true);
         }
     }
+
+    /// <summary>Selects the row under a right press, so its menu acts on it.</summary>
+    private void OnTreePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not ListBox tree
+            || !e.GetCurrentPoint(tree).Properties.IsRightButtonPressed)
+        {
+            return;
+        }
+
+        for (Visual? current = e.Source as Visual; current is not null; current = current.GetVisualParent())
+        {
+            if (current is ListBoxItem { DataContext: HierarchyRow row } && Designer is { } designer)
+            {
+                designer.SelectedHierarchyRow = row;
+
+                return;
+            }
+        }
+    }
+
+    /// <summary>Wraps the selection in the container the menu item names.</summary>
+    private void OnWrap(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { Tag: string container })
+        {
+            Designer?.Wrap(container);
+        }
+    }
+
+    private void OnUnwrap(object? sender, RoutedEventArgs e) => Designer?.Unwrap();
 
     /// <summary>Opens the tree's filter and puts the caret in it.</summary>
     private void OnFindInTree(object? sender, RoutedEventArgs e)

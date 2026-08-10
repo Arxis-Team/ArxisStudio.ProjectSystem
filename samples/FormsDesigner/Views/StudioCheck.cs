@@ -540,6 +540,105 @@ internal static class StudioCheck
             Fail(ref failures, "redoing every step did not get back to the laid-out form");
         }
 
+        // 4b2. Moved among its siblings, wrapped, and unwrapped — the structure edits, each of
+        //      which must be exactly one step of the history.
+        if (Find(designer, "Button") is { } ordered)
+        {
+            designer.SelectFromCanvas(form, ordered);
+
+            int buttonAt = Text(form).IndexOf("<Button", StringComparison.Ordinal);
+            int boxAt = Text(form).IndexOf("<TextBox", StringComparison.Ordinal);
+
+            if (buttonAt < boxAt)
+            {
+                Fail(ref failures, "the drops did not land in the expected order");
+            }
+
+            designer.MoveUpCommand.Execute(null);
+
+            if (!await Until(
+                () => Text(form).IndexOf("<Button", StringComparison.Ordinal)
+                    < Text(form).IndexOf("<TextBox", StringComparison.Ordinal),
+                30))
+            {
+                Fail(ref failures, "move up did not reorder the siblings");
+            }
+
+            designer.MoveDownCommand.Execute(null);
+
+            if (!await Until(
+                () => Text(form).IndexOf("<Button", StringComparison.Ordinal)
+                    > Text(form).IndexOf("<TextBox", StringComparison.Ordinal),
+                30))
+            {
+                Fail(ref failures, "move down did not put the sibling back");
+            }
+
+            designer.Wrap("Border");
+
+            if (!await Until(
+                () => Text(form).Contains("<Border><Button", StringComparison.Ordinal), 30))
+            {
+                Fail(ref failures, "wrap did not put a Border around the Button");
+            }
+            else if (designer.Selected?.Name.LocalName != "Border")
+            {
+                Fail(ref failures, "the selection did not follow the wrap to the Border");
+            }
+            else
+            {
+                designer.Unwrap();
+
+                if (!await Until(
+                    () => !Text(form).Contains("<Border>", StringComparison.Ordinal), 30))
+                {
+                    Fail(ref failures, "unwrap did not lift the Button back out");
+                }
+                else
+                {
+                    designer.UndoCommand.Execute(null);
+
+                    if (!await Until(
+                        () => Text(form).Contains("<Border><Button", StringComparison.Ordinal), 30))
+                    {
+                        Fail(ref failures, "undoing the unwrap is not one step");
+                    }
+
+                    designer.RedoCommand.Execute(null);
+                    await Until(() => !Text(form).Contains("<Border>", StringComparison.Ordinal), 30);
+                }
+            }
+
+            Say("moved, wrapped, unwrapped — one history step each");
+        }
+
+        // 4b3. The inspector's rows filter down and come back.
+        if (Find(designer, "Button") is { } filtered)
+        {
+            designer.SelectFromCanvas(form, filtered);
+
+            int fullRows = designer.PropertyGroups.Sum(group => group.Rows.Count);
+
+            designer.InspectorFilter = "Width";
+
+            int narrowed = designer.PropertyGroups.Sum(group => group.Rows.Count);
+
+            designer.InspectorFilter = string.Empty;
+
+            if (narrowed == 0 || narrowed >= fullRows)
+            {
+                Fail(ref failures, $"filtering the inspector for Width left {narrowed} of {fullRows} rows");
+            }
+            else if (designer.PropertyGroups.Sum(group => group.Rows.Count) != fullRows)
+            {
+                Fail(ref failures, "clearing the inspector's filter did not bring the rows back");
+            }
+            else
+            {
+                Say($"the inspector filters to {narrowed} row(s) out of {fullRows} and back");
+            }
+        }
+
         // 4c. Named, because a control nothing can find by name is a control code-behind cannot use.
         if (Find(designer, "Button") is { } toName)
         {
