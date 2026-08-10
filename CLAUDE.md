@@ -220,6 +220,7 @@ What is recorded so far:
 | [0018](docs/adr/0018-the-adapter-references-markup-by-source.md) | The adapter references Markup by source, and is the one package allowed to |
 | [0019](docs/adr/0019-a-file-that-is-not-there-yet-is-an-evaluation-input.md) | A provider names where a convention-based import would be, not only where one was found |
 | [0020](docs/adr/0020-the-adapter-resets-avalonias-runtime-xaml-compiler.md) | The adapter resets Avalonias runtime XAML compiler between generations |
+| [0021](docs/adr/0021-a-run-holds-one-generation-of-a-projects-types.md) | A run holds one generation of a project's types; stale types are answered with a restart |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

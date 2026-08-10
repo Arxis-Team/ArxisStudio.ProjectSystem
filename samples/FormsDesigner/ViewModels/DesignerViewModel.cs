@@ -62,6 +62,8 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         RestoreCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Restore)), CanOperate);
         BuildCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Build)), CanOperate);
 
+        RestartCommand = new RelayCommand(Restart, () => NeedsRestart && !EntryPoint.IsEmpty);
+
         InitialiseHeader();
         InitialiseShell();
         InitialiseRun();
@@ -108,6 +110,14 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
     public RelayCommand RestoreCommand { get; }
 
     public RelayCommand BuildCommand { get; }
+
+    /// <summary>Starts the studio again on the same project, with the same forms open.</summary>
+    /// <remarks>
+    /// The one thing a process can do about types it has already loaded. What it costs is the
+    /// window blinking; what it buys is a designer that never shows a form built from types the
+    /// project has moved past.
+    /// </remarks>
+    public RelayCommand RestartCommand { get; }
 
     /// <summary>Set by the view, because picking a file needs a window to hang a dialog off.</summary>
     public Func<Task<string?>>? PickEntryPoint { get; set; }

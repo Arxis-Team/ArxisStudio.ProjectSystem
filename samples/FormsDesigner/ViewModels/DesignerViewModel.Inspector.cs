@@ -397,9 +397,13 @@ public sealed partial class DesignerViewModel
     }
 
     /// <summary>The live control the selection stands for, when there is one.</summary>
+    /// <remarks>
+    /// Through <c>ObjectBehind</c> rather than the map alone, so an embedded project control — which
+    /// the map refuses by source — still gets a live object to ask, and with it a full inspector.
+    /// </remarks>
     private Control? LiveSelection() =>
         Selected is { } element && ActiveForm?.Objects is { } map
-            ? map.GetObject(element) as Control
+            ? ObjectBehind(map, element)
             : null;
 
     /// <summary>

@@ -367,6 +367,55 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     internal void AdoptRoot(XamlLoadSession session) => Publish(session);
 
     /// <summary>
+    /// Lets go of the session and everything built from it, keeping the document and the history.
+    /// </summary>
+    /// <remarks>
+    /// The first half of moving a form to a new generation. Everything the old assemblies produced
+    /// is released — the surface gives back what it borrowed, the root is dropped, the session is
+    /// disposed — so the collectible context that made them can actually collect. The document is
+    /// text and owes the assemblies nothing, which is why it and the undo history stay.
+    /// </remarks>
+    internal async ValueTask RetireSessionAsync()
+    {
+        if (Session is not { } session)
+        {
+            return;
+        }
+
+        Session = null;
+
+        Surface.Detach();
+        Root = null;
+
+        // And the generation itself, or the sweep would find this form still using it and keep it
+        // alive — which is the whole thing this retirement exists to end.
+        Assemblies = null;
+
+        await session.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Adopts a session created over the same document under a new generation.
+    /// </summary>
+    /// <remarks>
+    /// The other half. Unlike <see cref="AdoptAsync"/> this is not an opening: the form was already
+    /// open, its history is real, and its unsaved edits are in the document the new session was
+    /// built from — so nothing is cleared and nothing is marked saved. The elements even survive,
+    /// because the session keeps the document instance it was given.
+    /// </remarks>
+    internal void Migrate(XamlLoadSession session)
+    {
+        Session = session;
+        Document = session.Document;
+
+        Publish(session);
+
+        Problem = Root is null
+            ? $"The document's root is {session.RootObject.GetType().Name}, which is not a Control."
+            : null;
+    }
+
+    /// <summary>
     /// Works out what to show from what the document produced.
     /// </summary>
     /// <remarks>

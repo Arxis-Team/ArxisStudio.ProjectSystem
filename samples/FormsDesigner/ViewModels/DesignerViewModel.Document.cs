@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
@@ -6,6 +7,7 @@ using System.Threading.Tasks;
 using ArxisStudio;
 using ArxisStudio.Markup.Xaml;
 using ArxisStudio.Markup.Xaml.Loader;
+using ArxisStudio.ProjectSystem;
 using Avalonia.Controls;
 
 namespace FormsDesigner.ViewModels;
@@ -133,9 +135,14 @@ public sealed partial class DesignerViewModel
             return;
         }
 
+        // ElementBehind rather than the map alone, so a project's own control placed on this form
+        // is selectable as itself: the map refuses it — its source stamp names its own document —
+        // and the structural match is what recovers it. Its internals resolve to nothing, so a
+        // click inside it still lands on the control, the same way a template's parts land on
+        // their owner.
         for (Control? current = control; current is not null; current = current.Parent as Control)
         {
-            if (map.GetElement(current) is { } element)
+            if (ElementBehind(map, current) is { } element)
             {
                 Selected = element;
 
@@ -151,7 +158,7 @@ public sealed partial class DesignerViewModel
 
     /// <summary>Finds the live control an element produced, for the editor to select.</summary>
     public static Control? ControlFor(FormViewModel form, XamlElement element) =>
-        form.Objects?.GetObject(element) as Control;
+        form.Objects is { } map ? ObjectBehind(map, element) : null;
 
     /// <summary>
     /// Applies an edit to the document and to the live objects, in that order.
@@ -568,7 +575,7 @@ public sealed partial class DesignerViewModel
     /// <summary>Answers the editor's delete request. Called by the view.</summary>
     public void DeleteFromCanvas(FormViewModel form, Control control)
     {
-        if (form.Objects?.GetElement(control) is { } element)
+        if (form.Objects is { } map && ElementBehind(map, control) is { } element)
         {
             RunDetached(() => DeleteAsync(form, element));
         }
@@ -612,5 +619,61 @@ public sealed partial class DesignerViewModel
         Log($"Saved {form.Name}");
 
         RefreshAllCommands();
+        NudgeDependents(form);
+    }
+
+    /// <summary>
+    /// Says so when the saved form is placed on another open one, because that copy is now behind.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An embedded control draws itself from the compiled assembly, not from the file beside it:
+    /// its own <c>InitializeComponent</c> loads the markup that was compiled into it. So a form
+    /// that places <c>MyControl</c> goes on showing the shape <c>MyControl</c> had when the studio
+    /// started, however many times its source is saved here.
+    /// </para>
+    /// <para>
+    /// Which is exactly one press away from being fixed, and the press is a restart — the process
+    /// cannot replace types it has already loaded, and a designer that pretends otherwise ends up
+    /// with two of everything. So the studio says which forms are behind and offers to reload; it
+    /// does not quietly rebuild and leave the canvas disagreeing with the file.
+    /// </para>
+    /// </remarks>
+    private void NudgeDependents(FormViewModel saved)
+    {
+        if (saved.Document?.Root?.GetDirective("Class") is not { Length: > 0 } full)
+        {
+            return;
+        }
+
+        string className = full[(full.LastIndexOf('.') + 1)..];
+
+        string[] dependents =
+        [
+            .. Forms.Where(form => !ReferenceEquals(form, saved)
+                    && form.Document?.Root is { } root
+                    && SelfAndDescendants(root).Any(element => element.Name.LocalName == className))
+                .Select(static form => form.Name),
+        ];
+
+        if (dependents.Length == 0)
+        {
+            return;
+        }
+
+        AskForRestart($"{string.Join(", ", dependents)} still shows the {className} this run loaded");
+    }
+
+    private static IEnumerable<XamlElement> SelfAndDescendants(XamlElement element)
+    {
+        yield return element;
+
+        foreach (XamlElement child in element.Elements)
+        {
+            foreach (XamlElement nested in SelfAndDescendants(child))
+            {
+                yield return nested;
+            }
+        }
     }
 }

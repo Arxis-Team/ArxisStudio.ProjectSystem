@@ -434,6 +434,8 @@ public sealed partial class DesignerViewModel
                     context.Assemblies.Select(static a => a.Path.FileName).Take(8)));
             }
 
+            OfferRestartIfTypesAreStale(why);
+
             return;
         }
 
@@ -485,30 +487,42 @@ public sealed partial class DesignerViewModel
     }
 
     /// <summary>
-    /// The environment for a project, rebuilt when the snapshot it was made from is superseded.
+    /// The project's assemblies, loaded once and kept for as long as the project is open.
     /// </summary>
     /// <remarks>
-    /// <c>IsCurrentFor</c> is one integer against the current snapshot, which is the cheap staleness
-    /// check the adapter exists to offer. When it disagrees the context is dropped and a new one
-    /// built, and forms already open keep the objects they have until they are reloaded — which is
-    /// correct, because a rebuilt assembly is a reason to reload deliberately rather than to have
-    /// every open form flicker.
+    /// <para>
+    /// One generation per project per run, and this is the hardest-won line in the designer. A
+    /// second generation is a second copy of the same assembly in the same process, and the two
+    /// cannot both be there: Avalonia's runtime XAML compiler snapshots the loaded assemblies and
+    /// answers a simple name with the first match, so it went on resolving <c>x:Class</c> to the
+    /// first copy while the designer built root objects from the newest. The load then failed with
+    /// "Unable to substitute MainWindow with MainWindow" — the same name on both sides, because
+    /// they had never been the same type.
+    /// </para>
+    /// <para>
+    /// Rebuilding the generation and moving the open forms onto it does not help, and the reason is
+    /// worth writing down: a superseded generation is unloaded but never collected. Creating one
+    /// control from it registers its type in Avalonia's process-wide property registry, and that
+    /// registration outlives the context — measured, in this designer, with every generation still
+    /// present after a full collection. So a designer that made a new generation per build ended up
+    /// with every generation it had ever made, and the compiler kept answering with the first.
+    /// </para>
+    /// <para>
+    /// What follows from that is the deal this designer makes. Markup is read from the file every
+    /// time, so layout — the whole of what a form designer is for — is always current. Types are
+    /// read once: a class added or changed since the project was opened needs the studio restarted,
+    /// which <see cref="RestartCommand"/> offers in one press when the situation is detected.
+    /// </para>
     /// </remarks>
     private XamlLoadEnvironment EnvironmentFor(SolutionSnapshot snapshot, ProjectIdentity project)
     {
-        if (_environment is not null
-            && _assemblies is not null
-            && _assemblies.IsCurrentFor(snapshot)
-            && _environmentProject == project)
+        if (_environment is not null && _assemblies is not null && _environmentProject == project)
         {
             return _environment;
         }
 
-        // The old generation is retired, not disposed: forms loaded under it are still open, their
-        // sessions still resolve through it, and an edit on one of them re-enters its load scope.
-        // Disposing it here made that edit throw ObjectDisposedException — the form looked frozen
-        // and the close-question never fired because the edit that would have made it dirty was the
-        // thing that failed. A generation dies when the last form using it closes.
+        // Another project's generation is a different assembly name, so it cannot be resolved in
+        // this one's place. It stays until the forms loaded under it close.
         if (_assemblies is { } previous)
         {
             _retired.Add(previous);
@@ -522,6 +536,125 @@ public sealed partial class DesignerViewModel
         Log($"  load context “{_assemblies.Name}” — {_assemblies.Assemblies.Length} assemblies");
 
         return _environment;
+    }
+
+    /// <summary>
+    /// Whether the studio is holding types older than the project on disk, and knows it.
+    /// </summary>
+    /// <remarks>
+    /// Set when a load failed for a reason only a restart can fix, and when a saved form is placed
+    /// on another one — both are the same fact said twice: this run's types are behind the files.
+    /// </remarks>
+    public bool NeedsRestart
+    {
+        get;
+        private set
+        {
+            if (Set(ref field, value))
+            {
+                RestartCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>What the studio says it is offering to restart for.</summary>
+    public string RestartReason
+    {
+        get;
+        private set => Set(ref field, value);
+    } = string.Empty;
+
+    /// <summary>Says so, once, when a failure is one only a restart can clear.</summary>
+    private void OfferRestartIfTypesAreStale(string why)
+    {
+        // Both spellings of "the types this run holds are not the types on disk": a class the
+        // assembly does not have, and a class it has twice over. Anything else is an ordinary
+        // markup problem and has an ordinary answer.
+        bool stale = why.Contains("Unable to substitute", StringComparison.OrdinalIgnoreCase)
+            || why.Contains("was not found in any assembly", StringComparison.OrdinalIgnoreCase)
+            || why.Contains("Could not load type", StringComparison.OrdinalIgnoreCase);
+
+        if (!stale)
+        {
+            return;
+        }
+
+        AskForRestart("this run holds the types the project had when it was opened");
+    }
+
+    /// <summary>
+    /// Starts the studio again on this project, with the form that is in front reopened.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unsaved work stops it, and says so: a restart that discarded edits to save the user a press
+    /// would be the studio deciding something it has no business deciding. Save first, then this.
+    /// </para>
+    /// <para>
+    /// The new process is started before this one closes, so the two overlap for a moment rather
+    /// than leaving the screen empty. It is given the same entry point and the active form's name,
+    /// which is what the command line already takes.
+    /// </para>
+    /// </remarks>
+    private void Restart()
+    {
+        if (Forms.FirstOrDefault(static form => form.IsDirty) is { } unsaved)
+        {
+            Log($"! {unsaved.Name} has unsaved edits — save them, then Reload");
+
+            return;
+        }
+
+        if (System.Environment.ProcessPath is not { Length: > 0 } executable)
+        {
+            Log("! this build cannot restart itself — close the studio and start it again");
+
+            return;
+        }
+
+        var start = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false };
+
+        start.ArgumentList.Add(EntryPoint.Value);
+
+        if (ActiveForm is { } active)
+        {
+            start.ArgumentList.Add(active.Name);
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(start);
+        }
+        catch (Exception error)
+            when (error is System.ComponentModel.Win32Exception or System.IO.IOException)
+        {
+            Log($"! the studio could not start itself again: {error.Message}");
+
+            return;
+        }
+
+        Log("Restarting…");
+
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+        }
+    }
+
+    /// <summary>Offers the restart, in words, and lights the command that performs it.</summary>
+    private void AskForRestart(string because)
+    {
+        RestartReason = because;
+
+        if (NeedsRestart)
+        {
+            return;
+        }
+
+        NeedsRestart = true;
+
+        Log($"! {because} — press Reload to restart the studio with the project as it is now");
     }
 
     private static async Task<string> ReadAsync(CanonicalPath file) =>

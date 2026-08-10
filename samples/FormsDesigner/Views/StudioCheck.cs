@@ -104,6 +104,12 @@ internal static class StudioCheck
         string project = await ProjectScaffold.CreateAsync(
             ProjectScaffold.Templates[0], folder, "StressApp", CancellationToken.None);
 
+        // A control of the project's own, written before the studio opens it: the types a run holds
+        // are the ones the project had when it was opened, so a control placed on a form has to be
+        // part of that build. Creating one mid-run is the case the studio answers with a restart,
+        // and this step checks that answer separately, below.
+        string controlFile = await WriteControlAsync(project);
+
         designer.OpenAtStartup(project, "MainWindow.axaml");
 
         if (!await Until(() => designer.ActiveForm is { Session: not null, Problem: null }, 300))
@@ -512,13 +518,258 @@ internal static class StudioCheck
             }
         }
 
+        failures += await EmbeddedControlAsync(designer, form, controlFile);
+
         return failures;
+    }
+
+    /// <summary>
+    /// 14. A project's own control, placed on another form — the designer's hardest ordinary case.
+    /// </summary>
+    /// <remarks>
+    /// Everything about an embedded control crosses a boundary: its instance says it came from its
+    /// own document, so the object map refuses it; its rendering comes from the compiled assembly,
+    /// so a saved edit is invisible until a rebuild; and a rebuild makes a second copy of the
+    /// assembly, which is where "unable to substitute MyControl with MyControl" lived. This step
+    /// walks the whole story: place it, select it, inspect it, edit and save its source, see the
+    /// placement update, survive a reopen after an outside code edit, and delete it.
+    /// </remarks>
+    private static async Task<int> EmbeddedControlAsync(
+        DesignerViewModel designer, FormViewModel form, string controlFile)
+    {
+        var failures = 0;
+
+        if (form.Document?.Root?.GetDirective("Class") is not { Length: > 0 } mainClass)
+        {
+            return Fail(ref failures, "the stress window declares no class to derive a namespace from");
+        }
+
+        string space = mainClass[..mainClass.LastIndexOf('.')];
+
+        // Saved and closed before anything is written outside: an open dirty form rightly refuses
+        // an outside overwrite, and the placement is written into the file while it is closed.
+        designer.SaveCommand.Execute(null);
+
+        if (!await Until(() => !form.IsDirty, 60))
+        {
+            return Fail(ref failures, "the window would not save before the embedded step");
+        }
+
+        designer.CloseForm(form);
+
+        // Placed the way the other editor would place it: written into the file while the form is
+        // closed. The open below is what builds the project, which is what makes the type exist.
+        string text = await System.IO.File.ReadAllTextAsync(form.File.Value);
+        int closing = text.LastIndexOf("</StackPanel>", StringComparison.Ordinal);
+        int root = text.IndexOf("<Window", StringComparison.Ordinal);
+
+        if (closing < 0 || root < 0)
+        {
+            return Fail(ref failures, "the stress window lost the shape this step writes into");
+        }
+
+        text = text.Insert(closing, "    <v:MyControl x:Name=\"Embedded\" />\n")
+            .Insert(root + "<Window".Length, $" xmlns:v=\"using:{space}\"");
+
+        await System.IO.File.WriteAllTextAsync(form.File.Value, text);
+
+        if (!Open(designer, form.Name))
+        {
+            return Fail(ref failures, "the window left the project when it was closed");
+        }
+
+        if (!await Until(
+            () => designer.ActiveForm is { Problem: null, Root: not null } reopened
+                && reopened.Name == form.Name
+                && LiveByName(designer, "Embedded") is not null,
+            300))
+        {
+            return Fail(ref failures, "the window did not come back with the embedded control live: "
+                + (designer.ActiveForm?.Problem ?? "no problem reported"));
+        }
+
+        FormViewModel window = designer.ActiveForm!;
+
+        // Selecting the embedded control must select it, not the window around it.
+        designer.SelectFromCanvas(window, LiveByName(designer, "Embedded"));
+
+        if (designer.Selected?.Name.LocalName != "MyControl")
+        {
+            Fail(ref failures, "clicking the embedded control selected "
+                + (designer.Selected?.Name.ToString() ?? "nothing"));
+        }
+        else if (!System.Linq.Enumerable.Any(designer.Properties, row => row.Name == "Width"))
+        {
+            Fail(ref failures, "the embedded control's inspector offers no Width");
+        }
+        else
+        {
+            Say("a placed project control is selectable and inspectable");
+        }
+
+        // Edit the control's own form and save: the placement must take the new shape without
+        // anybody pressing Build.
+        if (!await Until(() => Open(designer, "MyControl.axaml"), 120))
+        {
+            return Fail(ref failures, "MyControl.axaml never appeared in the project");
+        }
+
+        if (!await Until(
+            () => designer.ActiveForm is { Problem: null, Root: not null } opened
+                && opened.Name == "MyControl.axaml",
+            300))
+        {
+            return Fail(ref failures, "the control's own form would not open: "
+                + (designer.ActiveForm?.Problem ?? "no problem reported"));
+        }
+
+        FormViewModel control = designer.ActiveForm!;
+
+        designer.SelectFromCanvas(control, Find(designer, "TextBlock"));
+
+        if (System.Linq.Enumerable.FirstOrDefault(
+            designer.Properties, row => row.Name == "Text") is not { } textRow)
+        {
+            Fail(ref failures, "the control's TextBlock offers no Text row");
+        }
+        else
+        {
+            textRow.Value = "Second";
+
+            if (!await Until(
+                () => Text(control).Contains("Second", StringComparison.Ordinal), 30))
+            {
+                Fail(ref failures, "the Text edit never reached the control's document");
+            }
+        }
+
+        designer.SaveCommand.Execute(null);
+
+        // The placed copy draws from the compiled assembly, so it cannot follow this save — and the
+        // studio must say so rather than leave the canvas quietly behind the file.
+        if (!await Until(() => designer.NeedsRestart, 60))
+        {
+            Fail(ref failures, "saving a placed control said nothing about the copies that are behind");
+        }
+        else
+        {
+            Say("saving a placed control says which forms are now behind it");
+        }
+
+        // The exact reported break: edit the code-behind outside, close the form, open it again.
+        // A second generation used to be made here, and the two copies of one assembly met as
+        // "Unable to substitute MyControl with MyControl".
+        designer.CloseForm(designer.Forms.First(f => f.Name == "MyControl.axaml"));
+
+        await System.IO.File.AppendAllTextAsync(controlFile + ".cs", "\n// touched outside\n");
+
+        if (!Open(designer, "MyControl.axaml"))
+        {
+            return Fail(ref failures, "MyControl.axaml left the project before the reopen");
+        }
+
+        if (!await Until(
+            () => designer.ActiveForm is { Problem: null, Root: not null } back
+                && back.Name == "MyControl.axaml",
+            300))
+        {
+            Fail(ref failures, "reopening after an outside code edit failed: "
+                + (designer.ActiveForm?.Problem ?? "no problem reported"));
+        }
+        else
+        {
+            Say("a reopen after an outside code edit still loads");
+        }
+
+        // And the placement deletes like anything else.
+        if (!Open(designer, form.Name))
+        {
+            return Fail(ref failures, "the window left the project before the delete");
+        }
+
+        if (!await Until(
+            () => designer.ActiveForm is { } active && active.Name == form.Name
+                && LiveByName(designer, "Embedded") is not null,
+            60))
+        {
+            return Fail(ref failures, "the window would not come forward for the delete");
+        }
+
+        FormViewModel target = designer.ActiveForm!;
+
+        designer.SelectFromCanvas(target, LiveByName(designer, "Embedded"));
+        designer.DeleteSelectedCommand.Execute(null);
+
+        if (!await Until(
+            () => !Text(target).Contains("<v:MyControl", StringComparison.Ordinal), 30))
+        {
+            Fail(ref failures, "the embedded control would not delete");
+        }
+        else
+        {
+            Say("a placed control deletes like anything else");
+        }
+
+        return failures;
+    }
+
+    /// <summary>Writes a control of the project's own beside its window, before anything opens it.</summary>
+    private static async Task<string> WriteControlAsync(string project)
+    {
+        string views = System.IO.Path.GetDirectoryName(
+            System.IO.Directory.GetFiles(
+                System.IO.Path.GetDirectoryName(project)!, "MainWindow.axaml", System.IO.SearchOption.AllDirectories)
+                .First())!;
+
+        string file = System.IO.Path.Combine(views, "MyControl.axaml");
+
+        await System.IO.File.WriteAllTextAsync(
+            file,
+            """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         x:Class="StressApp.Views.MyControl">
+              <Border Background="#333B4A" Padding="16">
+                <TextBlock Text="First" />
+              </Border>
+            </UserControl>
+            """);
+
+        await System.IO.File.WriteAllTextAsync(
+            file + ".cs",
+            """
+            using Avalonia.Controls;
+            using Avalonia.Markup.Xaml;
+
+            namespace StressApp.Views;
+
+            public partial class MyControl : UserControl
+            {
+                public MyControl() => AvaloniaXamlLoader.Load(this);
+            }
+            """);
+
+        return file;
+    }
+
+    /// <summary>Opens a project form by file name, the way a double-click in the pane would.</summary>
+    private static bool Open(DesignerViewModel designer, string name)
+    {
+        if (designer.ProjectForms.FirstOrDefault(form => form.Name == name) is not { } form)
+        {
+            return false;
+        }
+
+        designer.OpenFile(new FileTile(
+            form.Name, form.Path, Glyphs.ForFile(form.Path.Extension), Glyphs.HueOfFile(form.Path.Extension)));
+
+        return true;
     }
 
     /// <summary>The live control behind the element carrying this <c>x:Name</c>.</summary>
     private static Control? LiveByName(DesignerViewModel designer, string name)
     {
-        if (designer.ActiveForm is not { Objects: { } map, Document.Root: { } root })
+        if (designer.ActiveForm is not { Objects: not null, Document.Root: { } root } form)
         {
             return null;
         }
@@ -527,7 +778,7 @@ internal static class StudioCheck
         {
             if (element.GetDirective("Name") == name)
             {
-                return map.GetObject(element) as Control;
+                return DesignerViewModel.ControlFor(form, element);
             }
         }
 
@@ -986,23 +1237,25 @@ internal static class StudioCheck
                 Say("the new form is a window with a class and a code-behind");
             }
 
-            // And it opened. A form whose class the project has not compiled yet is the one every
-            // designer gets wrong: the assembly is there, so nothing looks stale, and the load
-            // answers that x:Class names a type no assembly has.
+            // And what happens when it is opened, which is the honest half of one generation per
+            // run: the class was compiled after this run loaded its types, so the studio cannot
+            // show it — and must say so and offer the reload rather than fail quietly.
             if (!await Until(
-                () => designer.Forms.FirstOrDefault(open => open.Name == "SecondForm.axaml")
-                    is { Problem: null, Root: not null },
-                240))
+                () => designer.Forms.Any(open => open.Name == "SecondForm.axaml"), 240))
             {
-                Fail(
-                    ref failures,
-                    "the new window did not load: "
-                        + (designer.Forms.FirstOrDefault(open => open.Name == "SecondForm.axaml")?.Problem
-                            ?? "it never opened"));
+                Fail(ref failures, "the new window never opened at all");
+            }
+            else if (!await Until(() => designer.NeedsRestart, 240))
+            {
+                Fail(ref failures, "a form whose class is newer than this run said nothing about it");
+            }
+            else if (!designer.RestartCommand.CanExecute(null))
+            {
+                Fail(ref failures, "the studio said a reload was needed and would not perform one");
             }
             else
             {
-                Say("the new window loaded, class and all");
+                Say("a form newer than this run's types offers the reload that would show it");
             }
 
             designer.AskToConfirm = (_, _) => Task.FromResult(true);
