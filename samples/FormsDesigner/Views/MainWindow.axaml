@@ -489,7 +489,13 @@
           </Grid>
         </Border>
 
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto">
+        <!--
+          The columns are dealt by the code-behind on every view change, because two of the three
+          arrangements cannot be said in markup: XAML-only needs the editor to take the star and
+          the canvas to take nothing, and a splitter drag writes local widths that would otherwise
+          outlive the mode that made them.
+        -->
+        <Grid Grid.Row="2" x:Name="CentreColumns" ColumnDefinitions="*,Auto,0">
 
           <!--
             The clip lives here, on the pane, because this is the one thing the viewport transform
@@ -578,7 +584,7 @@
 
           <GridSplitter Classes="chrome" Grid.Column="1" Width="4" IsVisible="{Binding IsSplitView}" />
 
-          <Border Classes="chrome" Grid.Column="2" IsVisible="{Binding IsXamlVisible}" Width="520"
+          <Border Classes="chrome" Grid.Column="2" IsVisible="{Binding IsXamlVisible}"
                   Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Brd}" BorderThickness="1,0,0,0">
             <!--
               A code editor rather than a text block. The pane used to be one long line per line of

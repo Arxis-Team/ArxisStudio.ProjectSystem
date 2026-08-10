@@ -92,6 +92,20 @@ public sealed partial class MainWindow : Window
                 designer.AskToSave = AskToSaveAsync;
 
                 designer.ZoomToFitRequested += (_, _) => OnZoomToFit(this, new RoutedEventArgs());
+
+                // The centre's columns follow the view. Re-asserted on every change rather than
+                // bound, because the splitter writes local widths when it is dragged, and a local
+                // value outlives any binding — switching Design → XAML → Split would otherwise
+                // keep whatever widths the last drag happened to leave.
+                designer.PropertyChanged += (_, changed) =>
+                {
+                    if (changed.PropertyName == nameof(DesignerViewModel.View))
+                    {
+                        ApplyViewColumns(designer.View);
+                    }
+                };
+
+                ApplyViewColumns(designer.View);
                 designer.SearchRequested += (_, _) =>
                     this.GetControl<TextBox>("ToolboxSearch").Focus();
 
@@ -134,6 +148,26 @@ public sealed partial class MainWindow : Window
     }
 
     private DesignerViewModel? Designer => DataContext as DesignerViewModel;
+
+    /// <summary>
+    /// Deals the centre's columns for a view: all canvas, all editor, or a split.
+    /// </summary>
+    /// <remarks>
+    /// The editor used to keep a fixed 520 pixels at the window's right edge whatever the view,
+    /// which in XAML-only left the canvas's empty star column holding the whole middle of the
+    /// window — a void where the editor should have been.
+    /// </remarks>
+    private void ApplyViewColumns(DocumentView view)
+    {
+        ColumnDefinitions columns = this.GetControl<Grid>("CentreColumns").ColumnDefinitions;
+
+        (columns[0].Width, columns[2].Width) = view switch
+        {
+            DocumentView.Xaml => (new GridLength(0), new GridLength(1, GridUnitType.Star)),
+            DocumentView.Split => (new GridLength(1, GridUnitType.Star), new GridLength(520)),
+            _ => (new GridLength(1, GridUnitType.Star), new GridLength(0)),
+        };
+    }
 
     /// <summary>
     /// Repaints the XAML pane's highlighting in the design's own colours.
