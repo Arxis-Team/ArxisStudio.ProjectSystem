@@ -301,7 +301,85 @@ internal static class StudioCheck
             await Until(() => !designer.IsRunning, 30);
         }
 
-        // 12. A resize of a form that states only design sizes — the way every template writes its
+        // 12. The palette and the inspector at the depth building an application needs: a Grid
+        //     whose rows are written through the row editor, an items control that drops with
+        //     visible items, and a control whose package the project does not have — refused in
+        //     words, with the file untouched.
+        if (designer.Toolbox.FirstOrDefault(entry => entry.Name == "Grid") is { } gridTool)
+        {
+            designer.Drop(form, gridTool, over: Find(designer, "StackPanel"), at: new Point(20, 20));
+
+            if (!await Until(() => Find(designer, "Grid") is not null, 30))
+            {
+                Fail(ref failures, "the Grid never reached the document");
+            }
+            else
+            {
+                designer.SelectFromCanvas(form, Find(designer, "Grid")!);
+
+                if (designer.Properties.FirstOrDefault(row => row.Name == "RowDefinitions") is { } rows)
+                {
+                    rows.Value = "Auto,*";
+
+                    if (!await Until(
+                        () => Text(form).Contains("RowDefinitions=\"Auto,*\"", StringComparison.Ordinal),
+                        30))
+                    {
+                        Fail(ref failures, "the RowDefinitions edit never reached the document");
+                    }
+                    else
+                    {
+                        Say("a Grid's rows are written through the inspector");
+                    }
+                }
+                else
+                {
+                    Fail(ref failures, "the inspector offers no RowDefinitions for a Grid");
+                }
+            }
+        }
+
+        if (designer.Toolbox.FirstOrDefault(entry => entry.Name == "ComboBox") is { } comboTool)
+        {
+            designer.Drop(form, comboTool, over: Find(designer, "StackPanel"), at: new Point(20, 20));
+
+            if (!await Until(
+                () => Text(form).Contains("<ComboBoxItem", StringComparison.Ordinal)
+                    && Find(designer, "ComboBox") is not null,
+                30))
+            {
+                Fail(ref failures, "the ComboBox did not drop with its starter items");
+            }
+            else
+            {
+                Say("an items control drops with visible items");
+            }
+        }
+
+        if (designer.Toolbox.FirstOrDefault(entry => entry.Name == "DataGrid") is { } gridlessTool)
+        {
+            string beforeRefusal = Text(form);
+
+            designer.Drop(form, gridlessTool, over: Find(designer, "StackPanel"), at: new Point(20, 20));
+
+            if (!await Until(
+                () => designer.Output.Any(line =>
+                    line.Contains("Avalonia.Controls.DataGrid", StringComparison.Ordinal)),
+                30))
+            {
+                Fail(ref failures, "a DataGrid without its package was not refused in words");
+            }
+            else if (Text(form) != beforeRefusal)
+            {
+                Fail(ref failures, "the refused DataGrid still reached the document");
+            }
+            else
+            {
+                Say("a control whose package is missing is refused, and the file is untouched");
+            }
+        }
+
+        // 13. A resize of a form that states only design sizes — the way every template writes its
         //     windows. The card, the document and the live window must end up saying one number.
         string designSized = System.IO.Path.Combine(
             System.IO.Path.GetDirectoryName(project!)!, "DesignSized.axaml");
@@ -389,6 +467,43 @@ internal static class StudioCheck
                         else
                         {
                             Say("an undone resize takes the card back with the document");
+
+                            // The inspector is the other door to the same size. On a root that
+                            // states only design sizes, the Width row must show the size the
+                            // designer shows — not sit empty beside a canvas visibly 300 wide —
+                            // and writing it must reach the design attribute, or the edit would
+                            // be overruled by the next update the way the drag once was.
+                            designer.SelectFromCanvas(sized, sized.Root!);
+
+                            PropertyRow? width = designer.Properties.FirstOrDefault(
+                                row => row.Name == "Width");
+
+                            if (width is null || width.Value != "300")
+                            {
+                                Fail(ref failures, "the Width row of a design-sized root shows "
+                                    + $"'{width?.Value}' while the designer shows 300");
+                            }
+                            else
+                            {
+                                width.Value = "480";
+
+                                if (!await Until(
+                                    () => sized.Root is { Width: > 479 and < 481 }
+                                        && Text(sized).Contains(
+                                            "d:DesignWidth=\"480\"", StringComparison.Ordinal),
+                                    30))
+                                {
+                                    Fail(ref failures, "a Width typed into the inspector did not "
+                                        + "reach the design size: the window says "
+                                        + $"{sized.Root?.Width} and the document says "
+                                        + (Text(sized).Contains("d:DesignWidth=\"480\"", StringComparison.Ordinal)
+                                            ? "480" : "something else"));
+                                }
+                                else
+                                {
+                                    Say("the inspector edits the size the designer shows");
+                                }
+                            }
                         }
                     }
                 }

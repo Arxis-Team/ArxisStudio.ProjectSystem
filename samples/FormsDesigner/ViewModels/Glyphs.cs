@@ -43,6 +43,10 @@ public static class Glyphs
     private const string PathIcon = "M3 12.5C5 6 11 10 13 3.5";
     private const string Document = "M4 2.5h5.5L12.5 6v7.5H4zM9.5 2.5V6h3";
     private const string Box = "M3 3h10v10H3zM3 6.5h10";
+    private const string Expander = "M3 3.5h10v9H3zM5.5 7l2.5 2.5L10.5 7";
+    private const string Calendar = "M2.5 4.5h11v8h-11zM2.5 7h11M5 3v3M11 3v3";
+    private const string MenuBar = "M2.5 3.5h11v9h-11zM2.5 6h11M4.5 8h5M4.5 10h3.5";
+    private const string Tree = "M4.5 4v6.5M4.5 7h3M4.5 10.5h3M9.5 3.5h3.5M9.5 7h3.5M9.5 10.5h3.5";
 
     /// <summary>The glyph for a control, by its type name as the document spells it.</summary>
     private static readonly FrozenDictionary<string, string> Paths =
@@ -81,6 +85,14 @@ public static class Glyphs
             ["Separator"] = Progress,
             ["Path"] = PathIcon,
             ["Panel"] = Grid,
+            ["Expander"] = Expander,
+            ["DatePicker"] = Calendar,
+            ["TimePicker"] = Calendar,
+            ["CalendarDatePicker"] = Calendar,
+            ["Menu"] = MenuBar,
+            ["MenuItem"] = MenuBar,
+            ["TreeView"] = Tree,
+            ["TreeViewItem"] = Tree,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Which of the design's five hues a control is drawn in.</summary>
@@ -113,6 +125,14 @@ public static class Glyphs
             ["CheckBox"] = "Grn",
             ["RadioButton"] = "Grn",
             ["ToggleSwitch"] = "Grn",
+            ["Expander"] = "Org",
+            ["DatePicker"] = "Pur",
+            ["TimePicker"] = "Pur",
+            ["CalendarDatePicker"] = "Pur",
+            ["Menu"] = "Acc",
+            ["MenuItem"] = "Acc",
+            ["TreeView"] = "Grn",
+            ["TreeViewItem"] = "Grn",
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The glyph for a control type, or a plain box for one nothing recognises.</summary>

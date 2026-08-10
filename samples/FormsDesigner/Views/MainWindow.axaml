@@ -384,7 +384,7 @@
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:ToolboxEntry">
                             <Border Height="26" CornerRadius="5" Padding="7,0" Background="Transparent"
-                                    Cursor="Hand" ToolTip.Tip="{Binding Xaml}">
+                                    Cursor="Hand" ToolTip.Tip="{Binding Tip}">
                               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                 <Path Data="{Binding Glyph}" Width="14" Height="14" Stretch="Uniform"
                                       StrokeThickness="1.2"

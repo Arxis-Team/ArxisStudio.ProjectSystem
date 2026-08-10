@@ -331,8 +331,8 @@ public sealed partial class DesignerViewModel
 
                 if (resized)
                 {
-                    WriteSize(editor, element, "Width", "DesignWidth", control.Bounds.Width);
-                    WriteSize(editor, element, "Height", "DesignHeight", control.Bounds.Height);
+                    WriteSize(editor, element, "Width", control.Bounds.Width);
+                    WriteSize(editor, element, "Height", control.Bounds.Height);
                 }
             },
             "geometry");
@@ -363,7 +363,7 @@ public sealed partial class DesignerViewModel
         // attribute is written too when the document already had one, so the file never carries
         // two different numbers for one fact.
         static void WriteSize(
-            XamlDocumentEditor editor, XamlElement element, string name, string designName, double value)
+            XamlDocumentEditor editor, XamlElement element, string name, double value)
         {
             if (!double.IsFinite(value))
             {
@@ -372,10 +372,7 @@ public sealed partial class DesignerViewModel
 
             string text = Math.Round(value).ToString(CultureInfo.InvariantCulture);
 
-            XamlAttribute? design = element.Attributes.FirstOrDefault(attribute =>
-                attribute.Name.LocalName == designName
-                && element.NamespaceContext.LookupNamespace(attribute.Name.Prefix)
-                    == XamlNamespaces.Design);
+            XamlAttribute? design = DesignSize(element, name);
 
             if (design is not null)
             {
@@ -387,6 +384,29 @@ public sealed partial class DesignerViewModel
                 editor.SetAttribute(element, XamlQualifiedName.Parse(name), text);
             }
         }
+    }
+
+    /// <summary>
+    /// The design-namespace attribute that stands in for a size the element does not write plainly.
+    /// </summary>
+    /// <remarks>
+    /// One lookup for every door a size can be edited through. The drag-resize learned the hard way
+    /// that <c>d:DesignWidth</c> is what the designer actually shows; an inspector row that wrote
+    /// plain <c>Width</c> on such a root would be the same bug reached through the other door.
+    /// </remarks>
+    private static XamlAttribute? DesignSize(XamlElement element, string name)
+    {
+        if (name is not ("Width" or "Height"))
+        {
+            return null;
+        }
+
+        string designName = "Design" + name;
+
+        return element.Attributes.FirstOrDefault(attribute =>
+            attribute.Name.LocalName == designName
+            && element.NamespaceContext.LookupNamespace(attribute.Name.Prefix)
+                == XamlNamespaces.Design);
     }
 
     /// <summary>

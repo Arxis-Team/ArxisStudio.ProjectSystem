@@ -19,12 +19,27 @@ namespace FormsDesigner.ViewModels;
 /// then have to decide what a sensible new Button says — which is exactly what the snippet already
 /// says, in the form the file will hold.
 /// </remarks>
-public sealed record ToolboxEntry(string Group, string Name, string Xaml)
+/// <param name="Group">The palette heading the entry sits under.</param>
+/// <param name="Name">The control's type name, as the document will spell it.</param>
+/// <param name="Xaml">The markup a drop writes.</param>
+/// <param name="Package">
+/// The NuGet package the control lives in when that is not Avalonia itself, so a refusal can name
+/// what to add rather than only what is missing.
+/// </param>
+public sealed record ToolboxEntry(string Group, string Name, string Xaml, string? Package = null)
 {
     /// <summary>The design's glyph for this control, and the hue it is drawn in.</summary>
     public Avalonia.Media.Geometry Glyph => Glyphs.For(Name);
 
     public string Hue => Glyphs.HueOf(Name);
+
+    /// <summary>
+    /// What the tooltip shows: the whole snippet when it is a line, its opening tag when a snippet
+    /// with children would stretch a tooltip across the screen.
+    /// </summary>
+    public string Tip => Xaml.Length <= 80 || Xaml.IndexOf('>') is < 0
+        ? Xaml
+        : Xaml[..(Xaml.IndexOf('>') + 1)] + " …";
 
     public override string ToString() => Name;
 }
@@ -90,33 +105,52 @@ public sealed partial class DesignerViewModel
     {
         InitialiseInspector();
 
-        // The design's three groups, in its order, with its six entries each. A palette is read by
-        // position as much as by name once somebody has used it twice, so the order is part of it.
+        // The design's groups, in its order. A palette is read by position as much as by name once
+        // somebody has used it twice, so the order is part of it. Controls that hold items drop
+        // with a few — an empty ComboBox is an invisible drop and teaches nothing about the file
+        // shape, while three ComboBoxItems are visible, selectable, and show what to edit next.
         Add("Layout", "Grid", """<Grid Width="200" Height="140" />""");
         Add("Layout", "StackPanel", """<StackPanel Width="180" Height="120" />""");
         Add("Layout", "DockPanel", """<DockPanel Width="200" Height="140" />""");
+        Add("Layout", "WrapPanel", """<WrapPanel Width="200" Height="140" />""");
+
+        // A faint background because a bare Canvas hit-tests as nothing at all: the next control
+        // dropped over it would land beside it, and the panel that exists for free placement
+        // would be the one panel nothing could be placed into.
+        Add("Layout", "Canvas", """<Canvas Width="200" Height="140" Background="#11FFFFFF" />""");
         Add("Layout", "Border", """<Border Width="160" Height="90" Background="#22FFFFFF" />""");
         Add("Layout", "ScrollViewer", """<ScrollViewer Width="200" Height="140" />""");
-        Add("Layout", "TabControl", """<TabControl Width="220" Height="150" />""");
+        Add("Layout", "TabControl", """<TabControl Width="220" Height="150"><TabItem Header="One"><TextBlock Text="First page" /></TabItem><TabItem Header="Two"><TextBlock Text="Second page" /></TabItem></TabControl>""");
+        Add("Layout", "Expander", """<Expander Header="Expander" IsExpanded="True"><TextBlock Text="Content" /></Expander>""");
 
         Add("Input", "Button", """<Button Content="Button" />""");
         Add("Input", "TextBox", """<TextBox Width="160" />""");
         Add("Input", "CheckBox", """<CheckBox Content="Check" />""");
-        Add("Input", "ComboBox", """<ComboBox Width="160" />""");
-        Add("Input", "Slider", """<Slider Width="160" />""");
+        Add("Input", "RadioButton", """<RadioButton Content="Option" />""");
+        Add("Input", "ComboBox", """<ComboBox Width="160" SelectedIndex="0"><ComboBoxItem Content="One" /><ComboBoxItem Content="Two" /><ComboBoxItem Content="Three" /></ComboBox>""");
+        Add("Input", "Slider", """<Slider Width="160" Maximum="100" Value="40" />""");
         Add("Input", "ToggleSwitch", """<ToggleSwitch />""");
+        Add("Input", "NumericUpDown", """<NumericUpDown Width="140" Value="0" />""");
+        Add("Input", "DatePicker", """<DatePicker />""");
+        Add("Input", "Menu", """<Menu><MenuItem Header="File"><MenuItem Header="New" /><MenuItem Header="Open" /></MenuItem><MenuItem Header="Edit" /></Menu>""");
 
         Add("Display", "TextBlock", """<TextBlock Text="Text" />""");
         Add("Display", "Image", """<Image Width="120" Height="90" />""");
-        Add("Display", "ListBox", """<ListBox Width="180" Height="120" />""");
-        Add("Display", "DataGrid", """<DataGrid Width="220" Height="140" />""");
+        Add("Display", "ListBox", """<ListBox Width="180"><ListBoxItem Content="One" /><ListBoxItem Content="Two" /><ListBoxItem Content="Three" /></ListBox>""");
+        Add("Display", "TreeView", """<TreeView Width="180"><TreeViewItem Header="Root" IsExpanded="True"><TreeViewItem Header="Leaf" /><TreeViewItem Header="Leaf" /></TreeViewItem></TreeView>""");
+        Add(
+            "Display",
+            "DataGrid",
+            """<DataGrid Width="220" Height="140" />""",
+            "Avalonia.Controls.DataGrid");
         Add("Display", "ProgressBar", """<ProgressBar Width="160" Value="40" />""");
+        Add("Display", "Separator", """<Separator Width="160" />""");
         Add("Display", "Path", """<Path Data="M3 12.5C5 6 11 10 13 3.5" Stroke="#9DA0A8" StrokeThickness="1.4" />""");
 
         GroupToolbox();
 
-        void Add(string group, string name, string xaml) =>
-            Toolbox.Add(new ToolboxEntry(group, name, xaml));
+        void Add(string group, string name, string xaml, string? package = null) =>
+            Toolbox.Add(new ToolboxEntry(group, name, xaml, package));
     }
 
     /// <summary>
@@ -142,6 +176,20 @@ public sealed partial class DesignerViewModel
     {
         if (form.Objects is not { } map || form.Document?.Root is not { } root)
         {
+            return;
+        }
+
+        // Refused before the file is touched, not diagnosed after. A DataGrid lives in its own
+        // package, and a project without it would take the drop, resolve nothing, and show an
+        // empty canvas with a complaint in Problems — a drop that looks like it did nothing. The
+        // session can answer "would this resolve" up front, so the refusal names the package and
+        // the pane that adds it while the document stays exactly as it was.
+        if (!await ResolvesAsync(form, root, entry.Name).ConfigureAwait(true))
+        {
+            Log(entry.Package is { Length: > 0 } package
+                ? $"{entry.Name} needs the {package} package — add it in Packages, then drop it again."
+                : $"{entry.Name} does not resolve in this project — a package or reference is missing.");
+
             return;
         }
 
@@ -209,6 +257,36 @@ public sealed partial class DesignerViewModel
         ContentControl content => content.Content is null,
         _ => false,
     };
+
+    /// <summary>
+    /// Whether the entry's type would resolve in this form's project, asked of the session's own
+    /// resolver — the same one the load will use, so the answer cannot disagree with the outcome.
+    /// </summary>
+    private static async Task<bool> ResolvesAsync(FormViewModel form, XamlElement root, string name)
+    {
+        if (form.Session is not { } session)
+        {
+            return true;
+        }
+
+        // The snippet's root is unprefixed, so it means whatever the document's default namespace
+        // means — resolve it exactly there. A resolver that cannot answer is not a refusal: the
+        // drop proceeds and the ordinary diagnostics have their say.
+        try
+        {
+            XamlTypeResolution resolution = await session.Environment.TypeResolver.ResolveAsync(
+                new XamlTypeName(
+                    root.NamespaceContext.LookupNamespace(string.Empty) ?? string.Empty, name),
+                root.NamespaceContext,
+                System.Threading.CancellationToken.None).ConfigureAwait(true);
+
+            return resolution.Success;
+        }
+        catch (Exception error) when (error is InvalidOperationException or NotSupportedException)
+        {
+            return true;
+        }
+    }
 
     /// <summary>Adds a position to a snippet, for a parent that honours one.</summary>
     private static string WithPosition(ToolboxEntry entry, Point at)

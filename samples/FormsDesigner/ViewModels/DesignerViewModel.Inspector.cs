@@ -82,25 +82,40 @@ public sealed partial class DesignerViewModel
     /// </remarks>
     private static readonly (string Group, string[] Names)[] Catalogue =
     [
+        // A Window's own facts come first because they are the first thing a person sets on one.
+        // Title resolves only on a Window, so every other control never sees this group.
+        ("Window",
+        [
+            "Title", "CanResize", "Topmost", "WindowStartupLocation",
+        ]),
+
         ("Layout",
         [
-            "Width", "Height", "MinWidth", "MinHeight",
+            "Width", "Height", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight",
             "Margin", "Padding",
             "HorizontalAlignment", "VerticalAlignment",
             "HorizontalContentAlignment", "VerticalContentAlignment",
             "Orientation", "Spacing", "ZIndex",
+            "RowDefinitions", "ColumnDefinitions",
         ]),
 
         ("Appearance",
         [
             "Background", "Foreground", "BorderBrush", "BorderThickness", "CornerRadius",
-            "FontSize", "FontWeight", "FontFamily", "Opacity",
+            "FontSize", "FontWeight", "FontStyle", "FontFamily",
+            "TextWrapping", "TextAlignment", "Stretch", "Opacity",
         ]),
 
+        // PlaceholderText and not Watermark: both resolve on a TextBox, but Watermark is the
+        // obsolete spelling, and an inspector that offers it writes deprecated API into the
+        // user's file — twice, beside the same fact under its current name.
         ("Content & Interaction",
         [
-            "Content", "Text", "Command", "CommandParameter", "HotKey",
-            "IsEnabled", "IsVisible", "IsChecked", "Watermark", "PlaceholderText", "ToolTip.Tip",
+            "Content", "Header", "Text", "PlaceholderText", "Source",
+            "Command", "CommandParameter", "HotKey", "ToolTip.Tip",
+            "IsEnabled", "IsVisible", "IsChecked", "IsReadOnly", "AcceptsReturn", "MaxLength",
+            "IsDefault", "IsCancel",
+            "Minimum", "Maximum", "Value", "SelectedIndex",
         ]),
     ];
 
@@ -126,13 +141,17 @@ public sealed partial class DesignerViewModel
     {
         NameDirective => "Identity",
 
+        "Title" or "CanResize" or "Topmost" or "WindowStartupLocation" => "Window",
+
         "Width" or "Height" or "MinWidth" or "MinHeight" or "MaxWidth" or "MaxHeight"
             or "Margin" or "Padding" or "HorizontalAlignment" or "VerticalAlignment"
             or "HorizontalContentAlignment" or "VerticalContentAlignment"
-            or "Dock" or "Spacing" or "Orientation" or "ZIndex" => "Layout",
+            or "Dock" or "Spacing" or "Orientation" or "ZIndex"
+            or "RowDefinitions" or "ColumnDefinitions" => "Layout",
 
         "Background" or "Foreground" or "BorderBrush" or "BorderThickness" or "CornerRadius"
             or "FontSize" or "FontWeight" or "FontFamily" or "FontStyle" or "Opacity"
+            or "TextWrapping" or "TextAlignment" or "Stretch"
             or "BoxShadow" or "Classes" => "Appearance",
 
         _ when name.StartsWith("Canvas.", StringComparison.Ordinal)
@@ -278,6 +297,15 @@ public sealed partial class DesignerViewModel
         {
             foreach (string name in names)
             {
+                // A property the document already sets the long way — <Grid.RowDefinitions> as an
+                // element, a Button's content as a child — must not also be offered as an
+                // attribute: the loader would meet the same property set twice and refuse the
+                // whole file, which is a file this inspector broke.
+                if (SetAsElement(element, name))
+                {
+                    continue;
+                }
+
                 if (Has(live, session, name) && offered.Add(name))
                 {
                     Properties.Add(RowFor(element, written.GetValueOrDefault(name), name, live, session));
@@ -313,7 +341,7 @@ public sealed partial class DesignerViewModel
         // Grouped in the design's order, and a section with nothing in it is not drawn: an inspector
         // showing three empty headings tells somebody the control has no properties, which is the
         // opposite of what it means.
-        foreach (string heading in new[] { "Identity", "Layout", "Appearance", "Content & Interaction" })
+        foreach (string heading in new[] { "Identity", "Window", "Layout", "Appearance", "Content & Interaction" })
         {
             PropertyRow[] rows =
                 [.. Properties.Where(row => GroupOf(row.Name) == heading && MatchesInspectorFilter(row))];
@@ -323,6 +351,26 @@ public sealed partial class DesignerViewModel
                 PropertyGroups.Add(new PropertyGroup(heading, rows));
             }
         }
+    }
+
+    /// <summary>
+    /// Whether the document already sets this property somewhere an attribute is not.
+    /// </summary>
+    /// <remarks>
+    /// Property-element syntax, and the content property's implicit form: a Grid whose rows are
+    /// <c>&lt;Grid.RowDefinitions&gt;</c>, a Button whose Content is its child. Only the names that
+    /// have an implicit form are checked against children, because for everything else children are
+    /// simply content.
+    /// </remarks>
+    private static bool SetAsElement(XamlElement element, string name)
+    {
+        if (element.MemberElements.Any(child =>
+            child.Name.LocalName.EndsWith("." + name, StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        return name is "Content" or "Header" && element.ContentElements.Any();
     }
 
     /// <summary>Whether this control has such a property at all.</summary>
@@ -371,6 +419,15 @@ public sealed partial class DesignerViewModel
         Control? live,
         XamlLoadSession? session)
     {
+        // A root that sizes itself with d:DesignWidth writes no plain Width at all, and a row
+        // reading only the plain attribute sat empty beside a canvas visibly 300 wide. The design
+        // attribute is the size the designer shows, so it is the value the row shows — and
+        // SetPropertyAsync routes the write back to it, so the row edits what it displays.
+        if (attribute is null && IsRoot(element))
+        {
+            attribute = DesignSize(element, name);
+        }
+
         string text = attribute?.GetValueText() ?? string.Empty;
         bool isDirective = attribute?.IsDirective ?? false;
 
@@ -472,17 +529,35 @@ public sealed partial class DesignerViewModel
 
         XamlQualifiedName qualified = XamlQualifiedName.Parse(name);
 
+        // The same routing the drag-resize uses, reached through the row instead: on a root that
+        // states a design size, the design attribute is what the designer shows, so it is what the
+        // edit writes — and the plain one too when the file already had it, never a second number.
+        XamlAttribute? design = IsRoot(element) ? DesignSize(element, name) : null;
+
         await ApplyAsync(
             form,
             editor =>
             {
                 if (value.Length == 0)
                 {
+                    if (design is not null)
+                    {
+                        editor.RemoveAttribute(element, design.Name);
+                    }
+
                     editor.RemoveAttribute(element, qualified);
                 }
                 else
                 {
-                    editor.SetAttribute(element, qualified, value);
+                    if (design is not null)
+                    {
+                        editor.SetAttribute(element, design.Name, value);
+                    }
+
+                    if (design is null || element.GetAttribute(name) is not null)
+                    {
+                        editor.SetAttribute(element, qualified, value);
+                    }
                 }
             },
             value.Length == 0 ? $"clear {name}" : $"set {name}");
