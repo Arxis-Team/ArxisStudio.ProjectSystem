@@ -48,6 +48,7 @@ public sealed partial class App : Application
             string? viewName = view >= 0 && view + 1 < args.Length ? args[view + 1] : null;
 
             int verify = Array.IndexOf(args, "--verify");
+            int stress = Array.IndexOf(args, "--stress");
 
             if (verify >= 0 && verify + 1 < args.Length)
             {
@@ -55,6 +56,16 @@ public sealed partial class App : Application
                 var window = new MainWindow { DataContext = model };
 
                 StudioCheck.RunWhenShown(window, model, args[verify + 1]);
+
+                desktop.Exit += (_, _) => model.Dispose();
+                desktop.MainWindow = window;
+            }
+            else if (stress >= 0 && stress + 1 < args.Length)
+            {
+                var model = new DesignerViewModel();
+                var window = new MainWindow { DataContext = model };
+
+                StudioCheck.StressWhenShown(window, model, args[stress + 1]);
 
                 desktop.Exit += (_, _) => model.Dispose();
                 desktop.MainWindow = window;
@@ -123,7 +134,7 @@ public sealed partial class App : Application
     }
 
     /// <summary>The arguments that are not a switch and are not a switch's value.</summary>
-    /// <remarks>Every switch this sample takes takes a value: `--shot`, `--verify` and `--view`.</remarks>
+    /// <remarks>Every switch this sample takes takes a value: `--shot`, `--verify`, `--stress` and `--view`.</remarks>
     private static string[] Positional(string[] args)
     {
         var positional = new List<string>();

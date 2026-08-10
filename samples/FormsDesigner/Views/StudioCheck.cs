@@ -59,6 +59,287 @@ internal static class StudioCheck
         window.Close();
     }
 
+    /// <summary>Runs the endurance cycle instead of the straight-line check.</summary>
+    public static void StressWhenShown(MainWindow window, DesignerViewModel designer, string folder) =>
+        window.Opened += (_, _) => _ = StressRunAsync(window, designer, folder);
+
+    private static async Task StressRunAsync(Window window, DesignerViewModel designer, string folder)
+    {
+        var failures = 0;
+
+        try
+        {
+            failures = await StressAsync(designer, folder);
+        }
+        catch (Exception error)
+        {
+            Say($"the stress run itself failed: {error.GetType().Name}: {error.Message}");
+
+            failures++;
+        }
+
+        Say(failures == 0
+            ? "VERDICT ok — the designer survived every cycle"
+            : $"VERDICT {failures} step(s) failed");
+
+        window.Close();
+    }
+
+    /// <summary>
+    /// The endurance cycle: edit, be edited from outside, delete bound blocks, repeat.
+    /// </summary>
+    /// <remarks>
+    /// The designer's real life compressed: a window-rooted form with data bindings, edited here and
+    /// in the other editor by turns, with whole bound subtrees deleted between rounds. What it
+    /// asserts at every step is the invariant the designer lives by — the document, the live tree
+    /// and the panels never disagree, and nothing on the way prints an error.
+    /// </remarks>
+    private static async Task<int> StressAsync(DesignerViewModel designer, string folder)
+    {
+        var failures = 0;
+
+        // The blank template's window: a Window root, a StackPanel, and two TextBlocks bound to
+        // Title and Greeting — data bindings from the first minute, which is the point.
+        string project = await ProjectScaffold.CreateAsync(
+            ProjectScaffold.Templates[0], folder, "StressApp", CancellationToken.None);
+
+        designer.OpenAtStartup(project, "MainWindow.axaml");
+
+        if (!await Until(() => designer.ActiveForm is { Session: not null, Problem: null }, 300))
+        {
+            return Fail(ref failures, "the window never opened: "
+                + (designer.ActiveForm?.Problem ?? "no form"));
+        }
+
+        FormViewModel form = designer.ActiveForm!;
+        string file = form.File.Value;
+        int errorsSeen = CountErrors(designer);
+
+        for (var cycle = 1; cycle <= 3; cycle++)
+        {
+            Say($"— cycle {cycle} —");
+
+            // 1. Several designer edits in a row: three controls dropped, then the window's own
+            //    Title through the inspector — an edit on the root itself.
+            foreach (string control in new[] { "Button", "TextBox", "CheckBox" })
+            {
+                if (designer.Toolbox.FirstOrDefault(entry => entry.Name == control) is not { } tool)
+                {
+                    Fail(ref failures, $"no {control} in the toolbox");
+
+                    continue;
+                }
+
+                int before = Count(designer, control);
+
+                if (!await Until(() => Find(designer, "StackPanel") is not null, 30))
+                {
+                    Fail(ref failures, $"cycle {cycle}: no panel to drop {control} into");
+
+                    continue;
+                }
+
+                designer.Drop(form, tool, over: Find(designer, "StackPanel"), at: new Point(40, 40));
+
+                if (!await Until(() => Count(designer, control) > before, 30))
+                {
+                    Fail(ref failures, $"cycle {cycle}: {control} never reached the document");
+                }
+            }
+
+            if (form.Root is { } root)
+            {
+                designer.SelectFromCanvas(form, root);
+
+                if (designer.Properties.FirstOrDefault(row => row.Name == "Title") is { } title)
+                {
+                    title.Value = $"Cycle {cycle}";
+
+                    if (!await Until(
+                        () => Text(form).Contains($"Title=\"Cycle {cycle}\"", StringComparison.Ordinal),
+                        30))
+                    {
+                        Fail(ref failures, $"cycle {cycle}: the Title edit never reached the document");
+                    }
+                }
+                else
+                {
+                    Fail(ref failures, $"cycle {cycle}: the inspector offers no Title for the window");
+                }
+            }
+
+            designer.SaveCommand.Execute(null);
+
+            await Until(() => !form.IsDirty, 60);
+
+            // 2. The other editor's turn: a whole bound block appended inside the panel, written to
+            //    disk the way a save is written.
+            string block =
+                $"    <StackPanel x:Name=\"OutsideBlock{cycle}\" Spacing=\"4\">\n"
+                + "      <TextBlock Text=\"{Binding Greeting}\" />\n"
+                + "      <TextBox Text=\"{Binding Title}\" />\n"
+                + "      <Button Content=\"{Binding Title}\" />\n"
+                + "    </StackPanel>\n";
+
+            string text = await System.IO.File.ReadAllTextAsync(file);
+            int closing = text.LastIndexOf("</StackPanel>", StringComparison.Ordinal);
+
+            if (closing < 0)
+            {
+                Fail(ref failures, $"cycle {cycle}: the form has no panel to write into from outside");
+
+                continue;
+            }
+
+            await System.IO.File.WriteAllTextAsync(file, text[..closing] + block + text[closing..]);
+
+            if (!await Until(
+                () => Text(form).Contains($"OutsideBlock{cycle}", StringComparison.Ordinal), 60))
+            {
+                Fail(ref failures, $"cycle {cycle}: the outside edit never arrived");
+
+                continue;
+            }
+
+            if (form.IsDirty)
+            {
+                Fail(ref failures, $"cycle {cycle}: a reloaded form calls itself edited");
+            }
+
+            if (form.Problem is { } problem)
+            {
+                Fail(ref failures, $"cycle {cycle}: the reload failed: {problem}");
+            }
+
+            // The block is not just text in a file — it is live on the canvas, bindings and all.
+            if (!await Until(() => LiveByName(designer, $"OutsideBlock{cycle}") is not null, 30))
+            {
+                Fail(ref failures, $"cycle {cycle}: the outside block never became live objects");
+            }
+
+            // 3. The bound block goes, as a block: one delete for the panel takes its three bound
+            //    children with it.
+            if (LiveByName(designer, $"OutsideBlock{cycle}") is { } live)
+            {
+                designer.SelectFromCanvas(form, live);
+
+                designer.DeleteSelectedCommand.Execute(null);
+
+                if (!await Until(
+                    () => !Text(form).Contains($"OutsideBlock{cycle}", StringComparison.Ordinal), 30))
+                {
+                    Fail(ref failures, $"cycle {cycle}: the bound block would not delete");
+                }
+            }
+
+            // 4. And back, and gone again — history over a document another editor wrote.
+            designer.UndoCommand.Execute(null);
+
+            if (!await Until(
+                () => Text(form).Contains($"OutsideBlock{cycle}", StringComparison.Ordinal), 30))
+            {
+                Fail(ref failures, $"cycle {cycle}: undo did not bring the block back");
+            }
+
+            designer.RedoCommand.Execute(null);
+
+            if (!await Until(
+                () => !Text(form).Contains($"OutsideBlock{cycle}", StringComparison.Ordinal), 30))
+            {
+                Fail(ref failures, $"cycle {cycle}: redo did not take the block away again");
+            }
+
+            designer.SaveCommand.Execute(null);
+
+            await Until(() => !form.IsDirty, 60);
+
+            // 5. Nothing along the way said "!", and the form still loads clean.
+            int errorsNow = CountErrors(designer);
+
+            if (errorsNow > errorsSeen)
+            {
+                Fail(ref failures,
+                    $"cycle {cycle}: {errorsNow - errorsSeen} error line(s) — see the console");
+
+                errorsSeen = errorsNow;
+            }
+
+            Say($"cycle {cycle} done: {Summary(designer)}");
+        }
+
+        // What the cycles produced is still an application: build it and start it.
+        designer.BuildCommand.Execute(null);
+
+        if (!await Until(() => !designer.IsBusy, 300, settle: true))
+        {
+            Fail(ref failures, "the final build never finished");
+        }
+
+        if (designer.Diagnostics.Any(row => row.Severity == "Error"))
+        {
+            Fail(ref failures, "the final build failed");
+        }
+
+        designer.RunCommand.Execute(null);
+
+        if (!await Until(() => designer.IsRunning, 300))
+        {
+            Fail(ref failures, "the application the cycles produced never started");
+        }
+        else
+        {
+            await Task.Delay(2000);
+
+            if (!designer.IsRunning)
+            {
+                Fail(ref failures, "the application exited on its own");
+            }
+
+            designer.StopCommand.Execute(null);
+
+            await Until(() => !designer.IsRunning, 30);
+        }
+
+        return failures;
+    }
+
+    /// <summary>The live control behind the element carrying this <c>x:Name</c>.</summary>
+    private static Control? LiveByName(DesignerViewModel designer, string name)
+    {
+        if (designer.ActiveForm is not { Objects: { } map, Document.Root: { } root })
+        {
+            return null;
+        }
+
+        foreach (ArxisStudio.Markup.Xaml.XamlElement element in Elements(root))
+        {
+            if (element.GetDirective("Name") == name)
+            {
+                return map.GetObject(element) as Control;
+            }
+        }
+
+        return null;
+
+        static System.Collections.Generic.IEnumerable<ArxisStudio.Markup.Xaml.XamlElement> Elements(
+            ArxisStudio.Markup.Xaml.XamlElement element)
+        {
+            yield return element;
+
+            foreach (ArxisStudio.Markup.Xaml.XamlElement child in element.ContentElements)
+            {
+                foreach (ArxisStudio.Markup.Xaml.XamlElement grand in Elements(child))
+                {
+                    yield return grand;
+                }
+            }
+        }
+    }
+
+    /// <summary>How many lines of the console are complaints.</summary>
+    private static int CountErrors(DesignerViewModel designer) =>
+        designer.Output.Count(line => line.TrimStart().StartsWith('!'));
+
     private static async Task<int> CheckAsync(DesignerViewModel designer, string folder)
     {
         var failures = 0;
