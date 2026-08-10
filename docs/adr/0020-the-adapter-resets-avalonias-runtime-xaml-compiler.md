@@ -28,11 +28,20 @@ Avalonia 12.1.1 offers no public way to reset or scope that state.
 
 ## Decision
 
-`ProjectAssemblyContext.EnterLoadScope()` brackets every load and every document update:
+`ProjectAssemblyContext` implements Markup's `IXamlCompilationScope`, and
+`ProjectXamlEnvironment.Create` supplies the context as the environment's `CompilationScope` — so
+the session itself brackets every compilation it performs, and no host calls anything by hand.
+(The first version of this decision had the host wrap every load in `EnterLoadScope()` manually;
+Markup's ADR 0013 records why that moved into the environment: correctness was depending on every
+caller remembering, at every call site, forever.)
+
+Entering the scope does two things:
 
 - If the compiler's emitted state lives in a different `AssemblyLoadContext` than this generation's
-  — an older generation, or the default — the `_sre*` static fields are cleared by reflection, so
-  the next load rebuilds the compiler's state from scratch.
+  — an older generation, or the default — the static fields are cleared by reflection, so the next
+  load rebuilds the compiler's state from scratch. Avalonia 12.1.1 declares eight: the seven named
+  `_sre*` and `_ignoresAccessChecksFromAttribute`, a type emitted into the dynamic assembly and as
+  generation-bound as the rest.
 - Contextual reflection is entered on this generation's context for the length of the load, so the
   rebuilt dynamic assembly is created *inside* it and every assembly reference the generated code
   makes binds in this generation first.
@@ -47,10 +56,13 @@ from the previous generation.
 ## Consequences
 
 - A form created after a rebuild loads, which is the scenario the designer exists for.
-- The reset touches non-public fields by name (`_sreTypeSystem`, `_sreAsm`, …). If a future
-  Avalonia renames them, the reset quietly does nothing and the stale-cache behaviour returns —
-  degraded, but not broken in any new way. The fields are located by prefix, not listed, to give
-  renames the best chance of still matching.
+- The reset touches non-public fields by name, verified against the published Avalonia 12.1.1
+  sources: `InitializeSre` re-creates each field it finds null, `SreTypeSystem`'s constructor
+  snapshots every loaded assembly and `FindAssembly` answers a simple name with the first
+  match, and `DefineDynamicAssembly` honours contextual reflection — which is what makes
+  entering it per generation sufficient. If a future Avalonia renames the fields, the reset
+  quietly does nothing and the stale-cache behaviour returns — degraded, but not broken in any
+  new way.
 - The compiler's re-initialisation on generation change re-emits its support types. That is paid
   once per rebuild, in a tool whose whole purpose is rebuilding.
 - If Avalonia grows a public reset or per-context compiler, this scope should shrink to calling it.

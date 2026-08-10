@@ -126,6 +126,12 @@ public static class ProjectXamlEnvironment
             AssemblyResolver = assemblyResolver,
             TypeResolver = new XamlTypeResolver(assemblyResolver, Searchable(context)),
             ResourceResolver = new CompositeResourceResolver(resourceResolvers),
+
+            // The context is the scope: every compilation the session runs happens inside this
+            // generation, which is what keeps the runtime compiler's emitted code binding the
+            // assemblies this environment resolves. The session enters it by itself — no caller
+            // brackets anything.
+            CompilationScope = context,
         };
     }
 

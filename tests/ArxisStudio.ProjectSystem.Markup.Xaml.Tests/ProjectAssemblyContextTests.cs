@@ -445,6 +445,28 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         Assert.Throws<ObjectDisposedException>(() => context.EnterLoadScope());
     }
 
+    /// <summary>
+    /// The environment the adapter builds carries the generation as its compilation scope.
+    /// </summary>
+    /// <remarks>
+    /// This is the whole point of Markup's <c>IXamlCompilationScope</c>: the session brackets every
+    /// compilation with it on its own, so no host has to remember to. The adapter's job is only to
+    /// hand the right object over, and this pins that it does.
+    /// </remarks>
+    [Fact]
+    public void CreateFor_SuppliesTheContextAsTheCompilationScope()
+    {
+        CanonicalPath output = CopyRealAssembly("scope-env");
+
+        (XamlLoadEnvironment environment, ProjectAssemblyContext context) =
+            ProjectXamlEnvironment.CreateFor(Snapshot(output), Identity("App"));
+
+        using (context)
+        {
+            Assert.Same(context, environment.CompilationScope);
+        }
+    }
+
     private SolutionSnapshot Snapshot(CanonicalPath output)
     {
         var project = new ProjectSnapshotBuilder

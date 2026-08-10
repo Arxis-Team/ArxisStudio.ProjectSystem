@@ -36,7 +36,7 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// whether anything is still looking at the old objects.
 /// </para>
 /// </remarks>
-public sealed class ProjectAssemblyContext : IDisposable
+public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXamlCompilationScope, IDisposable
 {
     private readonly AssemblyLoadContext _context;
     private readonly Dictionary<string, CanonicalPath> _rebuildable;
@@ -231,6 +231,12 @@ public sealed class ProjectAssemblyContext : IDisposable
     /// </remarks>
     /// <returns>The scope to dispose when the load is done.</returns>
     /// <exception cref="ObjectDisposedException">This context has been unloaded.</exception>
+    /// <remarks>
+    /// This is also the context's <see cref="ArxisStudio.Markup.Xaml.Loader.IXamlCompilationScope"/>
+    /// implementation: <see cref="ProjectXamlEnvironment.Create"/> hands the context to the
+    /// environment, and the session then enters this around every compilation on its own. Nothing
+    /// needs to call it by hand.
+    /// </remarks>
     public IDisposable EnterLoadScope()
     {
         ObjectDisposedException.ThrowIf(IsUnloaded, this);
@@ -239,6 +245,9 @@ public sealed class ProjectAssemblyContext : IDisposable
 
         return new LoadScope(_context.EnterContextualReflection());
     }
+
+    /// <inheritdoc />
+    IDisposable ArxisStudio.Markup.Xaml.Loader.IXamlCompilationScope.Enter() => EnterLoadScope();
 
     private sealed class LoadScope(AssemblyLoadContext.ContextualReflectionScope scope) : IDisposable
     {
@@ -254,13 +263,22 @@ public sealed class ProjectAssemblyContext : IDisposable
             "Avalonia.Markup.Xaml.XamlIl.AvaloniaXamlIlRuntimeCompiler, Avalonia.Markup.Xaml.Loader",
             throwOnError: false);
 
-        /// <summary>Every piece of emitted state, of which <c>_sreAsm</c> says where it lives.</summary>
+        /// <summary>
+        /// Every piece of emitted state, of which <c>_sreAsm</c> says where it lives.
+        /// </summary>
+        /// <remarks>
+        /// The prefix catches seven of the eight statics Avalonia 12.1.1 declares; the eighth is
+        /// <c>_ignoresAccessChecksFromAttribute</c>, a type emitted into the dynamic assembly and
+        /// therefore as generation-bound as anything named <c>_sre</c>. Missing it left a type from
+        /// a possibly-collected assembly wired into every later emit.
+        /// </remarks>
         private static readonly System.Reflection.FieldInfo[] State = Compiler is null
             ? []
             : [.. System.Linq.Enumerable.Where(
                 Compiler.GetFields(
                     System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic),
-                field => field.Name.StartsWith("_sre", StringComparison.Ordinal)
+                field => (field.Name.StartsWith("_sre", StringComparison.Ordinal)
+                        || field.Name == "_ignoresAccessChecksFromAttribute")
                     && !field.FieldType.IsValueType)];
 
         internal static void EnsureEmittedIn(AssemblyLoadContext context)
