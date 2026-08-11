@@ -32,6 +32,13 @@ public sealed partial class DesignerViewModel
                 Raise(nameof(CanvasSizeAndZoom));
                 Raise(nameof(TargetName));
                 RefreshAllCommands();
+
+                // A form marked stale while it was hidden is rebuilt now, which is the moment it
+                // is looked at. Rebuilding it earlier would have been work nobody could see.
+                if (value is { IsStale: true } stale)
+                {
+                    RunDetached(() => RefreshStaleAsync(stale));
+                }
             }
         }
     }
@@ -243,6 +250,15 @@ public sealed partial class DesignerViewModel
 
         form.Adopt(session.Document);
         form.Restated();
+
+        // The edited document becomes what placed copies of this control are drawn from, and
+        // every open form that places it is told to catch up. Unsaved is the point: the other
+        // tab shows the control as it is here, not as the file last had it.
+        if (form.Document is { } current)
+        {
+            await SetLiveDocumentAsync(current);
+            MarkDependentsStale(current, except: form);
+        }
 
         RebuildHierarchy();
 
@@ -747,61 +763,5 @@ public sealed partial class DesignerViewModel
         Log($"Saved {form.Name}");
 
         RefreshAllCommands();
-        NudgeDependents(form);
-    }
-
-    /// <summary>
-    /// Says so when the saved form is placed on another open one, because that copy is now behind.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// An embedded control draws itself from the compiled assembly, not from the file beside it:
-    /// its own <c>InitializeComponent</c> loads the markup that was compiled into it. So a form
-    /// that places <c>MyControl</c> goes on showing the shape <c>MyControl</c> had when the studio
-    /// started, however many times its source is saved here.
-    /// </para>
-    /// <para>
-    /// Which is exactly one press away from being fixed, and the press is a restart — the process
-    /// cannot replace types it has already loaded, and a designer that pretends otherwise ends up
-    /// with two of everything. So the studio says which forms are behind and offers to reload; it
-    /// does not quietly rebuild and leave the canvas disagreeing with the file.
-    /// </para>
-    /// </remarks>
-    private void NudgeDependents(FormViewModel saved)
-    {
-        if (saved.Document?.Root?.GetDirective("Class") is not { Length: > 0 } full)
-        {
-            return;
-        }
-
-        string className = full[(full.LastIndexOf('.') + 1)..];
-
-        string[] dependents =
-        [
-            .. Forms.Where(form => !ReferenceEquals(form, saved)
-                    && form.Document?.Root is { } root
-                    && SelfAndDescendants(root).Any(element => element.Name.LocalName == className))
-                .Select(static form => form.Name),
-        ];
-
-        if (dependents.Length == 0)
-        {
-            return;
-        }
-
-        AskForRestart($"{string.Join(", ", dependents)} still shows the {className} this run loaded");
-    }
-
-    private static IEnumerable<XamlElement> SelfAndDescendants(XamlElement element)
-    {
-        yield return element;
-
-        foreach (XamlElement child in element.Elements)
-        {
-            foreach (XamlElement nested in SelfAndDescendants(child))
-            {
-                yield return nested;
-            }
-        }
     }
 }

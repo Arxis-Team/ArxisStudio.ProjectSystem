@@ -99,6 +99,10 @@ internal static class StudioCheck
     {
         var failures = 0;
 
+        // A studio that replaced itself mid-story would take the story with it. The reload's
+        // detection still runs; what is asserted is the banner, not the act.
+        designer.AutoReloadForCode = false;
+
         // The blank template's window: a Window root, a StackPanel, and two TextBlocks bound to
         // Title and Greeting — data bindings from the first minute, which is the point.
         string project = await ProjectScaffold.CreateAsync(
@@ -645,15 +649,27 @@ internal static class StudioCheck
 
         designer.SaveCommand.Execute(null);
 
-        // The placed copy draws from the compiled assembly, so it cannot follow this save — and the
-        // studio must say so rather than leave the canvas quietly behind the file.
-        if (!await Until(() => designer.NeedsRestart, 60))
+        // The placed copy follows the live document now — ADR 0022. Bring the window forward and
+        // the embedded control must already be showing the edit: no build, no reload, no banner.
+        if (!Open(designer, form.Name))
         {
-            Fail(ref failures, "saving a placed control said nothing about the copies that are behind");
+            return Fail(ref failures, "the window left the project after the control edit");
+        }
+
+        if (!await Until(
+            () => designer.ActiveForm is { } shown
+                && shown.Name == form.Name
+                && Drawn(shown, "MyControl") is { } placed
+                && Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(placed)
+                    .OfType<TextBlock>()
+                    .Any(text => text.Text == "Second"),
+            60))
+        {
+            Fail(ref failures, "the placed copy did not follow the control's document");
         }
         else
         {
-            Say("saving a placed control says which forms are now behind it");
+            Say("a placed control follows its document — no rebuild, no restart");
         }
 
         // The exact reported break: edit the code-behind outside, close the form, open it again.
@@ -901,6 +917,9 @@ internal static class StudioCheck
     private static async Task<int> CheckAsync(DesignerViewModel designer, string folder)
     {
         var failures = 0;
+
+        // Same reason as the stress run: the story needs the process it started in.
+        designer.AutoReloadForCode = false;
 
         string name = "StudioCheckApp";
 

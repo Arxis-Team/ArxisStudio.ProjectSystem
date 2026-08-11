@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -194,20 +195,30 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
     /// <summary>
     /// Opens an entry point, and optionally a form in it, from the command line.
     /// </summary>
+    /// <param name="path">The solution or project to open.</param>
+    /// <param name="form">A form to open once it has loaded, matched by file name.</param>
+    public void OpenAtStartup(string path, string? form = null) =>
+        OpenAtStartup(path, form is { Length: > 0 } ? [form] : [], active: null);
+
+    /// <summary>
+    /// Opens an entry point and a set of forms in it, from the command line.
+    /// </summary>
     /// <remarks>
     /// So the designer can be pointed at a project without a mouse, which is what makes it usable as
     /// a smoke test: the output pane is mirrored to standard output, so a run says whether the
-    /// document parsed, how many elements it mapped, and what went wrong when something did.
+    /// document parsed, how many elements it mapped, and what went wrong when something did. Several
+    /// forms is what a restart passes, so the studio comes back with the tabs it had.
     /// </remarks>
     /// <param name="path">The solution or project to open.</param>
-    /// <param name="form">A form to open once it has loaded, matched by file name.</param>
-    public void OpenAtStartup(string path, string? form = null) => Run(async () =>
+    /// <param name="forms">Forms to open once it has loaded, in tab order, matched by file name.</param>
+    /// <param name="active">The form to put in front, or <see langword="null"/> for the last opened.</param>
+    public void OpenAtStartup(string path, IReadOnlyList<string> forms, string? active) => Run(async () =>
     {
         EntryPoint = CanonicalPath.Create(path);
 
         await LoadAsync();
 
-        if (form is not { Length: > 0 })
+        if (forms.Count == 0)
         {
             return;
         }
@@ -217,14 +228,24 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         // to look the name up in.
         await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
 
-        if (ProjectForms.FirstOrDefault(candidate =>
-            candidate.Name.Equals(form, StringComparison.OrdinalIgnoreCase)) is { } found)
+        foreach (string form in forms)
         {
-            await OpenFormAsync(found);
+            if (ProjectForms.FirstOrDefault(candidate =>
+                candidate.Name.Equals(form, StringComparison.OrdinalIgnoreCase)) is { } found)
+            {
+                await OpenFormAsync(found);
+            }
+            else
+            {
+                Log($"! no form called {form} in this project");
+            }
         }
-        else
+
+        if (active is { Length: > 0 }
+            && Forms.FirstOrDefault(open =>
+                open.Name.Equals(active, StringComparison.OrdinalIgnoreCase)) is { } front)
         {
-            Log($"! no form called {form} in this project");
+            ActiveForm = front;
         }
     });
 

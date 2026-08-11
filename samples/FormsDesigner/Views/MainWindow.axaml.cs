@@ -32,6 +32,8 @@ public sealed partial class MainWindow : Window
     {
         AvaloniaXamlLoader.Load(this);
 
+        Activated += (_, _) => (DataContext as DesignerViewModel)?.OnStudioActivated();
+
         DesignEditor surface = this.GetControl<DesignEditor>("Surface");
         AvaloniaEdit.TextEditor markup = this.GetControl<AvaloniaEdit.TextEditor>("XamlView");
 
@@ -90,6 +92,11 @@ public sealed partial class MainWindow : Window
                 designer.AskForNewForm = AskForNewFormAsync;
                 designer.AskToConfirm = AskToConfirmAsync;
                 designer.AskToSave = AskToSaveAsync;
+
+                // The Unity rule: code edited elsewhere is applied the moment this window is the
+                // one being looked at. The model owns whether a reload is due; the window only
+                // says when somebody came back, and whether they are here right now.
+                designer.IsStudioActive = () => IsActive;
 
                 designer.ZoomToFitRequested += (_, _) => OnZoomToFit(this, new RoutedEventArgs());
 

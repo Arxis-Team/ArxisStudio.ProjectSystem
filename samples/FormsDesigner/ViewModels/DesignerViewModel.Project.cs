@@ -388,6 +388,14 @@ public sealed partial class DesignerViewModel
 
         await _workspace.RefreshAsync(_shutdown.Token);
 
+        // A generation made before this build now holds yesterday's types — the first open of a
+        // form whose code was edited outside lands here. Detected the same way the watcher's
+        // rebuild detects it, and answered the same way: a reload, offered or performed.
+        if (_assemblies is { } generation && !generation.IsCurrentOnDisk())
+        {
+            RequestTypeReload($"{owner.Name} was rebuilt after this run loaded its types");
+        }
+
         return _workspace.CurrentSnapshot;
     }
 
@@ -400,6 +408,18 @@ public sealed partial class DesignerViewModel
         string text)
     {
         XamlLoadEnvironment environment = EnvironmentFor(snapshot, project);
+
+        // The registry fills from the disk when the generation is created, and the first load
+        // waits for it: a form that places a project control must find the control's document
+        // already registered, or its first preview would show the compiled shape for one open.
+        if (_liveRegistration is { } registering)
+        {
+            await registering;
+        }
+
+        // And this document goes in as the live one — the same call every later edit makes — so
+        // its control, when placed on another form, is drawn from what this tab shows.
+        await SetLiveDocumentAsync(document);
 
         // Design mode, which is the whole difference between a designer and a runtime. A form is
         // usually a page of bindings with nothing bound at rest -- the Avalonia template's window is
@@ -529,15 +549,19 @@ public sealed partial class DesignerViewModel
         }
 
         // Another project's generation is a different assembly name, so it cannot be resolved in
-        // this one's place. It stays until the forms loaded under it close.
+        // this one's place. It stays until the forms loaded under it close — and its registry goes
+        // with it, because the registry holds that generation's types.
         if (_assemblies is { } previous)
         {
-            _retired.Add(previous);
+            _retired.Add((previous, _population));
+
+            _population = null;
         }
 
         (_environment, _assemblies) = ProjectXamlEnvironment.CreateFor(snapshot, project);
         _environmentProject = project;
 
+        CreatePopulation(snapshot);
         SweepRetired();
 
         Log($"  load context “{_assemblies.Name}” — {_assemblies.Assemblies.Length} assemblies");
@@ -590,7 +614,7 @@ public sealed partial class DesignerViewModel
     }
 
     /// <summary>
-    /// Starts the studio again on this project, with the form that is in front reopened.
+    /// Starts the studio again on this project, with every open form reopened.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -599,8 +623,9 @@ public sealed partial class DesignerViewModel
     /// </para>
     /// <para>
     /// The new process is started before this one closes, so the two overlap for a moment rather
-    /// than leaving the screen empty. It is given the same entry point and the active form's name,
-    /// which is what the command line already takes.
+    /// than leaving the screen empty. It is given the same entry point, every open form's name in
+    /// tab order, and which one is in front — which is what the command line takes, so a restart
+    /// puts the studio back the way it was rather than back to one tab.
     /// </para>
     /// </remarks>
     private void Restart()
@@ -623,8 +648,14 @@ public sealed partial class DesignerViewModel
 
         start.ArgumentList.Add(EntryPoint.Value);
 
+        foreach (FormViewModel open in Forms)
+        {
+            start.ArgumentList.Add(open.Name);
+        }
+
         if (ActiveForm is { } active)
         {
+            start.ArgumentList.Add("--active");
             start.ArgumentList.Add(active.Name);
         }
 
@@ -794,18 +825,23 @@ public sealed partial class DesignerViewModel
     }
 
     /// <summary>Generations that have been superseded but may still be in use by an open form.</summary>
-    private readonly List<ProjectAssemblyContext> _retired = [];
+    private readonly List<(ProjectAssemblyContext Context, ProjectXamlPopulation? Population)> _retired = [];
 
     /// <summary>Disposes every retired generation no open form is loaded under.</summary>
+    /// <remarks>
+    /// The registry first, always: it holds delegates on the generation's types, and a context
+    /// asked to unload while a registry still roots it would never collect.
+    /// </remarks>
     private void SweepRetired()
     {
         for (int index = _retired.Count - 1; index >= 0; index--)
         {
-            ProjectAssemblyContext retired = _retired[index];
+            (ProjectAssemblyContext context, ProjectXamlPopulation? population) = _retired[index];
 
-            if (Forms.All(form => !ReferenceEquals(form.Assemblies, retired)))
+            if (Forms.All(form => !ReferenceEquals(form.Assemblies, context)))
             {
-                retired.Dispose();
+                population?.Dispose();
+                context.Dispose();
 
                 _retired.RemoveAt(index);
             }
@@ -821,12 +857,16 @@ public sealed partial class DesignerViewModel
 
         Forms.Clear();
 
-        foreach (ProjectAssemblyContext retired in _retired)
+        foreach ((ProjectAssemblyContext context, ProjectXamlPopulation? population) in _retired)
         {
-            retired.Dispose();
+            population?.Dispose();
+            context.Dispose();
         }
 
         _retired.Clear();
+
+        _population?.Dispose();
+        _population = null;
 
         _assemblies?.Dispose();
         _assemblies = null;

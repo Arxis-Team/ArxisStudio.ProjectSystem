@@ -298,6 +298,17 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
         internal set => Set(ref field, value);
     }
 
+    /// <summary>
+    /// Whether a control this form places has changed since the form was last built.
+    /// </summary>
+    /// <remarks>
+    /// Population reaches instances made from now on, never ones already on screen — so a form
+    /// showing yesterday's control is marked rather than rebuilt on the spot, and the rebuild
+    /// happens when the form is next looked at. The form's own document is not stale; what it
+    /// placed is.
+    /// </remarks>
+    internal bool IsStale { get; set; }
+
     /// <summary>What the tab and the canvas label show.</summary>
     public string Title => IsDirty ? Name + " •" : Name;
 

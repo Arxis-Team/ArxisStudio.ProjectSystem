@@ -21,8 +21,10 @@ namespace FormsDesigner.ViewModels;
 /// </para>
 /// <para>
 /// Watching is composed by the host, which is what <c>ArxisStudio.ProjectSystem</c>'s ADR 0016 says
-/// and what this is: a watcher, a debounce, and two answers — reload the form, or re-read the
-/// project. The workspace is told nothing it could not be told by a person pressing refresh.
+/// and what this is: a watcher, a debounce, and four answers — reload the form, re-register the
+/// document a closed control lives in, re-read the project, or rebuild for changed code. The
+/// workspace is told nothing it could not be told by a person pressing refresh, and the build is
+/// the same build a person could run.
 /// </para>
 /// <para>
 /// Editors do not write files the way this would expect. Rider writes a temporary file and renames
@@ -38,10 +40,16 @@ public sealed partial class DesignerViewModel
     /// <summary>Files that have changed and have not been dealt with yet.</summary>
     private readonly HashSet<string> _touched = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Code files that have changed, which is what makes a rebuild worth running.</summary>
+    private readonly HashSet<string> _codeTouched = new(StringComparer.OrdinalIgnoreCase);
+
     private DispatcherTimer? _settle;
 
     /// <summary>Whether the project needs re-reading rather than a form reloading.</summary>
     private bool _projectTouched;
+
+    /// <summary>Whether a rebuild for changed code is already running.</summary>
+    private bool _buildingForCode;
 
     /// <summary>
     /// Starts watching the folder the project lives in.
@@ -116,18 +124,19 @@ public sealed partial class DesignerViewModel
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Two different facts arrive on this one event. A file whose <em>contents</em> changed matters
-    /// only if this designer has it open. A file that <em>appeared, went away or was renamed</em>
-    /// changes what the project consists of, whatever its extension is — an SDK project takes its
-    /// items from globs, so a new class is a new item and the panel that lists them is stale until
-    /// the evaluation is done again. That is why a created <c>.cs</c> counts and a saved one does
-    /// not: the second changes no glob.
+    /// Three different facts arrive on this one event. A <em>markup</em> file whose contents
+    /// changed moves what a form shows — an open one by reload, a closed one through the placed
+    /// copies of its control. A <em>code</em> file whose contents changed moves what the types
+    /// mean, which only a build can settle. And a file that <em>appeared, went away or was
+    /// renamed</em> changes what the project consists of, whatever its extension is — an SDK
+    /// project takes its items from globs, so a new class is a new item and the panel that lists
+    /// them is stale until the evaluation is done again.
     /// </para>
     /// <para>
-    /// The noise is filtered out first. Builds write under <c>bin</c> and <c>obj</c>, tools keep
-    /// their state in dot-directories, and editors save through temporary files whose names they do
-    /// not intend anybody to see — re-evaluating a project for any of those would be a second of
-    /// nothing, repeatedly.
+    /// The noise is filtered out first. Builds write under <c>bin</c> and <c>obj</c> — this
+    /// designer's own rebuilds included — tools keep their state in dot-directories, and editors
+    /// save through temporary files whose names they do not intend anybody to see — re-evaluating
+    /// a project for any of those would be a second of nothing, repeatedly.
     /// </para>
     /// </remarks>
     private void OnFileTouched(object sender, FileSystemEventArgs e)
@@ -155,6 +164,16 @@ public sealed partial class DesignerViewModel
                 if (IsMarkupPath(path))
                 {
                     _touched.Add(path);
+
+                    noted = true;
+                }
+
+                // A saved .cs is invisible to the evaluation and everything to the types: the
+                // other editor is where code is written, and a designer that ignored it showed
+                // controls built from code the project has moved past.
+                if (IsCodePath(path))
+                {
+                    _codeTouched.Add(path);
 
                     noted = true;
                 }
@@ -203,28 +222,38 @@ public sealed partial class DesignerViewModel
     private static bool IsMarkupPath(string path) =>
         Path.GetExtension(path).ToUpperInvariant() is ".AXAML" or ".XAML";
 
+    private static bool IsCodePath(string path) =>
+        Path.GetExtension(path).ToUpperInvariant() is ".CS";
+
     /// <summary>
     /// Deals with everything that changed while the writing was going on.
     /// </summary>
     /// <remarks>
     /// A project file means the evaluation is stale — items, references, the lot — so the workspace
-    /// is re-read. A document means whatever is open on it is showing something else, so it is
-    /// reloaded. Nothing is done about a document nobody has open: the project panel lists files
-    /// from the snapshot, which the refresh above brings up to date.
+    /// is re-read. A document means whatever shows it is showing something else: a form open on it
+    /// is reloaded, and a document nobody has open still feeds the placed copies of its control, so
+    /// it is re-registered from the disk and the forms placing it are told. Code means the types
+    /// are suspect, which a build settles — and only a build: nothing here guesses what a save
+    /// meant to the compiler.
     /// </remarks>
     private async Task SettleAsync()
     {
         bool project = _projectTouched;
         string[] documents = [.. _touched];
+        string[] code = [.. _codeTouched];
 
         _projectTouched = false;
         _touched.Clear();
+        _codeTouched.Clear();
 
         foreach (string path in documents)
         {
             if (File.Exists(path))
             {
-                await ReloadIfOpenAsync(path);
+                if (!await ReloadIfOpenAsync(path))
+                {
+                    await RegisterUnopenedAsync(path);
+                }
             }
             else
             {
@@ -237,6 +266,150 @@ public sealed partial class DesignerViewModel
             Log("The project changed on disk — re-reading it.");
 
             await _workspace.RefreshAsync(_shutdown.Token);
+        }
+
+        if (code.Length > 0 && IsLoaded)
+        {
+            await RebuildForCodeAsync(code);
+        }
+    }
+
+    /// <summary>
+    /// Re-registers a changed document nobody has open, so placed copies of its control follow it.
+    /// </summary>
+    /// <remarks>
+    /// The scenario is the other editor saving <c>MyControl.axaml</c> while only the form placing
+    /// it is open here: no tab to reload, and before this, nothing changed on screen until a
+    /// restart. Now the document is read again, registered as the control's live markup, and the
+    /// forms that place it are marked — the visible one rebuilds at once.
+    /// </remarks>
+    private async Task RegisterUnopenedAsync(string path)
+    {
+        if (_population is null
+            || !CanonicalPath.TryCreate(path, out CanonicalPath file)
+            || _workspace.CurrentSnapshot is not { } snapshot
+            || !snapshot.TryGetProjectForFile(file, out ProjectSnapshot? owner))
+        {
+            return;
+        }
+
+        string text;
+
+        try
+        {
+            text = await ReadAsync(file);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Mid-write; the watcher will bring the next event along.
+            return;
+        }
+
+        XamlDocument document = XamlDocument.Parse(
+            text,
+            new XamlParseOptions
+            {
+                DocumentUri = AvaresUriFor(
+                    snapshot, new FormFile(file.FileName, string.Empty, file, owner.Identity)),
+            });
+
+        if (document.Root?.GetDirective("Class") is not { Length: > 0 })
+        {
+            return;
+        }
+
+        await SetLiveDocumentAsync(document);
+        MarkDependentsStale(document, except: null);
+    }
+
+    /// <summary>
+    /// Builds the projects whose code changed, and asks for a reload when the build moved the types.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The build is the designer's own — into <c>bin/ArxisStudio</c>, so it never fights the other
+    /// editor — and it is narrowed to the projects that own the changed files, which is what keeps
+    /// a save's cost proportionate to the save. Its diagnostics land in the Problems pane the way
+    /// any build's do; a failed build changes nothing and says so.
+    /// </para>
+    /// <para>
+    /// A successful build is not yet news. <c>IsCurrentOnDisk</c> is what says whether it moved
+    /// the types this run holds — an untouched output means the change was cosmetic to the
+    /// compiler — and only then is the reload requested, which happens at once when the studio is
+    /// in front and clean, and on its next activation otherwise.
+    /// </para>
+    /// </remarks>
+    private async Task RebuildForCodeAsync(IReadOnlyList<string> code)
+    {
+        if (_buildingForCode)
+        {
+            // One at a time; what arrived during this build is kept and retried when the timer
+            // fires again.
+            foreach (string path in code)
+            {
+                _codeTouched.Add(path);
+            }
+
+            _settle?.Start();
+
+            return;
+        }
+
+        if (_workspace.CurrentSnapshot is not { } snapshot)
+        {
+            return;
+        }
+
+        var owners = new List<ProjectSnapshot>();
+
+        foreach (string path in code)
+        {
+            if (CanonicalPath.TryCreate(path, out CanonicalPath file)
+                && snapshot.TryGetProjectForFile(file, out ProjectSnapshot? owner)
+                && owners.All(known => known.Identity != owner.Identity))
+            {
+                owners.Add(owner);
+            }
+        }
+
+        if (owners.Count == 0)
+        {
+            return;
+        }
+
+        _buildingForCode = true;
+
+        try
+        {
+            Log($"Code changed on disk — building {string.Join(", ", owners.Select(static o => o.Name))}…");
+
+            var built = true;
+
+            foreach (ProjectSnapshot owner in owners)
+            {
+                built &= await ExecuteAsync(ProjectOperationKind.Build, owner)
+                    == ProjectOperationStatus.Succeeded;
+            }
+
+            if (!built)
+            {
+                Log("  ! the code did not build — the previews keep the types they have");
+
+                return;
+            }
+
+            if (_assemblies is { } generation && !generation.IsCurrentOnDisk())
+            {
+                RequestTypeReload("the project's code changed on disk");
+            }
+            else
+            {
+                Log("  the build changed nothing this run holds");
+            }
+        }
+        finally
+        {
+            _buildingForCode = false;
         }
     }
 
@@ -265,7 +438,7 @@ public sealed partial class DesignerViewModel
     }
 
     /// <summary>
-    /// Brings an open form back in line with its file.
+    /// Brings an open form back in line with its file, answering whether the file was open at all.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -278,14 +451,16 @@ public sealed partial class DesignerViewModel
     /// A form with unsaved edits is not overwritten. Whoever is typing here has work that is not in
     /// the file, and throwing it away because another program wrote to the same path is the one
     /// thing a designer must not do. It says so instead, and the next save is the person's decision.
+    /// The answer is still <see langword="true"/> — the file is open, and the unsaved document is
+    /// deliberately what its placed copies keep following.
     /// </para>
     /// </remarks>
-    private async Task ReloadIfOpenAsync(string path)
+    private async Task<bool> ReloadIfOpenAsync(string path)
     {
         if (!CanonicalPath.TryCreate(path, out CanonicalPath file)
             || Forms.FirstOrDefault(open => open.File == file) is not { } form)
         {
-            return;
+            return false;
         }
 
         string text;
@@ -298,20 +473,20 @@ public sealed partial class DesignerViewModel
         {
             // A file being written by another process is a file to look at again in a moment, not an
             // error: the watcher will bring the next event along with it.
-            return;
+            return true;
         }
 
         if (form.Document?.SourceText.ToString() == text)
         {
             // Our own save, or a write that changed nothing. Either way there is nothing to show.
-            return;
+            return true;
         }
 
         if (form.IsDirty)
         {
             Log($"! {form.Name} changed on disk and has unsaved edits here — the edits are kept");
 
-            return;
+            return true;
         }
 
         await ApplyDocumentAsync(
@@ -323,5 +498,7 @@ public sealed partial class DesignerViewModel
         form.MarkSaved();
 
         Log($"{form.Name} was changed outside — reloaded.");
+
+        return true;
     }
 }

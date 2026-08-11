@@ -72,7 +72,10 @@ public sealed partial class App : Application
             }
             else if (Positional(args) is [{ Length: > 0 } path, .. var rest])
             {
-                desktop.MainWindow = Designer(desktop, path, rest.FirstOrDefault(), shotPath, viewName);
+                int active = Array.IndexOf(args, "--active");
+                string? activeName = active >= 0 && active + 1 < args.Length ? args[active + 1] : null;
+
+                desktop.MainWindow = Designer(desktop, path, rest, activeName, shotPath, viewName);
             }
             else
             {
@@ -85,7 +88,8 @@ public sealed partial class App : Application
 
                 ((WelcomeViewModel)welcome.DataContext).ProjectChosen += (_, chosen) =>
                 {
-                    MainWindow designer = Designer(desktop, chosen, form: null, shotPath: null, viewName: null);
+                    MainWindow designer = Designer(
+                        desktop, chosen, forms: [], active: null, shotPath: null, viewName: null);
 
                     desktop.MainWindow = designer;
 
@@ -104,7 +108,8 @@ public sealed partial class App : Application
     private static MainWindow Designer(
         IClassicDesktopStyleApplicationLifetime desktop,
         string path,
-        string? form,
+        IReadOnlyList<string> forms,
+        string? active,
         string? shotPath,
         string? viewName)
     {
@@ -126,7 +131,7 @@ public sealed partial class App : Application
             WindowShot.TakeAfterLoad(window, model, shotPath);
         }
 
-        model.OpenAtStartup(path, form);
+        model.OpenAtStartup(path, forms, active);
 
         desktop.Exit += (_, _) => model.Dispose();
 
@@ -134,7 +139,7 @@ public sealed partial class App : Application
     }
 
     /// <summary>The arguments that are not a switch and are not a switch's value.</summary>
-    /// <remarks>Every switch this sample takes takes a value: `--shot`, `--verify`, `--stress` and `--view`.</remarks>
+    /// <remarks>Every switch this sample takes takes a value: `--shot`, `--verify`, `--stress`, `--view` and `--active`.</remarks>
     private static string[] Positional(string[] args)
     {
         var positional = new List<string>();
