@@ -1,0 +1,21 @@
+<!--
+  A second buildable project, so a request that names projects can be shown to build what it
+  names and nothing else. Its marker warning is what tells its build apart from Buildable's.
+-->
+<Project>
+
+  <Target Name="Build">
+    <Warning Text="sibling built" Code="APSTEST04" />
+  </Target>
+
+  <Target Name="Rebuild" DependsOnTargets="Clean;Build" />
+
+  <Target Name="Clean">
+    <Message Text="Sibling cleaned" Importance="High" />
+  </Target>
+
+  <Target Name="Restore">
+    <Message Text="Sibling restored" Importance="High" />
+  </Target>
+
+</Project>

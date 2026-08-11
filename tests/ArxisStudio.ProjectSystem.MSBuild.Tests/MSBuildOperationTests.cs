@@ -239,6 +239,115 @@ public sealed class MSBuildOperationTests
         Assert.Contains(seen, static message => message.Contains("Buildable.proj", StringComparison.Ordinal));
     }
 
+    private static CanonicalPath Sibling =>
+        CanonicalPath.Create(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Sibling", "Sibling.proj"));
+
+    /// <summary>
+    /// A request that names projects builds what it names, not the entry point.
+    /// </summary>
+    /// <remarks>
+    /// The narrowing a designer leans on: rebuilding the one project whose code changed is what
+    /// makes a rebuild proportionate to a save. Asserted through the projects' own marker
+    /// diagnostics — the sibling's appears, the entry point's does not — and through the progress
+    /// reports carrying the project they are about.
+    /// </remarks>
+    [Fact]
+    public async Task ARequestNamingProjects_BuildsThoseAndNotTheEntryPoint()
+    {
+        ProjectOperationRequest request = Request(properties: ("EmitWarning", "true"));
+        ProjectIdentity sibling = ProjectIdentity.Create(request.Workspace, Sibling);
+
+        var reported = new List<ProjectIdentity>();
+
+        ProjectOperationResult result = await new MSBuildProjectProvider().ExecuteAsync(
+            request with { Projects = [sibling] },
+            new ImmediateProgress(p =>
+            {
+                lock (reported)
+                {
+                    reported.Add(p.Project);
+                }
+            }),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProjectOperationStatus.Succeeded, result.Status);
+
+        // The sibling's marker is there and Buildable's is not — its EmitWarning property was on,
+        // so had the entry point been built, APSTEST01 would be in this list.
+        Assert.Contains(result.Diagnostics, static d => d.Code == "APSTEST04");
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Code == "APSTEST01");
+
+        Assert.Contains(sibling, reported);
+    }
+
+    /// <summary>Every named project runs, and one failing fails the whole result.</summary>
+    [Fact]
+    public async Task ARequestNamingSeveralProjects_RunsEveryOne()
+    {
+        ProjectOperationRequest request = Request(properties: ("EmitError", "true"));
+
+        ProjectOperationResult result = await new MSBuildProjectProvider().ExecuteAsync(
+            request with
+            {
+                Projects =
+                [
+                    ProjectIdentity.Create(request.Workspace, Sibling),
+                    ProjectIdentity.Create(request.Workspace, Buildable),
+                ],
+            },
+            progress: null,
+            TestContext.Current.CancellationToken);
+
+        // The sibling built — its marker is present — and Buildable was asked to fail, which
+        // fails the operation as a whole.
+        Assert.Equal(ProjectOperationStatus.Failed, result.Status);
+        Assert.Contains(result.Diagnostics, static d => d.Code == "APSTEST04");
+        Assert.Contains(result.Diagnostics, static d => d.Code == "APSTEST02" && d.IsError);
+    }
+
+    /// <summary>A named project whose file is gone is a diagnostic; the rest still run.</summary>
+    [Fact]
+    public async Task ANamedProjectThatIsNotThere_IsADiagnosticAndTheRestStillBuild()
+    {
+        ProjectOperationRequest request = Request();
+
+        ProjectOperationResult result = await new MSBuildProjectProvider().ExecuteAsync(
+            request with
+            {
+                Projects =
+                [
+                    ProjectIdentity.Create(
+                        request.Workspace,
+                        CanonicalPath.Create(Path.Combine(
+                            AppContext.BaseDirectory, "Fixtures", "Nowhere", "Nowhere.proj"))),
+                    ProjectIdentity.Create(request.Workspace, Sibling),
+                ],
+            },
+            progress: null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProjectOperationStatus.Failed, result.Status);
+        Assert.Contains(result.Diagnostics, static d => d.Code == MSBuildDiagnosticCodes.ProjectFileNotFound);
+        Assert.Contains(result.Diagnostics, static d => d.Code == "APSTEST04");
+    }
+
+    /// <summary>
+    /// An identity from another workspace cannot have come from this request's snapshot, so it is
+    /// a programming error rather than a tool scenario.
+    /// </summary>
+    [Fact]
+    public async Task AForeignProjectIdentity_IsRefusedAsAnArgument()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await new MSBuildProjectProvider().ExecuteAsync(
+                Request() with
+                {
+                    Projects = [ProjectIdentity.Create(WorkspaceIdentity.New(), Sibling)],
+                },
+                progress: null,
+                TestContext.Current.CancellationToken));
+    }
+
     /// <summary>
     /// Through the workspace, which routes to the provider by capability. Nothing is published: a
     /// build changed what is on disk, not what the project says.

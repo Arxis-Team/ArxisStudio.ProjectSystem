@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -42,49 +43,115 @@ public sealed partial class MSBuildProjectProvider : IProjectOperationProvider
                 MSBuildDiagnosticCodes.MSBuildNotFound, registrationError!, request.EntryPointPath));
         }
 
-        if (!File.Exists(request.EntryPointPath.Value))
-        {
-            return ProjectOperationResult.Failed(Diagnostic(
-                MSBuildDiagnosticCodes.ProjectFileNotFound,
-                $"There is nothing at '{request.EntryPointPath}'.",
-                request.EntryPointPath));
-        }
-
         string[] targets = Targets(request.Kind);
         Dictionary<string, string> properties = Properties(request);
-        CanonicalPath entryPoint = request.EntryPointPath;
 
-        OperationOutcome outcome = await Task.Run(
-            () => MSBuildOperationRunner.Run(
-                entryPoint,
-                targets,
-                properties,
-                progress is null
-                    ? null
-                    : message => progress.Report(new ProjectOperationProgress { Message = message }),
-                cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+        var diagnostics = new List<ProjectDiagnostic>();
+        var succeeded = true;
 
-        cancellationToken.ThrowIfCancellationRequested();
-
-        List<ProjectDiagnostic> diagnostics = [.. Translate(outcome, entryPoint)];
-
-        if (outcome.Succeeded)
+        // The whole entry point, or the named projects and nothing else. Passing a project's own
+        // file to the engine is what "just this one" means to MSBuild, and it is what makes a
+        // designer's rebuild-on-save proportionate to the save rather than to the solution.
+        foreach ((CanonicalPath file, ProjectIdentity project) in ProjectFiles(request))
         {
-            return ProjectOperationResult.Succeeded(diagnostics);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!File.Exists(file.Value))
+            {
+                diagnostics.Add(Diagnostic(
+                    MSBuildDiagnosticCodes.ProjectFileNotFound,
+                    $"There is nothing at '{file}'.",
+                    file));
+
+                succeeded = false;
+
+                continue;
+            }
+
+            OperationOutcome outcome = await Task.Run(
+                () => MSBuildOperationRunner.Run(
+                    file,
+                    targets,
+                    properties,
+                    progress is null
+                        ? null
+                        : message => progress.Report(
+                            new ProjectOperationProgress { Message = message, Project = project }),
+                    cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            int before = diagnostics.Count;
+
+            diagnostics.AddRange(Translate(outcome, file));
+
+            if (outcome.Succeeded)
+            {
+                continue;
+            }
+
+            succeeded = false;
+
+            // A build that fails logs an error, and one that logs an error fails -- but if the
+            // engine ever disagrees with itself, an unexplained failure is worse than a synthetic
+            // explanation.
+            if (!diagnostics.Skip(before).Any(static d => d.IsError))
+            {
+                diagnostics.Add(Diagnostic(
+                    OperationDiagnosticCodes.OperationFailed,
+                    $"{request.Kind} of '{file.FileName}' failed without reporting a reason.",
+                    file));
+            }
         }
 
-        // A build that fails logs an error, and one that logs an error fails -- but if the engine
-        // ever disagrees with itself, an unexplained failure is worse than a synthetic explanation.
-        if (!diagnostics.Exists(static d => d.IsError))
+        return succeeded
+            ? ProjectOperationResult.Succeeded(diagnostics)
+            : ProjectOperationResult.Failed(diagnostics);
+    }
+
+    /// <summary>
+    /// What the request asks to operate on: each named project's own file, or the entry point when
+    /// it names none.
+    /// </summary>
+    /// <remarks>
+    /// A foreign or half-formed identity is a programming error rather than a tool scenario — an
+    /// identity carries the workspace that minted it, so one from elsewhere cannot have come from
+    /// this request's snapshot — and is refused as an argument rather than reported as a
+    /// diagnostic.
+    /// </remarks>
+    private static List<(CanonicalPath File, ProjectIdentity Project)> ProjectFiles(
+        ProjectOperationRequest request)
+    {
+        if (request.Projects.IsEmpty)
         {
-            diagnostics.Add(Diagnostic(
-                OperationDiagnosticCodes.OperationFailed,
-                $"{request.Kind} of '{entryPoint.FileName}' failed without reporting a reason.",
-                entryPoint));
+            return [(request.EntryPointPath, ProjectIdentity.None)];
         }
 
-        return ProjectOperationResult.Failed(diagnostics);
+        var files = new List<(CanonicalPath File, ProjectIdentity Project)>(request.Projects.Length);
+        var seen = new HashSet<ProjectIdentity>();
+
+        foreach (ProjectIdentity project in request.Projects)
+        {
+            if (project.IsEmpty)
+            {
+                throw new ArgumentException(
+                    "The request names an empty project identity.", nameof(request));
+            }
+
+            if (project.Workspace != request.Workspace)
+            {
+                throw new ArgumentException(
+                    $"The request names {project}, which belongs to another workspace.", nameof(request));
+            }
+
+            if (seen.Add(project))
+            {
+                files.Add((project.ProjectFilePath, project));
+            }
+        }
+
+        return files;
     }
 
     /// <summary>
