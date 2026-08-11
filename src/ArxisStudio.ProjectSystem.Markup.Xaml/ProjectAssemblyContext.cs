@@ -36,9 +36,20 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// whether anything is still looking at the old objects.
 /// </para>
 /// </remarks>
-public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXamlCompilationScope, IDisposable
+public sealed partial class ProjectAssemblyContext
+    : ArxisStudio.Markup.Xaml.Loader.IXamlCompilationScope, IDisposable
 {
-    private readonly AssemblyLoadContext _context;
+    /// <summary>
+    /// The load context, until it is unloaded and then nothing.
+    /// </summary>
+    /// <remarks>
+    /// Dropped on unload rather than kept, because a host that still holds this object would
+    /// otherwise still hold the generation through it — and holding the husk is exactly what a
+    /// host does between asking a generation to go and proving that it went. See
+    /// <see cref="TryReclaimAsync"/>, which cannot answer honestly while this field is set.
+    /// </remarks>
+    private AssemblyLoadContext? _context;
+
     private readonly Dictionary<string, CanonicalPath> _rebuildable;
     private readonly Dictionary<string, CanonicalPath> _stable;
     private readonly Dictionary<string, Assembly?> _resolved = new(StringComparer.OrdinalIgnoreCase);
@@ -63,11 +74,14 @@ public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXam
         _rebuildable = rebuildable;
         _stable = stable;
         _stamps = Stamp(rebuildable);
-        _context = new AssemblyLoadContext(name, isCollectible: true);
+
+        var context = new AssemblyLoadContext(name, isCollectible: true);
 
         // The hook fires for a dependency the loader could not satisfy itself, which is how a
         // referenced project's output is found without anybody naming it up front.
-        _context.Resolving += (_, name) => Resolve(name);
+        context.Resolving += (_, name) => Resolve(name);
+
+        _context = context;
     }
 
     /// <summary>Gets the name this context was created with, which shows up in diagnostics.</summary>
@@ -315,9 +329,12 @@ public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXam
     {
         ObjectDisposedException.ThrowIf(IsUnloaded, this);
 
-        RuntimeXamlCompiler.EnsureEmittedIn(_context);
+        AssemblyLoadContext context = _context
+            ?? throw new ObjectDisposedException(nameof(ProjectAssemblyContext));
 
-        return new LoadScope(_context.EnterContextualReflection());
+        RuntimeXamlCompiler.EnsureEmittedIn(context);
+
+        return new LoadScope(context.EnterContextualReflection());
     }
 
     /// <inheritdoc />
@@ -376,6 +393,33 @@ public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXam
             }
         }
 
+        /// <summary>
+        /// Clears the emitted state when it belongs to a context that is going away.
+        /// </summary>
+        /// <remarks>
+        /// The mirror of <see cref="EnsureEmittedIn"/>, for the other moment: nothing has entered
+        /// a successor's scope yet, so the compiler's own dynamic assembly is still the dying
+        /// generation's and roots it all by itself.
+        /// </remarks>
+        internal static void ResetIfEmittedIn(AssemblyLoadContext dying)
+        {
+            lock (Sync)
+            {
+                foreach (System.Reflection.FieldInfo field in State)
+                {
+                    if (field.Name == "_sreAsm" && field.GetValue(null) is Assembly emitted)
+                    {
+                        if (ReferenceEquals(AssemblyLoadContext.GetLoadContext(emitted), dying))
+                        {
+                            Reset();
+                        }
+
+                        return;
+                    }
+                }
+            }
+        }
+
         private static void Reset()
         {
             foreach (System.Reflection.FieldInfo field in State)
@@ -398,12 +442,20 @@ public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXam
             return;
         }
 
+        AssemblyLoadContext? context;
+
         lock (_gate)
         {
             _resolved.Clear();
+
+            context = _context;
+
+            // Let go of it here, or this object — which the host is still holding while it asks
+            // whether the generation went — would be the thing keeping it.
+            _context = null;
         }
 
-        _context.Unload();
+        context?.Unload();
     }
 
     private static string Describe(SolutionSnapshot snapshot, ProjectIdentity project) =>
@@ -455,7 +507,7 @@ public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXam
     /// </remarks>
     private Assembly? LoadWithoutHoldingTheFile(CanonicalPath path)
     {
-        if (!File.Exists(path.Value))
+        if (_context is not { } context || !File.Exists(path.Value))
         {
             return null;
         }
@@ -471,10 +523,10 @@ public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXam
             {
                 using var symbolStream = new MemoryStream(File.ReadAllBytes(symbolsPath));
 
-                return _context.LoadFromStream(assemblyStream, symbolStream);
+                return context.LoadFromStream(assemblyStream, symbolStream);
             }
 
-            return _context.LoadFromStream(assemblyStream);
+            return context.LoadFromStream(assemblyStream);
         }
         catch (Exception exception) when (IsUnloadable(exception))
         {

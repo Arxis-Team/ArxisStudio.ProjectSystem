@@ -641,13 +641,32 @@ loaded stay with the host, because two copies of Avalonia produce two `Button` t
 assignable to one another. And assemblies are read into memory rather than loaded from their path,
 so the next build can overwrite the file it just loaded.
 
-A designer keeps **one context per run**. The obvious swap — dispose on staleness, `CreateFor`
-again — was tried and measured out of existence: a superseded generation is unloaded but never
-collected, and Avalonia's runtime XAML compiler goes on answering `x:Class` with the first copy it
-saw. [ADR 0021](../adr/0021-a-run-holds-one-generation-of-a-projects-types.md) records the
-evidence; the honest answers a host has are `IsCurrentFor(snapshot)` — has the *model* moved on —
-and `IsCurrentOnDisk()` — did a build rewrite the *types* — and what stale types get is a restart,
-not a second context.
+A designer keeps **one generation at a time**. The naive swap — dispose on staleness, `CreateFor`
+again — was measured out of existence in
+[ADR 0021](../adr/0021-a-run-holds-one-generation-of-a-projects-types.md): a superseded generation
+was unloaded but never collected, and the runtime XAML compiler went on answering `x:Class` with
+the first copy it saw. `IsCurrentFor(snapshot)` says whether the *model* moved on and
+`IsCurrentOnDisk()` whether a build rewrote the *types*.
+
+What makes a replacement safe is proving the predecessor gone
+([ADR 0023](../adr/0023-a-generation-is-reclaimed-before-its-successor-is-born.md)):
+
+```csharp
+// Let go first — the environment's type resolver holds this generation's assemblies —
+// then close its windows and forms, and only then ask.
+environment = null;
+assemblies = null;
+
+if (await old.TryReclaimAsync(token))
+{
+    (environment, assemblies) = ProjectXamlEnvironment.CreateFor(snapshot, project);   // safe: nothing to collide with
+}
+else
+{
+    // Something still holds it. A successor here would be a second copy of every type,
+    // so the honest answer is a new process.
+}
+```
 
 What does not need the restart is markup, including the markup of a placed control.
 `ProjectXamlPopulation` pairs a project's documents with the generation's types by `x:Class` and

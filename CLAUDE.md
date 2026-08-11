@@ -222,6 +222,7 @@ What is recorded so far:
 | [0020](docs/adr/0020-the-adapter-resets-avalonias-runtime-xaml-compiler.md) | The adapter resets Avalonias runtime XAML compiler between generations |
 | [0021](docs/adr/0021-a-run-holds-one-generation-of-a-projects-types.md) | A run holds one generation of a project's types; stale types are answered with a restart |
 | [0022](docs/adr/0022-an-embedded-controls-markup-follows-the-live-document.md) | An embedded control's markup follows the live document; only its code still waits for a restart |
+| [0023](docs/adr/0023-a-generation-is-reclaimed-before-its-successor-is-born.md) | A generation is reclaimed and proven gone before its successor is created; restart is the fallback |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

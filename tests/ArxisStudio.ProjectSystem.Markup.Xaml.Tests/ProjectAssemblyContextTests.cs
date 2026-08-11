@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
@@ -226,6 +227,115 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         File.WriteAllBytes(output.Value, [1, 2, 3]);
 
         Assert.False(context.IsCurrentOnDisk());
+    }
+
+    /// <summary>
+    /// The whole point of reclaiming: a generation nothing holds leaves the process, and says so.
+    /// </summary>
+    /// <remarks>
+    /// The setup is a method of its own, and not an inlined one, because an assembly named by a
+    /// local of this test would be alive for as long as the test is — an asynchronous method
+    /// keeps its locals in an object that lives as long as the method does. A frame that has
+    /// returned is the one storage the collector is sure about. The same discipline is why
+    /// <c>ProjectAssemblyContext</c> forgets the generation from a synchronous method of its own.
+    /// </remarks>
+    [Fact]
+    public async Task TryReclaim_AGenerationNothingHolds_AnswersTrue()
+    {
+        (ProjectAssemblyContext context, WeakReference loaded) =
+            Generation(CopyRealAssembly("Reclaimable.dll"), "Reclaimable");
+
+        Assert.True(loaded.IsAlive);
+
+        Assert.True(
+            await context.TryReclaimAsync(TestContext.Current.CancellationToken),
+            "the generation would not leave the process");
+
+        Assert.False(loaded.IsAlive);
+        Assert.True(context.IsUnloaded);
+    }
+
+    /// <summary>
+    /// And the answer that matters as much: a generation something still holds says so rather
+    /// than pretending, because a successor created beside it would be a second copy of one type.
+    /// </summary>
+    [Fact]
+    public async Task TryReclaim_WhileSomethingStillHoldsIt_AnswersFalse()
+    {
+        (ProjectAssemblyContext context, Assembly held) =
+            HeldGeneration(CopyRealAssembly("Held.dll"), "Held");
+
+        Assert.False(await context.TryReclaimAsync(TestContext.Current.CancellationToken));
+
+        // Named after the assertion, so the reference is unmistakably still live at this point:
+        // this is the test's own root and the reason the answer above is false.
+        Assert.NotNull(held);
+    }
+
+    /// <summary>
+    /// A generation whose types never registered anything is the ordinary case for everything
+    /// that is not a control, and the cleanup must be a no-op rather than a failure.
+    /// </summary>
+    [Fact]
+    public async Task TryReclaim_AGenerationThatRegisteredNothing_IsStillReclaimed()
+    {
+        // The fixture is this repository's own core, which has no Avalonia types in it at all.
+        (ProjectAssemblyContext context, WeakReference loaded) =
+            Generation(CopyRealAssembly("Plain.dll"), "Plain");
+
+        Assert.True(await context.TryReclaimAsync(TestContext.Current.CancellationToken));
+        Assert.False(loaded.IsAlive);
+    }
+
+    /// <summary>Disposal first means there is nothing left to clean up after, and it says so.</summary>
+    [Fact]
+    public async Task TryReclaim_AfterDisposal_AnswersFalse()
+    {
+        ProjectAssemblyContext context = Context(CopyRealAssembly("Disposed.dll"));
+
+        context.Dispose();
+
+        Assert.False(await context.TryReclaimAsync(TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>A second caller is told what the first found rather than made to repeat it.</summary>
+    [Fact]
+    public async Task TryReclaim_Twice_AnswersTheSameThing()
+    {
+        (ProjectAssemblyContext context, WeakReference _) =
+            Generation(CopyRealAssembly("Twice.dll"), "Twice");
+
+        bool first = await context.TryReclaimAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(first, await context.TryReclaimAsync(TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// Loads a generation and hands back only what may survive the measurement.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private (ProjectAssemblyContext Context, WeakReference Loaded) Generation(
+        CanonicalPath output, string name)
+    {
+        ProjectAssemblyContext context = Context(output);
+        Assembly? loaded = context.Resolve(new AssemblyName(name));
+
+        Assert.NotNull(loaded);
+
+        return (context, new WeakReference(loaded));
+    }
+
+    /// <summary>The same, keeping the assembly, which is what a host that leaks looks like.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private (ProjectAssemblyContext Context, Assembly Held) HeldGeneration(
+        CanonicalPath output, string name)
+    {
+        ProjectAssemblyContext context = Context(output);
+        Assembly? loaded = context.Resolve(new AssemblyName(name));
+
+        Assert.NotNull(loaded);
+
+        return (context, loaded);
     }
 
     /// <summary>

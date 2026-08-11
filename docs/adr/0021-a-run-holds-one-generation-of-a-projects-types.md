@@ -3,6 +3,7 @@
 Date: 2026-08-11
 
 Status: Accepted, amended by [0022](0022-an-embedded-controls-markup-follows-the-live-document.md)
+and [0023](0023-a-generation-is-reclaimed-before-its-successor-is-born.md)
 
 ## Context
 
@@ -44,6 +45,11 @@ made, and the compiler goes on answering with the oldest.
 A run holds **one generation of a project's types**, created when the project is opened and kept
 until it is closed. A rebuild does not create a second one, and open forms are never moved between
 generations.
+
+> Amended by [ADR 0023](0023-a-generation-is-reclaimed-before-its-successor-is-born.md). The
+> invariant — at most one live copy of a project's types — stands, and so does everything measured
+> below. What changed is that a generation can now be *given back* to the process, proven gone, and
+> replaced within a run; the restart is what happens when that proof cannot be had.
 
 What follows from that, and is the point of the arrangement:
 

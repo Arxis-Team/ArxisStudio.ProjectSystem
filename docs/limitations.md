@@ -366,15 +366,37 @@ collectible context. Package assemblies go to the default one, because they do n
 builds and because a second copy of a shared library produces types that are not assignable to the
 host's. The consequence is that changing a package version needs a new process, not a new context.
 
+### A generation goes back only over its dead body, and the host has to help
+
+`ProjectAssemblyContext.TryReclaimAsync` answers whether a generation is *provably* gone — every
+assembly it loaded unreachable — and a host must not create a successor until it says so
+([ADR 0023](adr/0023-a-generation-is-reclaimed-before-its-successor-is-born.md)). What it cannot
+do is let go on the host's behalf, and the list of what a host must release first is not obvious:
+
+- the load environment and the context field, **before** asking — the environment's type resolver
+  was handed the generation's assemblies as a list to search, so holding it is holding them;
+- every session, and every `Window` a session produced, closed — constructing one puts it in the
+  windowing platform's own static list;
+- every form or view that shows the generation's objects, closed rather than merely hidden;
+- any population registry, which holds delegates on the generation's own types.
+
+A host that misses one of these sees an honest "no" and a fallback, never a wrong preview.
+
+Beyond that, `false` is not always the host's fault: a user control that starts a timer, an
+animation or a subscription in its constructor can root its generation, and nothing here can
+release what somebody else's code holds. Packages are unaffected either way — they load into the
+default context and stay, so changing a package version still needs a new process.
+
 ### A designer's run holds one generation of types
 
 A superseded generation is unloaded but never collected — creating one control registers its type
 in Avalonia's process-wide property registry, which outlives the context — so a host that made a
 generation per build accumulated every generation it ever made, and the runtime XAML compiler
 answered `x:Class` with the oldest. [ADR 0021](adr/0021-a-run-holds-one-generation-of-a-projects-types.md)
-records the measurements and the decision: one generation per run, and a class added or changed
-since the project was opened is answered with a restart, which
-`ProjectAssemblyContext.IsCurrentOnDisk()` exists to make detectable after a build.
+records the measurements and the decision: one generation at a time, and
+`ProjectAssemblyContext.IsCurrentOnDisk()` exists to make a build's effect on the types detectable.
+Since [ADR 0023](adr/0023-a-generation-is-reclaimed-before-its-successor-is-born.md) a generation
+can be replaced within a run — but only after it has been proven gone, which is the entry above.
 
 ### Live population changes constructions, not instances
 
