@@ -13,8 +13,6 @@ public sealed record AnalyzerReferenceInfo
     /// <summary>Gets the analyzer assembly's location.</summary>
     public required CanonicalPath AssemblyPath { get; init; }
 
-    /// <summary>Gets the MSBuild condition guarding the reference, when it has one.</summary>
-    public string? Condition { get; init; }
 
     /// <summary>Gets any additional declared metadata.</summary>
     public ProjectMetadata Metadata { get; init; } = ProjectMetadata.Empty;

@@ -12,8 +12,6 @@ public sealed record FrameworkReferenceInfo
     /// <summary>Gets the framework identifier.</summary>
     public required string Name { get; init; }
 
-    /// <summary>Gets the MSBuild condition guarding the reference, when it has one.</summary>
-    public string? Condition { get; init; }
 
     /// <summary>Gets any additional declared metadata.</summary>
     public ProjectMetadata Metadata { get; init; } = ProjectMetadata.Empty;

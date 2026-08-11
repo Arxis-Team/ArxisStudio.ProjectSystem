@@ -28,7 +28,8 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// controls live. A document naming no class, or a class this generation does not have, is
 /// answered with <see langword="null"/> rather than a diagnostic: both are ordinary — a
 /// class-less resource dictionary, or a control added since the studio opened, which is
-/// ADR 0021's restart case and not this type's business.
+/// ADR 0023's reclaim-and-swap (restarting only when that cannot be proven) and not this
+/// type's business.
 /// </para>
 /// <para>
 /// Lifetime follows the generation. The registry holds the generation's types and the documents
@@ -63,7 +64,16 @@ public sealed class ProjectXamlPopulation : IDisposable
     }
 
     /// <summary>Gets how many of the generation's types currently follow a document.</summary>
-    public int Count => _population.Count;
+    public int Count
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return System.Linq.Enumerable.Count(_classes.Values, _population.Contains);
+            }
+        }
+    }
 
     /// <summary>
     /// Creates a registry over one generation of a project's assemblies.
@@ -74,18 +84,16 @@ public sealed class ProjectXamlPopulation : IDisposable
     /// <see cref="ProjectXamlEnvironment.Create"/> built over <paramref name="context"/>, so that
     /// population resolves includes and enters the compilation scope exactly as the sessions do.
     /// </param>
-    /// <param name="options">How to populate, or <see langword="null"/> for the defaults.</param>
     /// <returns>The registry. The caller disposes it before disposing the context.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> or <paramref name="environment"/> is <see langword="null"/>.</exception>
     public static ProjectXamlPopulation Create(
         ProjectAssemblyContext context,
-        XamlLoadEnvironment environment,
-        XamlLivePopulationOptions? options = null)
+        XamlLoadEnvironment environment)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(environment);
 
-        return new ProjectXamlPopulation(context, new XamlLivePopulation(environment, options));
+        return new ProjectXamlPopulation(context, new XamlLivePopulation(environment));
     }
 
     /// <summary>

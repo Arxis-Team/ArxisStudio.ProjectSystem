@@ -10,7 +10,7 @@ namespace ArxisStudio.ProjectSystem;
 /// <para>
 /// The core knows the neutral distinction between a solution, a solution XML file and a project,
 /// and knows it from the extension alone. It does not parse any of those formats — that is a
-/// provider's job, and in this milestone no provider exists.
+/// provider's job, and the core has no idea which provider will do it.
 /// </para>
 /// <para>
 /// A <see cref="WorkspaceEntryPointKind.Unknown"/> kind is not a rejection. Whether something can

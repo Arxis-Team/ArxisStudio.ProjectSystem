@@ -27,7 +27,7 @@ namespace ArxisStudio.ProjectSystem;
 /// <b>Order.</b> Loads and refreshes take one mutation boundary in the order the requests arrive,
 /// and run one at a time. There is no coalescing: <em>N</em> queued refreshes run <em>N</em>
 /// provider loads. Debouncing belongs with the file-change events that make it necessary, which is
-/// a later milestone.
+/// where it lives — <see cref="FileChangeCoalescer"/>, composed by the host (ADR 0016).
 /// </para>
 /// <para>
 /// <b>Failure.</b> A failed load, a provider that throws, and a cancelled load all leave the

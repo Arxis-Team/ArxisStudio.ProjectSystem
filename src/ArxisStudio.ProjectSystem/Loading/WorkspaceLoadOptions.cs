@@ -22,7 +22,4 @@ public sealed record WorkspaceLoadOptions
 
     /// <summary>Gets a value indicating whether project items are wanted. Defaults to <see langword="true"/>.</summary>
     public bool IncludeItems { get; init; } = true;
-
-    /// <summary>Gets a value indicating whether build output artifacts are wanted. Defaults to <see langword="true"/>.</summary>
-    public bool IncludeOutputArtifacts { get; init; } = true;
 }

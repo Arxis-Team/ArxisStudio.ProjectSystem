@@ -187,8 +187,9 @@ public sealed partial class ProjectAssemblyContext
     /// <see cref="IsCurrentFor"/> says whether the <em>model</em> moved on, this says whether the
     /// <em>types</em> did. A build that had nothing to do rewrites nothing and the answer stays
     /// <see langword="true"/>; one that recompiled anything the project owns turns it
-    /// <see langword="false"/>, which is a host's cue that the generation is behind the code and
-    /// ADR 0021's answer — a restart — is now worth something.
+    /// <see langword="false"/>, which is a host's cue to reclaim this generation and build its
+    /// successor — see <see cref="TryReclaimAsync"/> and <c>docs/adr/0023</c>. A restart is what
+    /// happens when the reclaim answers <see langword="false"/>.
     /// </para>
     /// <para>
     /// Compared by write time and size against a stamp taken at creation, which answers "did a
@@ -200,14 +201,11 @@ public sealed partial class ProjectAssemblyContext
     /// <returns><see langword="true"/> when no rebuildable file has changed since creation.</returns>
     public bool IsCurrentOnDisk()
     {
-        foreach (KeyValuePair<string, FileStamp> stamped in _stamps)
+        // Both dictionaries are built together in the constructor and neither is written again,
+        // so every rebuildable assembly has a stamp and one walk answers for both.
+        foreach (KeyValuePair<string, CanonicalPath> assembly in _rebuildable)
         {
-            if (!_rebuildable.TryGetValue(stamped.Key, out CanonicalPath path))
-            {
-                continue;
-            }
-
-            if (!stamped.Value.Equals(FileStamp.Of(path.Value)))
+            if (!_stamps[assembly.Key].Equals(FileStamp.Of(assembly.Value.Value)))
             {
                 return false;
             }
@@ -316,15 +314,15 @@ public sealed partial class ProjectAssemblyContext
     /// does nothing and the pre-existing behaviour returns — stale, but not broken in any new way.
     /// See <c>docs/adr/0020-the-adapter-resets-avalonias-runtime-xaml-compiler.md</c>.
     /// </para>
-    /// </remarks>
-    /// <returns>The scope to dispose when the load is done.</returns>
-    /// <exception cref="ObjectDisposedException">This context has been unloaded.</exception>
-    /// <remarks>
+    /// <para>
     /// This is also the context's <see cref="ArxisStudio.Markup.Xaml.Loader.IXamlCompilationScope"/>
     /// implementation: <see cref="ProjectXamlEnvironment.Create"/> hands the context to the
     /// environment, and the session then enters this around every compilation on its own. Nothing
     /// needs to call it by hand.
+    /// </para>
     /// </remarks>
+    /// <returns>The scope to dispose when the load is done.</returns>
+    /// <exception cref="ObjectDisposedException">This context has been unloaded.</exception>
     public IDisposable EnterLoadScope()
     {
         ObjectDisposedException.ThrowIf(IsUnloaded, this);

@@ -66,10 +66,19 @@ public static class ProjectXamlEnvironment
     /// Builds an environment for loading documents belonging to one project.
     /// </summary>
     /// <remarks>
-    /// The caller keeps the <paramref name="context"/> and disposes it when the environment is
-    /// finished with — which is the whole reload cycle: build, new context, new environment, swap,
-    /// drop the old pair. Disposing it here would be wrong, because the environment outlives this
-    /// call and nothing here knows when it stops being looked at.
+    /// <para>
+    /// The caller keeps the <paramref name="context"/> and ends it when the environment is
+    /// finished with — which is the reload cycle: build, let go, reclaim, new context, new
+    /// environment. Disposing it here would be wrong, because the environment outlives this call
+    /// and nothing here knows when it stops being looked at.
+    /// </para>
+    /// <para>
+    /// <b>Let go of the environment before asking the context to go.</b> Its type resolver was
+    /// handed the generation's own assemblies as a list to search, so a caller still holding this
+    /// object is holding every assembly in the generation, and
+    /// <see cref="ProjectAssemblyContext.TryReclaimAsync"/> will honestly answer that the
+    /// generation stayed. See <c>docs/adr/0023</c>.
+    /// </para>
     /// </remarks>
     /// <param name="context">The project's assemblies.</param>
     /// <param name="resources">

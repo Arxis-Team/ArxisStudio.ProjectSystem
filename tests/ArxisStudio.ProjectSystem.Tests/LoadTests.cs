@@ -45,7 +45,6 @@ public sealed class LoadTests
 
         Assert.Same(WorkspaceLoadOptions.Default, request.Options);
         Assert.True(request.Options.IncludeItems);
-        Assert.True(request.Options.IncludeOutputArtifacts);
         Assert.Same(ProjectMetadata.Empty, request.GlobalProperties);
         Assert.Null(request.Configuration);
     }

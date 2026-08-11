@@ -13,7 +13,8 @@ namespace ArxisStudio.ProjectSystem;
 /// </para>
 /// <para>
 /// This is a <em>declared</em> reference. What restore actually resolved is a different question,
-/// answered by reading restore assets — Milestone 3.
+/// answered by <see cref="ProjectSnapshot.ResolvedPackages"/>, which is read from the restore
+/// assets rather than from the project file.
 /// </para>
 /// </remarks>
 public sealed record PackageReferenceInfo
@@ -33,8 +34,6 @@ public sealed record PackageReferenceInfo
     /// <summary>Gets the declared <c>ExcludeAssets</c>, uninterpreted.</summary>
     public string? ExcludeAssets { get; init; }
 
-    /// <summary>Gets the MSBuild condition guarding the reference, when it has one.</summary>
-    public string? Condition { get; init; }
 
     /// <summary>Gets any additional declared metadata.</summary>
     public ProjectMetadata Metadata { get; init; } = ProjectMetadata.Empty;
