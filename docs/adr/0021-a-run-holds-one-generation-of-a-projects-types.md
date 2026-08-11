@@ -2,7 +2,7 @@
 
 Date: 2026-08-11
 
-Status: Accepted
+Status: Accepted, amended by [0022](0022-an-embedded-controls-markup-follows-the-live-document.md)
 
 ## Context
 
@@ -63,8 +63,11 @@ the only honest answer a process can give about types it has already loaded.
 - A form created during a run does not open in that run. The studio detects the case by its
   diagnostic and offers the reload; it does not fail silently, and it does not pretend to reload
   the types in place.
-- An embedded control's appearance follows the assembly, not the file, so a form that places one
-  keeps showing the compiled shape until a reload. The studio names the forms that are behind.
+- ~~An embedded control's appearance follows the assembly, not the file, so a form that places one
+  keeps showing the compiled shape until a reload. The studio names the forms that are behind.~~
+  Amended by [ADR 0022](0022-an-embedded-controls-markup-follows-the-live-document.md): an embedded
+  control's *markup* now follows the live document through `ProjectXamlPopulation`; what still
+  follows the assembly — and still answers to a restart — is the control's *code*.
 - Restarting is the designer's answer to stale types, which is what the Avalonia previewer does for
   the same reason — it runs the preview in a process it can restart.
 - If a future Avalonia offers a per-context XAML compiler, or a way to scope assembly resolution to

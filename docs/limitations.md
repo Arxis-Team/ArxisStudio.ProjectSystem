@@ -366,6 +366,26 @@ collectible context. Package assemblies go to the default one, because they do n
 builds and because a second copy of a shared library produces types that are not assignable to the
 host's. The consequence is that changing a package version needs a new process, not a new context.
 
+### A designer's run holds one generation of types
+
+A superseded generation is unloaded but never collected — creating one control registers its type
+in Avalonia's process-wide property registry, which outlives the context — so a host that made a
+generation per build accumulated every generation it ever made, and the runtime XAML compiler
+answered `x:Class` with the oldest. [ADR 0021](adr/0021-a-run-holds-one-generation-of-a-projects-types.md)
+records the measurements and the decision: one generation per run, and a class added or changed
+since the project was opened is answered with a restart, which
+`ProjectAssemblyContext.IsCurrentOnDisk()` exists to make detectable after a build.
+
+### Live population changes constructions, not instances
+
+`ProjectXamlPopulation` makes a placed control's markup follow the live document
+([ADR 0022](adr/0022-an-embedded-controls-markup-follows-the-live-document.md)), but population
+happens when an instance is constructed. A preview already showing the control keeps its old
+instance until the host rebuilds that preview — which the host must do, because only it knows
+what is on screen. And it is the markup that follows the document: the control's *code* — its
+properties, defaults and handlers — is the generation's until a restart, which is ADR 0021's
+half of the deal.
+
 ### Only `AvaloniaXaml` and `AvaloniaResource` items get an `avares` URI
 
 Those are the two item types the Avalonia SDK embeds: the first is what it makes of a `.axaml`

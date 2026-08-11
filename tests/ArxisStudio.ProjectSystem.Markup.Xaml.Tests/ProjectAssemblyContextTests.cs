@@ -208,6 +208,44 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         Assert.Throws<ArgumentNullException>(() => context.IsCurrentFor(null!));
     }
 
+    /// <summary>
+    /// The other staleness question: not whether the model moved on, but whether a build rewrote
+    /// the types this generation was created over.
+    /// </summary>
+    [Fact]
+    public void ARewrittenOutput_MakesTheGenerationStaleOnDisk()
+    {
+        CanonicalPath output = CopyRealAssembly("MyControls.dll");
+
+        using ProjectAssemblyContext context = Context(output);
+
+        Assert.True(context.IsCurrentOnDisk());
+
+        // What the next build does: a new file under the same path. The write time moves and the
+        // content differs, and either is enough for the stamp to notice.
+        File.WriteAllBytes(output.Value, [1, 2, 3]);
+
+        Assert.False(context.IsCurrentOnDisk());
+    }
+
+    /// <summary>
+    /// A generation created before the project was ever built becomes stale when the first build
+    /// puts the file there — that build is exactly the news a host wants.
+    /// </summary>
+    [Fact]
+    public void AnOutputThatAppears_MakesTheGenerationStaleOnDisk()
+    {
+        CanonicalPath output = CanonicalPath.Create(Path.Combine(_root, "NeverBuilt.dll"));
+
+        using ProjectAssemblyContext context = Context(output);
+
+        Assert.True(context.IsCurrentOnDisk());
+
+        File.WriteAllBytes(output.Value, [1, 2, 3]);
+
+        Assert.False(context.IsCurrentOnDisk());
+    }
+
     [Fact]
     public void AfterDisposal_ResolvingThrows()
     {

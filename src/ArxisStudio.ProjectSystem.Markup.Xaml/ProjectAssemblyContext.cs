@@ -42,6 +42,7 @@ public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXam
     private readonly Dictionary<string, CanonicalPath> _rebuildable;
     private readonly Dictionary<string, CanonicalPath> _stable;
     private readonly Dictionary<string, Assembly?> _resolved = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, FileStamp> _stamps;
     private readonly Lock _gate = new();
 
     private int _disposed;
@@ -61,6 +62,7 @@ public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXam
 
         _rebuildable = rebuildable;
         _stable = stable;
+        _stamps = Stamp(rebuildable);
         _context = new AssemblyLoadContext(name, isCollectible: true);
 
         // The hook fires for a dependency the loader could not satisfy itself, which is how a
@@ -160,6 +162,78 @@ public sealed class ProjectAssemblyContext : ArxisStudio.Markup.Xaml.Loader.IXam
         ArgumentNullException.ThrowIfNull(snapshot);
 
         return snapshot.Version == Version;
+    }
+
+    /// <summary>
+    /// Whether the rebuildable files on disk are still the ones this context was created over.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The other staleness question, asked after a build rather than after a refresh:
+    /// <see cref="IsCurrentFor"/> says whether the <em>model</em> moved on, this says whether the
+    /// <em>types</em> did. A build that had nothing to do rewrites nothing and the answer stays
+    /// <see langword="true"/>; one that recompiled anything the project owns turns it
+    /// <see langword="false"/>, which is a host's cue that the generation is behind the code and
+    /// ADR 0021's answer — a restart — is now worth something.
+    /// </para>
+    /// <para>
+    /// Compared by write time and size against a stamp taken at creation, which answers "did a
+    /// build produce new output since this generation was made" without opening anything. Only
+    /// the rebuildable assemblies are consulted: a package file changing is not a build, and is
+    /// recorded in the limitations as needing a new process regardless.
+    /// </para>
+    /// </remarks>
+    /// <returns><see langword="true"/> when no rebuildable file has changed since creation.</returns>
+    public bool IsCurrentOnDisk()
+    {
+        foreach (KeyValuePair<string, FileStamp> stamped in _stamps)
+        {
+            if (!_rebuildable.TryGetValue(stamped.Key, out CanonicalPath path))
+            {
+                continue;
+            }
+
+            if (!stamped.Value.Equals(FileStamp.Of(path.Value)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>What a file looked like from outside, enough to notice it being rewritten.</summary>
+    private readonly record struct FileStamp(bool Exists, long Length, DateTime LastWriteUtc)
+    {
+        public static FileStamp Of(string path)
+        {
+            try
+            {
+                var file = new FileInfo(path);
+
+                return file.Exists
+                    ? new FileStamp(true, file.Length, file.LastWriteTimeUtc)
+                    : new FileStamp(false, 0, default);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // A file that cannot be examined is treated as absent; if it becomes readable
+                // later, the comparison will say so, which errs towards reloading.
+                return new FileStamp(false, 0, default);
+            }
+        }
+    }
+
+    private static Dictionary<string, FileStamp> Stamp(Dictionary<string, CanonicalPath> rebuildable)
+    {
+        var stamps = new Dictionary<string, FileStamp>(rebuildable.Count, StringComparer.OrdinalIgnoreCase);
+
+        foreach (KeyValuePair<string, CanonicalPath> assembly in rebuildable)
+        {
+            stamps.Add(assembly.Key, FileStamp.Of(assembly.Value.Value));
+        }
+
+        return stamps;
     }
 
     /// <summary>

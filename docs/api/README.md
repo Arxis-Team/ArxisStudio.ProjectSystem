@@ -636,20 +636,33 @@ is what makes an edit visible without rebuilding — and documents openable by t
 Both come from one `ProjectResourceMap`, so resolving a resource and opening a document cannot
 disagree about which file a URI means.
 
-The reload cycle is the reason `ProjectAssemblyContext` exists:
-
-```csharp
-if (!assemblies.IsCurrentFor(workspace.CurrentSnapshot!))
-{
-    assemblies.Dispose();                       // asks; the runtime frees it when nothing refers in
-    (environment, assemblies) = ProjectXamlEnvironment.CreateFor(workspace.CurrentSnapshot!, project);
-}
-```
-
 Only what gets rebuilt goes into that collectible context. Packages and anything the host already
 loaded stay with the host, because two copies of Avalonia produce two `Button` types that are not
 assignable to one another. And assemblies are read into memory rather than loaded from their path,
 so the next build can overwrite the file it just loaded.
+
+A designer keeps **one context per run**. The obvious swap — dispose on staleness, `CreateFor`
+again — was tried and measured out of existence: a superseded generation is unloaded but never
+collected, and Avalonia's runtime XAML compiler goes on answering `x:Class` with the first copy it
+saw. [ADR 0021](../adr/0021-a-run-holds-one-generation-of-a-projects-types.md) records the
+evidence; the honest answers a host has are `IsCurrentFor(snapshot)` — has the *model* moved on —
+and `IsCurrentOnDisk()` — did a build rewrite the *types* — and what stale types get is a restart,
+not a second context.
+
+What does not need the restart is markup, including the markup of a placed control.
+`ProjectXamlPopulation` pairs a project's documents with the generation's types by `x:Class` and
+keeps new instances populated from the document as it is now —
+[ADR 0022](../adr/0022-an-embedded-controls-markup-follows-the-live-document.md):
+
+```csharp
+using ProjectXamlPopulation population = ProjectXamlPopulation.Create(assemblies, environment);
+
+// On open, after every applied edit, and after every reload from disk:
+await population.SetDocumentAsync(form.Document, token);
+
+// Then rebuild the open previews that place the control; their fresh instances
+// land on the registered document. Dispose the registry before the context.
+```
 
 `ProjectMarkupDiagnostics` carries diagnostics across, so a tool shows one list:
 
