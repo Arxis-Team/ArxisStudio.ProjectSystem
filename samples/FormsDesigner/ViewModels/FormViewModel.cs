@@ -262,6 +262,62 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
         return _redo.Pop();
     }
 
+    /// <summary>
+    /// Everything about a form that outlives the objects built from a generation of types.
+    /// </summary>
+    /// <remarks>
+    /// A swap cannot keep the form object: measurement showed that a form left open — even taken
+    /// off the canvas — keeps the generation it was built under in the process, and a successor
+    /// created beside it would be a second copy of every type. So the form is remembered, closed,
+    /// and built again on the far side, which is what makes a swap something other than a reopen:
+    /// the text, the history and the place on the canvas are all here.
+    /// </remarks>
+    internal sealed record FormMemory(
+        CanonicalPath File,
+        Point Location,
+        double Width,
+        double Height,
+        XamlDocument? Document,
+        XamlDocument[] Undone,
+        XamlDocument[] Redone,
+        XamlDocument? Saved);
+
+    /// <summary>Remembers what a swap must carry across.</summary>
+    internal FormMemory Remember() =>
+        new(File, Location, Width, Height, Document, [.. _undo], [.. _redo], _saved);
+
+    /// <summary>Puts a remembered form back, before its session is built again.</summary>
+    /// <remarks>
+    /// The stacks are pushed back in reverse, because a stack enumerates from its top and this
+    /// has to end where the other began — an undo history restored upside down is worse than none.
+    /// </remarks>
+    internal void Recall(FormMemory memory)
+    {
+        ArgumentNullException.ThrowIfNull(memory);
+
+        Location = memory.Location;
+        Width = memory.Width;
+        Height = memory.Height;
+        Document = memory.Document;
+
+        _undo.Clear();
+        _redo.Clear();
+
+        for (int index = memory.Undone.Length - 1; index >= 0; index--)
+        {
+            _undo.Push(memory.Undone[index]);
+        }
+
+        for (int index = memory.Redone.Length - 1; index >= 0; index--)
+        {
+            _redo.Push(memory.Redone[index]);
+        }
+
+        _saved = memory.Saved;
+
+        IsDirty = !ReferenceEquals(Document, _saved);
+    }
+
     /// <summary>A form freshly loaded or freshly saved has nothing behind it and nothing pending.</summary>
     internal void MarkSaved()
     {

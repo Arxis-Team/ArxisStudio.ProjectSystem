@@ -1,12 +1,21 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using ArxisStudio;
+using ArxisStudio.Markup.Xaml;
+using ArxisStudio.Markup.Xaml.Loader;
+using ArxisStudio.ProjectSystem;
+using ArxisStudio.ProjectSystem.Markup.Xaml;
 using FormsDesigner.ViewModels;
 
 namespace FormsDesigner.Views;
@@ -63,6 +72,1108 @@ internal static class StudioCheck
     /// <summary>Runs the endurance cycle instead of the straight-line check.</summary>
     public static void StressWhenShown(MainWindow window, DesignerViewModel designer, string folder) =>
         window.Opened += (_, _) => _ = StressRunAsync(window, designer, folder);
+
+    /// <summary>Runs the generation-reclaim measurement instead of either.</summary>
+    public static void ReclaimWhenShown(MainWindow window, DesignerViewModel designer, string folder) =>
+        window.Opened += (_, _) => _ = ReclaimRunAsync(window, designer, folder);
+
+    private static async Task ReclaimRunAsync(Window window, DesignerViewModel designer, string folder)
+    {
+        var failures = 0;
+
+        try
+        {
+            failures = await ReclaimAsync(designer, folder);
+        }
+        catch (Exception error)
+        {
+            Say($"the reclaim run itself failed: {error.GetType().Name}: {error.Message}");
+
+            failures++;
+        }
+
+        Say(failures == 0
+            ? "VERDICT ok — a superseded generation was proven dead and its successor resolved cleanly"
+            : $"VERDICT {failures} step(s) failed");
+
+        window.Close();
+    }
+
+    /// <summary>
+    /// The measurement ADR 0021 asked for: whether a superseded generation, given every cleanup
+    /// Avalonia 12.1.1 offers, actually leaves the process — and whether its successor then
+    /// resolves cleanly where "Unable to substitute" used to live.
+    /// </summary>
+    /// <remarks>
+    /// The teardown here is deliberately inline reflection: this run is the go/no-go gate for the
+    /// adapter's reclaim API, and once that API exists these steps collapse into one call. The
+    /// step stays afterwards as the regression harness for it.
+    /// </remarks>
+    private static async Task<int> ReclaimAsync(DesignerViewModel designer, string folder)
+    {
+        var failures = 0;
+
+        // The studio must not restart itself out from under the measurement.
+        designer.AutoReloadForCode = false;
+
+        // A path to something openable measures that project instead of a scaffolded one, which
+        // is how a swap that failed on somebody's real application gets its root named rather
+        // than guessed at.
+        bool scaffolded = System.IO.Path.GetExtension(folder).ToUpperInvariant()
+            is not (".SLN" or ".SLNX" or ".CSPROJ");
+
+        string project = scaffolded
+            ? await ProjectScaffold.CreateAsync(
+                ProjectScaffold.Templates[0], folder, "ReclaimApp", CancellationToken.None)
+            : folder;
+
+        // A control with a styled property, placed on the window: registering a property is what
+        // roots a type in Avalonia's process-wide registry, so a generation without one would
+        // collect trivially and the measurement would prove nothing.
+        string? controlFile = scaffolded ? await WriteReclaimControlAsync(project) : null;
+
+        // Loaded without opening anything, so the first cases measure Avalonia and these
+        // libraries rather than the designer's windows.
+        designer.OpenAtStartup(project, [], active: null);
+
+        if (!await Until(() => designer.IsLoaded && !designer.IsBusy, 240))
+        {
+            return Fail(ref failures, "the project never loaded");
+        }
+
+        designer.RestoreCommand.Execute(null);
+
+        if (!await Until(() => !designer.IsBusy, 300, settle: true))
+        {
+            return Fail(ref failures, "the restore never finished");
+        }
+
+        designer.BuildCommand.Execute(null);
+
+        if (!await Until(() => !designer.IsBusy, 300, settle: true))
+        {
+            return Fail(ref failures, "the build never finished");
+        }
+
+        if (designer.Diagnostics.Any(static row => row.Severity == "Error"))
+        {
+            foreach (DiagnosticRow row in designer.Diagnostics.Where(static r => r.Severity == "Error").Take(5))
+            {
+                Say($"  build error: {row.Message}");
+            }
+
+            return Fail(ref failures, "the scaffolded project did not build");
+        }
+
+        if (Grab(designer, "_workspace") is not ProjectWorkspace workspace
+            || workspace.CurrentSnapshot is not { } snapshot
+            || snapshot.Projects.Length == 0)
+        {
+            return Fail(ref failures, "no snapshot to build a generation from");
+        }
+
+        ProjectIdentity identity = snapshot.Projects[0].Identity;
+
+        if (!scaffolded)
+        {
+            // A real project measures only the rung that matters for it: the studio's own state,
+            // with whatever forms it has, in the shape a swap will meet.
+            Say("— the studio's own generation, on this project —");
+
+            if (!await MeasureStudioAsync(designer, "this project", placed: null))
+            {
+                Fail(ref failures, "the studio's own state kept the generation alive");
+            }
+
+            // And the arrangement the studio is actually in when it swaps: a build has just run,
+            // in this process, over the very assemblies about to be given back.
+            Say("— and again, with a build in between, which is what the studio really does —");
+
+            designer.BuildCommand.Execute(null);
+
+            if (!await Until(() => !designer.IsBusy, 300, settle: true))
+            {
+                return Fail(ref failures, "the build never finished");
+            }
+
+            if (!await MeasureStudioAsync(designer, "after a build", placed: null))
+            {
+                Fail(ref failures, "a build in this process kept the generation alive");
+            }
+
+            return failures;
+        }
+
+        // The ladder. Each rung adds one thing to the case below it, so a failure names its own
+        // cause instead of leaving "something in the process" to guess at.
+        Say("— case 1: a generation that only loaded an assembly —");
+
+        if (!await MeasureGenerationAsync("case 1", snapshot, identity, document: null))
+        {
+            return Fail(ref failures, "a generation that created nothing would not leave the process — "
+                + "the blocker is below Avalonia's own state, and no cleanup here can fix it");
+        }
+
+        Say("— case 2: a generation whose control was created and dropped —");
+
+        if (!await MeasureGenerationAsync("case 2", snapshot, identity, controlFile))
+        {
+            return Fail(ref failures, "a generation that created one control would not leave the "
+                + "process — this is the go/no-go rung: Avalonia roots it and the restart stands");
+        }
+
+        Say("— case 3: the generation the studio itself opened a form under —");
+
+        if (!await MeasureStudioAsync(designer, "case 3"))
+        {
+            Fail(ref failures, "the studio's own state kept the generation alive");
+        }
+
+        await Until(() => designer.Forms.Count == 0, 60);
+
+        // Whatever the ladder said, the other half is worth measuring: a successor built from
+        // newer code, resolving where ADR 0021 measured "Unable to substitute".
+        string source = await System.IO.File.ReadAllTextAsync(controlFile! + ".cs");
+
+        await System.IO.File.WriteAllTextAsync(
+            controlFile + ".cs", source.Replace("\"First\"", "\"Second\"", StringComparison.Ordinal));
+
+        designer.BuildCommand.Execute(null);
+
+        if (!await Until(() => !designer.IsBusy, 300, settle: true))
+        {
+            return Fail(ref failures, "the rebuild never finished");
+        }
+
+        if (!Open(designer, "MainWindow.axaml")
+            || !await Until(
+                () => designer.ActiveForm is { Session: not null, Problem: null } reopened
+                    && reopened.Name == "MainWindow.axaml"
+                    && OnCanvas(reopened, "ReclaimControl"),
+                300))
+        {
+            return Fail(ref failures, "the window did not come back under the successor: "
+                + (designer.ActiveForm?.Problem ?? "no form"));
+        }
+
+        FormViewModel reborn = designer.ActiveForm!;
+
+        if (!await Until(() => PlacedControlShows(reborn, "Second"), 60))
+        {
+            Fail(ref failures, "the successor still shows the old default — stale types survived");
+        }
+        else
+        {
+            Say("the successor shows what the disk says, in the same process");
+        }
+
+        if (designer.Output.Any(static line =>
+            line.Contains("Unable to substitute", StringComparison.OrdinalIgnoreCase)))
+        {
+            Fail(ref failures, "the compiler met two copies of one type — the process was not really cleared");
+        }
+
+        return failures;
+    }
+
+    /// <summary>
+    /// Builds a generation, uses it as the case says, forgets it, and reports whether it died.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every local naming the generation is nulled before the measurement begins, and that is not
+    /// tidiness: an async method's locals live in a state-machine object that is alive for as long
+    /// as the method is, so a local still naming the context would be measuring this method's own
+    /// frame and would report a live generation forever. The first version of this harness did
+    /// exactly that.
+    /// </para>
+    /// </remarks>
+    private static async Task<bool> MeasureGenerationAsync(
+        string what, SolutionSnapshot snapshot, ProjectIdentity project, string? document)
+    {
+        (XamlLoadEnvironment? environment, ProjectAssemblyContext? generation) =
+            ProjectXamlEnvironment.CreateFor(snapshot, project);
+
+        string? failure = document is null
+            ? LoadOnly(generation, project)
+            : await CreateAndDropAsync(environment, document);
+
+        if (failure is { Length: > 0 })
+        {
+            Say($"! {what}: {failure}");
+
+            generation.Dispose();
+
+            return false;
+        }
+
+        HashSet<string> names = LoadedNames(generation);
+
+        if (names.Count == 0)
+        {
+            Say($"! {what}: the generation loaded nothing collectible — nothing to measure");
+
+            generation.Dispose();
+
+            return false;
+        }
+
+        // The environment first, and the reason is the same one the swap has to respect: its type
+        // resolver was handed this generation's assemblies as a list to search.
+        environment = null;
+
+        bool gone = await generation.TryReclaimAsync();
+
+        generation = null;
+
+        return Answered(what, gone, names);
+    }
+
+    /// <summary>Says what the reclaim answered, and — when it said no — what still holds it.</summary>
+    private static bool Answered(string what, bool gone, HashSet<string> names)
+    {
+        Say(gone ? $"  {what}: provably dead" : $"  {what}: still held");
+
+        if (!gone)
+        {
+            ProbeRoots(what, names);
+        }
+
+        return gone;
+    }
+
+    /// <summary>
+    /// The simple names of the assemblies a generation has loaded into its own context.
+    /// </summary>
+    /// <remarks>
+    /// Names rather than the assemblies themselves, because a list of the latter is exactly the
+    /// kind of reference that makes a measurement report its own instrument.
+    /// </remarks>
+    private static HashSet<string> LoadedNames(ProjectAssemblyContext generation)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (Grab(generation, "_context") is not AssemblyLoadContext context
+            || Grab(generation, "_resolved") is not System.Collections.IDictionary resolved)
+        {
+            return names;
+        }
+
+        foreach (object? value in resolved.Values)
+        {
+            if (value is Assembly assembly
+                && AssemblyLoadContext.GetLoadContext(assembly) == context
+                && assembly.GetName().Name is { Length: > 0 } name)
+            {
+                names.Add(name);
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>The studio's own generation, retired the way a swap would retire it.</summary>
+    /// <param name="designer">The studio to measure.</param>
+    /// <param name="what">What to call this measurement in the log.</param>
+    /// <param name="placed">
+    /// The control the scaffolded form places, whose registration is what makes the measurement
+    /// worth taking — or <see langword="null"/> for a real project, where whatever the forms draw
+    /// is what there is.
+    /// </param>
+    private static async Task<bool> MeasureStudioAsync(
+        DesignerViewModel designer, string what, string? placed = "ReclaimControl")
+    {
+        // Two forms, because that is how the studio is actually used — a form and the control it
+        // places, open side by side — and because a swap that only ever met one would be a swap
+        // measured under the easier arrangement.
+        string[] wanted = placed is null
+            ? [.. designer.ProjectForms.Take(2).Select(static form => form.Name)]
+            : ["MainWindow.axaml", placed + ".axaml"];
+
+        foreach (string name in wanted)
+        {
+            if (Open(designer, name))
+            {
+                await Until(
+                    () => designer.Forms.Any(open =>
+                        open.Name == name && open is { Session: not null, Problem: null }),
+                    300);
+            }
+        }
+
+        if (designer.Forms.Count == 0)
+        {
+            Say($"! {what}: nothing opened: " + (designer.ActiveForm?.Problem ?? "no form"));
+
+            return false;
+        }
+
+        if (placed is not null && !PlacedTypeIsRegistered(designer.Forms[0]))
+        {
+            Say($"! {what}: the control's type never reached the property registry");
+
+            return false;
+        }
+
+        Say($"  {what}: {designer.Forms.Count} form(s) open");
+
+        // The designer's own teardown, and then the adapter's own reclaim: a harness that used a
+        // second copy of either would be measuring something the studio does not do.
+        await RunSwapTeardownAsync(designer);
+
+        return await ReclaimStudioGenerationAsync(designer, what);
+    }
+
+    /// <summary>Runs the swap's own release step, whatever it is called this week.</summary>
+    private static async Task RunSwapTeardownAsync(DesignerViewModel designer)
+    {
+        if (designer.GetType().GetMethod(
+            "LetGoOfEverythingAsync", BindingFlags.Instance | BindingFlags.NonPublic) is { } release)
+        {
+            await (Task)release.Invoke(designer, null)!;
+        }
+    }
+
+    /// <summary>
+    /// Asks the adapter to reclaim the studio's generation, in the order the swap asks in.
+    /// </summary>
+    private static async Task<bool> ReclaimStudioGenerationAsync(DesignerViewModel designer, string what)
+    {
+        if (Grab(designer, "_assemblies") is not ProjectAssemblyContext generation)
+        {
+            Say($"! {what}: no generation to reclaim");
+
+            return false;
+        }
+
+        HashSet<string> names = LoadedNames(generation);
+
+        // Fields first, environment included — see the swap, and ADR 0023.
+        Put(designer, "_assemblies", null);
+        Put(designer, "_environment", null);
+        Put(designer, "_environmentProject", default(ProjectIdentity));
+
+        bool gone = await generation.TryReclaimAsync();
+
+        generation = null!;
+
+        return Answered(what, gone, names);
+    }
+
+    /// <summary>Whether the placed control's type is in the registry, holding no type afterwards.</summary>
+    /// <remarks>
+    /// A method of its own because a <see cref="Type"/> of the dying generation held in a local
+    /// would be measured as a root: an async method's locals outlive their last use, and this one
+    /// would be alive for the whole measurement.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool PlacedTypeIsRegistered(FormViewModel form) =>
+        Drawn(form, "ReclaimControl")?.GetType() is { } placed && RegistryHolds(placed);
+
+    /// <summary>
+    /// Releases everything the studio built from the generation, the way the swap will.
+    /// </summary>
+    /// <remarks>
+    /// A window-rooted form is the case that needs saying out loud: loading one constructs a real
+    /// Avalonia Window, and constructing one puts it in the platform's static list of windows.
+    /// Retiring the session drops every reference this designer holds and the platform still has
+    /// it, so the generation stays — measured, and the first reason case 3 failed. Closing it is
+    /// what takes it out of that list.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static async Task RetireEveryFormAsync(DesignerViewModel designer, string what)
+    {
+        foreach (FormViewModel open in designer.Forms.ToArray())
+        {
+            Window? window = open.Root as Window;
+
+            await open.RetireSessionAsync();
+
+            if (window is not null)
+            {
+                try
+                {
+                    window.Close();
+                }
+                catch (Exception error)
+                {
+                    Say($"  {what}: a window would not close: {error.GetType().Name}");
+                }
+
+                window = null;
+            }
+        }
+
+        // And the forms themselves, which is the step the swap has to answer for. Taking them off
+        // the canvas is not enough — measured: with the tabs still open and only the surface
+        // cleared, the generation stayed. What lets go is closing them, so a swap remembers what
+        // each form was and builds it again on the far side rather than keeping the object.
+        foreach (FormViewModel open in designer.Forms.ToArray())
+        {
+            designer.CloseForm(open);
+        }
+
+        designer.Shown.Clear();
+        designer.SelectedForms.Clear();
+
+        await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+
+        (Grab(designer, "_population") as IDisposable)?.Dispose();
+        Put(designer, "_population", null);
+        Put(designer, "_liveRegistration", null);
+    }
+
+    /// <summary>Loads the project's own output and creates nothing from it.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static string? LoadOnly(ProjectAssemblyContext generation, ProjectIdentity project)
+    {
+        string name = System.IO.Path.GetFileNameWithoutExtension(project.ProjectFilePath.FileName);
+
+        return generation.Resolve(new AssemblyName(name)) is null
+            ? $"the generation could not load {name}"
+            : null;
+    }
+
+    /// <summary>
+    /// Creates the document's objects, touches them, and lets go of every one of them.
+    /// </summary>
+    /// <remarks>
+    /// A method of its own so that the session, the root object and the load result are locals of
+    /// a frame that has ended by the time anything is measured.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static async Task<string?> CreateAndDropAsync(XamlLoadEnvironment environment, string document)
+    {
+        string text = await System.IO.File.ReadAllTextAsync(document);
+
+        (XamlLoadSession? session, XamlLoadResult result) = await XamlLoadSession.TryCreateAsync(
+            XamlDocument.Parse(text, new XamlParseOptions { DocumentUri = new Uri(document) }),
+            environment,
+            new XamlLoadOptions { Mode = XamlLoadMode.Design });
+
+        if (session is null)
+        {
+            return string.Join(
+                "; ",
+                result.Diagnostics.Where(static d => d.IsError).Select(static d => d.Message)
+                    .DefaultIfEmpty("no diagnostic said why"));
+        }
+
+        // Registering a styled property is what roots a type in Avalonia's registry, and creating
+        // one instance is what runs the static constructor that does it.
+        string? note = RegistryHolds(session.RootObject.GetType())
+            ? null
+            : "the created control's type never reached the property registry";
+
+        await session.DisposeAsync();
+
+        return note;
+    }
+
+    /// <summary>
+    /// Names what still mentions a dying generation, by sweeping the process's static state.
+    /// </summary>
+    /// <remarks>
+    /// Only run when a measurement failed, and only to answer the one question worth answering
+    /// then: which static field is holding the generation. Reading a static field runs its type's
+    /// initialiser, which is why this is a diagnostic rather than something the product does.
+    /// </remarks>
+    private static void ProbeRoots(string what, HashSet<string> suspects)
+    {
+        var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+        var budget = 40_000_000;
+
+        // The application is walked first and by name, because the interesting paths run through
+        // the studio's own visual tree — application, lifetime, window, editor, item, view model —
+        // which is deeper than a sweep of static fields reaches before its depth limit.
+        Walk(Application.Current, "Application.Current", 0);
+
+        foreach (Assembly probe in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (reported.Count >= 20)
+            {
+                break;
+            }
+
+            if (probe.GetName().Name is not { } name
+                || !(name.StartsWith("Avalonia", StringComparison.Ordinal)
+                    || name.StartsWith("ArxisStudio", StringComparison.Ordinal)
+                    || name.StartsWith("FormsDesigner", StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            foreach (Type type in SafeTypes(probe))
+            {
+                if (type.IsGenericTypeDefinition || reported.Count >= 20)
+                {
+                    continue;
+                }
+
+                FieldInfo[] fields;
+
+                try
+                {
+                    fields = type.GetFields(
+                        BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
+
+                foreach (FieldInfo field in fields)
+                {
+                    try
+                    {
+                        Walk(field.GetValue(null), $"{type.Name}.{field.Name}", 0);
+                    }
+                    catch (Exception)
+                    {
+                        // A static nobody can read is a static nobody is rooting anything with.
+                    }
+                }
+            }
+        }
+
+        if (reported.Count == 0)
+        {
+            Say(budget <= 0
+                ? $"  {what}: the walk ran out of budget before it could say — inconclusive"
+                : $"  {what}: walked {visited.Count} object(s) and none of them holds it — "
+                    + "the root is a stack slot, a thread-static, or native");
+        }
+
+        void Walk(object? value, string path, int depth)
+        {
+            if (value is null || budget-- <= 0 || reported.Count >= 20)
+            {
+                return;
+            }
+
+            switch (value)
+            {
+                case Type type when Suspect(type):
+                    Report($"{path} → typeof({type.Name})");
+                    return;
+
+                case AvaloniaProperty property when Suspect(property.OwnerType):
+                    Report($"{path} → {property.OwnerType.Name}.{property.Name}");
+                    return;
+
+                case Type or AvaloniaProperty or string or Delegate:
+                    return;
+            }
+
+            if (Suspect(value.GetType()))
+            {
+                Report($"{path} → an instance of {value.GetType().Name}");
+
+                return;
+            }
+
+            if (depth >= 14 || value.GetType().IsPrimitive || !visited.Add(value))
+            {
+                return;
+            }
+
+            // A conditional weak table's entries are not roots, and reporting them names
+            // Avalonia's weak-event plumbing for something the collector is perfectly happy with.
+            if (value.GetType() is { IsGenericType: true } table
+                && table.GetGenericTypeDefinition() == typeof(ConditionalWeakTable<,>))
+            {
+                return;
+            }
+
+            switch (value)
+            {
+                case System.Collections.IDictionary map:
+                    try
+                    {
+                        foreach (System.Collections.DictionaryEntry entry in map)
+                        {
+                            Walk(entry.Key, path + "{key}", depth + 1);
+                            Walk(entry.Value, path + "{value}", depth + 1);
+                        }
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Mutated while being read; a diagnostic does not get to insist.
+                    }
+
+                    return;
+
+                case System.Collections.IEnumerable sequence:
+                    try
+                    {
+                        foreach (object? item in sequence)
+                        {
+                            Walk(item, path + "[]", depth + 1);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                    }
+
+                    return;
+
+                default:
+                    foreach (FieldInfo field in value.GetType()
+                        .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                    {
+                        try
+                        {
+                            Walk(field.GetValue(value), $"{path}.{field.Name}", depth + 1);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                    }
+
+                    return;
+            }
+        }
+
+        // By name, because holding the assemblies themselves would make the probe part of what it
+        // is looking for.
+        bool Suspect(Type type) =>
+            type.Assembly.GetName().Name is { } name && suspects.Contains(name);
+
+        void Report(string path)
+        {
+            if (reported.Add(path))
+            {
+                Say($"  {what}: held by {path}");
+            }
+        }
+    }
+
+    /// <summary>Writes a control with a styled property beside the window, and places it there.</summary>
+    private static async Task<string> WriteReclaimControlAsync(string project)
+    {
+        string views = System.IO.Path.GetDirectoryName(
+            System.IO.Directory.GetFiles(
+                System.IO.Path.GetDirectoryName(project)!,
+                "MainWindow.axaml",
+                System.IO.SearchOption.AllDirectories).First())!;
+
+        string windowFile = System.IO.Path.Combine(views, "MainWindow.axaml");
+        string text = await System.IO.File.ReadAllTextAsync(windowFile);
+
+        int classAt = text.IndexOf("x:Class=\"", StringComparison.Ordinal);
+        int closing = text.LastIndexOf("</StackPanel>", StringComparison.Ordinal);
+        int root = text.IndexOf("<Window", StringComparison.Ordinal);
+
+        if (classAt < 0 || closing < 0 || root < 0)
+        {
+            throw new InvalidOperationException("the template window lost the shape this run writes into");
+        }
+
+        classAt += "x:Class=\"".Length;
+
+        string full = text[classAt..text.IndexOf('"', classAt)];
+        string space = full[..full.LastIndexOf('.')];
+
+        string file = System.IO.Path.Combine(views, "ReclaimControl.axaml");
+
+        await System.IO.File.WriteAllTextAsync(
+            file,
+            $$"""
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:v="using:{{space}}"
+                         x:Class="{{space}}.ReclaimControl"
+                         x:DataType="v:ReclaimControl">
+              <Border Background="#333B4A" Padding="16">
+                <TextBlock Text="{Binding HelloText}" />
+              </Border>
+            </UserControl>
+            """);
+
+        await System.IO.File.WriteAllTextAsync(
+            file + ".cs",
+            $$"""
+            using Avalonia;
+            using Avalonia.Controls;
+            using Avalonia.Markup.Xaml;
+
+            namespace {{space}};
+
+            public partial class ReclaimControl : UserControl
+            {
+                public static readonly StyledProperty<string> HelloTextProperty =
+                    AvaloniaProperty.Register<ReclaimControl, string>(nameof(HelloText), defaultValue: "First");
+
+                public string HelloText
+                {
+                    get => GetValue(HelloTextProperty);
+                    set => SetValue(HelloTextProperty, value);
+                }
+
+                public ReclaimControl()
+                {
+                    AvaloniaXamlLoader.Load(this);
+                    DataContext = this;
+                }
+            }
+            """);
+
+        text = text.Insert(closing, "    <v:ReclaimControl />\n")
+            .Insert(root + "<Window".Length, $" xmlns:v=\"using:{space}\"");
+
+        await System.IO.File.WriteAllTextAsync(windowFile, text);
+
+        return file;
+    }
+
+    /// <summary>Whether the placed control is drawing a text block saying exactly this.</summary>
+    private static bool PlacedControlShows(FormViewModel form, string text) =>
+        Drawn(form, "ReclaimControl") is { } placed
+            && Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(placed)
+                .OfType<TextBlock>()
+                .Any(block => block.Text == text);
+
+    private static object? Grab(object target, string field) =>
+        target.GetType().GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(target);
+
+    private static void Put(object target, string field, object? value) =>
+        target.GetType().GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)?.SetValue(target, value);
+
+    /// <summary>The assemblies the generation actually loaded into its collectible context.</summary>
+    private static List<Assembly> CollectibleAssemblies(
+        ProjectAssemblyContext generation, AssemblyLoadContext context)
+    {
+        var assemblies = new List<Assembly>();
+
+        if (Grab(generation, "_resolved") is System.Collections.IDictionary resolved)
+        {
+            foreach (object? value in resolved.Values)
+            {
+                if (value is Assembly assembly && AssemblyLoadContext.GetLoadContext(assembly) == context)
+                {
+                    assemblies.Add(assembly);
+                }
+            }
+        }
+
+        return assemblies;
+    }
+
+    private static IEnumerable<Type> SafeTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException incomplete)
+        {
+            return incomplete.Types.OfType<Type>();
+        }
+    }
+
+    /// <summary>Whether Avalonia's property registry holds an entry for this type.</summary>
+    private static bool RegistryHolds(Type type)
+    {
+        object? instance = Type.GetType("Avalonia.AvaloniaPropertyRegistry, Avalonia.Base")
+            ?.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)
+            ?.GetValue(null);
+
+        return instance?.GetType()
+                .GetField("_registered", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(instance) is System.Collections.IDictionary registered
+            && registered.Contains(type);
+    }
+
+    /// <summary>Calls the 12.1.1 unregistration API and says what it made of the request.</summary>
+    /// <remarks>
+    /// Only the types that can own an Avalonia property are offered. The first run of this
+    /// measurement handed over every type in the assembly — compiler-generated XAML helpers
+    /// included — and the registry answered by leaving everything registered, which is what a
+    /// method that catches its own exceptions and reports a boolean looks like from outside.
+    /// </remarks>
+    private static string UnregisterFromPropertyRegistry(IReadOnlyList<Type> types)
+    {
+        List<Type> owners = [.. types.Where(static type => typeof(AvaloniaObject).IsAssignableFrom(type))];
+
+        if (owners.Count == 0)
+        {
+            return "nothing of this generation can own a property";
+        }
+
+        try
+        {
+            object? instance = Type.GetType("Avalonia.AvaloniaPropertyRegistry, Avalonia.Base")
+                ?.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)
+                ?.GetValue(null);
+
+            MethodInfo? unregister = instance?.GetType()
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                .FirstOrDefault(static method => method.Name == "UnregisterByModule"
+                    && method.GetParameters() is [{ ParameterType: { } parameter }]
+                    && parameter.IsAssignableFrom(typeof(List<Type>)));
+
+            if (unregister is null)
+            {
+                return "API not found — degraded";
+            }
+
+            object? answer = unregister.Invoke(instance, [owners]);
+
+            return $"unregistered {owners.Count} owner(s), answered {answer}";
+        }
+        catch (Exception error)
+        {
+            return $"threw {error.GetType().Name}";
+        }
+    }
+
+    /// <summary>
+    /// Sweeps out what the unregistration API leaves behind, which is what still roots the types.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Measured, not assumed. <c>UnregisterByModule</c> answers <c>True</c> and removes the
+    /// properties a type declared, but two residues survive it and both root the type: the entry
+    /// in <c>_registered</c> keyed by the type itself — kept alive by the properties it merely
+    /// inherits — and the by-identifier <c>_properties</c> dictionary, which the API never
+    /// touches. Either one keeps the whole generation in the process.
+    /// </para>
+    /// <para>
+    /// So the official call runs first, for the bookkeeping only it knows about, and this sweeps
+    /// the remainder: an outer entry goes when its key is a dying type, and a property goes from
+    /// wherever it is listed when the type that declared it is dying. Every step is checked for
+    /// shape as well as name, and anything unfamiliar is left alone.
+    /// </para>
+    /// </remarks>
+    private static string PurgePropertyRegistry(HashSet<Assembly> dying)
+    {
+        object? registry = Type.GetType("Avalonia.AvaloniaPropertyRegistry, Avalonia.Base")
+            ?.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)
+            ?.GetValue(null);
+
+        if (registry is null)
+        {
+            return "not found — degraded";
+        }
+
+        var removed = 0;
+
+        foreach (FieldInfo field in registry.GetType()
+            .GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+        {
+            if (field.GetValue(registry) is not System.Collections.IDictionary map)
+            {
+                continue;
+            }
+
+            var stale = new List<object>();
+
+            try
+            {
+                foreach (System.Collections.DictionaryEntry entry in map)
+                {
+                    if (entry.Key is Type owner && dying.Contains(owner.Assembly))
+                    {
+                        stale.Add(entry.Key);
+
+                        continue;
+                    }
+
+                    if (entry.Value is AvaloniaProperty property
+                        && dying.Contains(property.OwnerType.Assembly))
+                    {
+                        stale.Add(entry.Key);
+
+                        continue;
+                    }
+
+                    // A live type's own list may still mention a property the dying generation
+                    // declared — an attached one, or an inherited entry the API left behind.
+                    removed += Weed(entry.Value, dying);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                continue;
+            }
+
+            foreach (object key in stale)
+            {
+                map.Remove(key);
+
+                removed++;
+            }
+        }
+
+        return $"swept {removed} residual entr{(removed == 1 ? "y" : "ies")}";
+    }
+
+    /// <summary>Removes a dying generation's properties from a list or an inner dictionary.</summary>
+    private static int Weed(object? value, HashSet<Assembly> dying)
+    {
+        switch (value)
+        {
+            case System.Collections.IDictionary inner:
+            {
+                var stale = new List<object>();
+
+                foreach (System.Collections.DictionaryEntry entry in inner)
+                {
+                    if (entry.Value is AvaloniaProperty property
+                        && dying.Contains(property.OwnerType.Assembly))
+                    {
+                        stale.Add(entry.Key);
+                    }
+                }
+
+                foreach (object key in stale)
+                {
+                    inner.Remove(key);
+                }
+
+                return stale.Count;
+            }
+
+            case System.Collections.IList list:
+            {
+                var removed = 0;
+
+                for (int index = list.Count - 1; index >= 0; index--)
+                {
+                    if (list[index] is AvaloniaProperty property
+                        && dying.Contains(property.OwnerType.Assembly))
+                    {
+                        list.RemoveAt(index);
+
+                        removed++;
+                    }
+                }
+
+                return removed;
+            }
+
+            default:
+                return 0;
+        }
+    }
+
+    /// <summary>
+    /// Clears the runtime XAML compiler's emitted state when it lives in the dying context.
+    /// </summary>
+    /// <remarks>
+    /// The same eight statics ADR 0020 names — but at swap time nothing has entered a new scope
+    /// yet, so the stale state itself roots the dying context's dynamic assembly and would defeat
+    /// the collection this run measures.
+    /// </remarks>
+    private static bool ResetRuntimeCompilerFor(AssemblyLoadContext dying)
+    {
+        Type? compiler = Type.GetType(
+            "Avalonia.Markup.Xaml.XamlIl.AvaloniaXamlIlRuntimeCompiler, Avalonia.Markup.Xaml.Loader",
+            throwOnError: false);
+
+        if (compiler is null)
+        {
+            return false;
+        }
+
+        FieldInfo[] state =
+        [
+            .. compiler.GetFields(BindingFlags.Static | BindingFlags.NonPublic)
+                .Where(static field => (field.Name.StartsWith("_sre", StringComparison.Ordinal)
+                        || field.Name == "_ignoresAccessChecksFromAttribute")
+                    && !field.FieldType.IsValueType),
+        ];
+
+        if (state.FirstOrDefault(static field => field.Name == "_sreAsm")?.GetValue(null)
+            is not Assembly emitted
+            || AssemblyLoadContext.GetLoadContext(emitted) != dying)
+        {
+            return false;
+        }
+
+        foreach (FieldInfo field in state)
+        {
+            field.SetValue(null, null);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Removes the dying assemblies from the asset loader's name cache, best effort.
+    /// </summary>
+    /// <remarks>
+    /// The resolver answers a simple name with the first assembly it cached, which both roots the
+    /// dying copy and would misdirect <c>avares</c> loads of the successor. Internal shape, so
+    /// every step is checked and any surprise means skipping rather than failing.
+    /// </remarks>
+    private static bool PurgeAssetResolver(IReadOnlyList<Assembly> dying)
+    {
+        try
+        {
+            // The locator is public in the runtime assembly and hidden from the reference one,
+            // so it is reached the same way the rest of this teardown reaches things.
+            object? locator = Type.GetType("Avalonia.AvaloniaLocator, Avalonia.Base")
+                ?.GetProperty("Current", BindingFlags.Public | BindingFlags.Static)
+                ?.GetValue(null);
+
+            object? loader = locator?.GetType()
+                .GetMethod("GetService", [typeof(Type)])
+                ?.Invoke(locator, [typeof(Avalonia.Platform.IAssetLoader)]);
+
+            if (loader is null)
+            {
+                return false;
+            }
+
+            foreach (FieldInfo field in loader.GetType()
+                .GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+            {
+                if (!field.FieldType.Name.Contains("AssemblyDescriptorResolver", StringComparison.Ordinal)
+                    || field.GetValue(loader) is not { } resolver)
+                {
+                    continue;
+                }
+
+                foreach (FieldInfo cacheField in resolver.GetType()
+                    .GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+                {
+                    if (cacheField.GetValue(resolver) is not System.Collections.IDictionary cache)
+                    {
+                        continue;
+                    }
+
+                    var stale = new List<object>();
+
+                    foreach (System.Collections.DictionaryEntry entry in cache)
+                    {
+                        if (entry.Key is string name && dying.Any(assembly =>
+                            string.Equals(assembly.GetName().Name, name, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            stale.Add(entry.Key);
+                        }
+                    }
+
+                    foreach (object key in stale)
+                    {
+                        cache.Remove(key);
+                    }
+
+                    if (stale.Count > 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
 
     private static async Task StressRunAsync(Window window, DesignerViewModel designer, string folder)
     {

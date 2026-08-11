@@ -204,6 +204,13 @@ public sealed partial class DesignerViewModel
 
     private async Task OpenFormCoreAsync(FormFile form)
     {
+        // A form opened while the types are being replaced would be built under whichever
+        // generation happened to be current when it looked, which is the one thing a swap cannot
+        // survive: two copies, one process.
+        if (_typeSwap is { IsCompleted: false } swapping)
+        {
+            await swapping;
+        }
 
         if (_workspace.CurrentSnapshot is not { } snapshot)
         {
@@ -678,6 +685,14 @@ public sealed partial class DesignerViewModel
         {
             desktop.Shutdown();
         }
+    }
+
+    /// <summary>Takes the offer back, because the types that were behind have arrived.</summary>
+    private void ClearRestartAsk()
+    {
+        RestartReason = string.Empty;
+        NeedsRestart = false;
+        _typesBehind = false;
     }
 
     /// <summary>Offers the restart, in words, and lights the command that performs it.</summary>

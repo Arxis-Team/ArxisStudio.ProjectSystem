@@ -299,14 +299,21 @@ public sealed partial class DesignerViewModel
     }
 
     /// <summary>
-    /// Restarts the studio for new types, when nothing would be lost and somebody is looking.
+    /// Brings the new types in, in place when they can be and by restarting when they cannot.
     /// </summary>
     /// <remarks>
-    /// Three refusals, each honest: unsaved edits are a person's work and a restart discards
-    /// nothing of theirs, ever — the banner stays until they decide; a busy studio or a running
-    /// application is mid-something the restart would cut; and a window in the background does not
-    /// jump to the front of its own accord — the reload happens when the person comes back, which
-    /// is <see cref="OnStudioActivated"/>.
+    /// <para>
+    /// Two refusals, and one that used to be here and is not any more. A busy studio or a running
+    /// application is mid-something a swap would cut, and a window in the background does not
+    /// bring itself forward — the types arrive when the person comes back, which is
+    /// <see cref="OnStudioActivated"/>.
+    /// </para>
+    /// <para>
+    /// Unsaved edits no longer stop it. A restart would have discarded them, so it refused; a swap
+    /// rebuilds every form from the document it is holding, so the edits come across untouched
+    /// along with the history behind them. If the swap cannot prove the old types left, it falls
+    /// back to the restart — and the restart refuses over unsaved work exactly as it always did.
+    /// </para>
     /// </remarks>
     private void TryReloadForTypes(bool activated)
     {
@@ -315,12 +322,7 @@ public sealed partial class DesignerViewModel
             return;
         }
 
-        if (IsBusy || IsRunning)
-        {
-            return;
-        }
-
-        if (Forms.Any(static form => form.IsDirty))
+        if (IsBusy || IsRunning || _typeSwap is { IsCompleted: false })
         {
             return;
         }
@@ -330,8 +332,6 @@ public sealed partial class DesignerViewModel
             return;
         }
 
-        Log("The project's code changed — reloading the studio with the new types…");
-
-        Restart();
+        RunDetached(() => _typeSwap = SwapGenerationAsync());
     }
 }

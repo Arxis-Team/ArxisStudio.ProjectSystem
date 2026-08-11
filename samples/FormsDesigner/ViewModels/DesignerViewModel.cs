@@ -63,7 +63,12 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         RestoreCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Restore)), CanOperate);
         BuildCommand = new RelayCommand(() => Run(() => ExecuteAsync(ProjectOperationKind.Build)), CanOperate);
 
-        RestartCommand = new RelayCommand(Restart, () => NeedsRestart && !EntryPoint.IsEmpty);
+        // The button takes the same route the watcher takes: swap the types in place, and restart
+        // only when they will not go. What it does not take is the activation gate — a press is
+        // somebody asking now.
+        RestartCommand = new RelayCommand(
+            () => RunDetached(() => _typeSwap = SwapGenerationAsync()),
+            () => NeedsRestart && !EntryPoint.IsEmpty && _typeSwap is not { IsCompleted: false });
 
         InitialiseHeader();
         InitialiseShell();

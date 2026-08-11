@@ -49,8 +49,19 @@ public sealed partial class App : Application
 
             int verify = Array.IndexOf(args, "--verify");
             int stress = Array.IndexOf(args, "--stress");
+            int reclaim = Array.IndexOf(args, "--reclaim");
 
-            if (verify >= 0 && verify + 1 < args.Length)
+            if (reclaim >= 0 && reclaim + 1 < args.Length)
+            {
+                var model = new DesignerViewModel();
+                var window = new MainWindow { DataContext = model };
+
+                StudioCheck.ReclaimWhenShown(window, model, args[reclaim + 1]);
+
+                desktop.Exit += (_, _) => model.Dispose();
+                desktop.MainWindow = window;
+            }
+            else if (verify >= 0 && verify + 1 < args.Length)
             {
                 var model = new DesignerViewModel();
                 var window = new MainWindow { DataContext = model };
