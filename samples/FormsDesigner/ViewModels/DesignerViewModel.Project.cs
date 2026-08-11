@@ -99,9 +99,19 @@ public sealed partial class DesignerViewModel
         }
     }
 
-    private static bool IsMarkup(CanonicalPath file) =>
-        file.Extension.Equals(".axaml", StringComparison.OrdinalIgnoreCase)
-            || file.Extension.Equals(".xaml", StringComparison.OrdinalIgnoreCase);
+    private static bool IsMarkup(CanonicalPath file) => IsMarkupExtension(file.Extension);
+
+    /// <summary>
+    /// Whether an extension is one this designer treats as a document.
+    /// </summary>
+    /// <remarks>
+    /// The one definition, because there were three: a project item's, a file tile's and a watched
+    /// path's, and one method used two of them on the same file. Which files are documents is a
+    /// single fact about this designer and reads better said once.
+    /// </remarks>
+    internal static bool IsMarkupExtension(string extension) =>
+        extension.Equals(".axaml", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".xaml", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Avalonia's own roots that declare no control, and so no form.</summary>
     private static readonly string[] NotAForm =
@@ -534,18 +544,18 @@ public sealed partial class DesignerViewModel
     /// they had never been the same type.
     /// </para>
     /// <para>
-    /// Rebuilding the generation and moving the open forms onto it does not help, and the reason is
-    /// worth writing down: a superseded generation is unloaded but never collected. Creating one
-    /// control from it registers its type in Avalonia's process-wide property registry, and that
-    /// registration outlives the context — measured, in this designer, with every generation still
-    /// present after a full collection. So a designer that made a new generation per build ended up
-    /// with every generation it had ever made, and the compiler kept answering with the first.
+    /// Creating a second one beside the first is what must never happen, and for a long time that
+    /// meant a run could not replace its types at all: a superseded generation was unloaded but
+    /// never collected, because creating one control registers its type in Avalonia's process-wide
+    /// property registry and that registration outlived the context.
     /// </para>
     /// <para>
-    /// What follows from that is the deal this designer makes. Markup is read from the file every
-    /// time, so layout — the whole of what a form designer is for — is always current. Types are
-    /// read once: a class added or changed since the project was opened needs the studio restarted,
-    /// which <see cref="RestartCommand"/> offers in one press when the situation is detected.
+    /// It can be replaced now, but only through its own death.
+    /// <see cref="SwapGenerationAsync"/> lets go of everything built from this generation, asks
+    /// the adapter to reclaim it, and creates a successor <em>after</em> that is proven — see
+    /// ADR 0023. When the proof fails the studio starts again on the same project, which is the
+    /// same honesty by a slower route. Markup, meanwhile, is read from the file every time and
+    /// never waits for any of this.
     /// </para>
     /// </remarks>
     private XamlLoadEnvironment EnvironmentFor(SolutionSnapshot snapshot, ProjectIdentity project)
@@ -580,8 +590,10 @@ public sealed partial class DesignerViewModel
     /// Whether the studio is holding types older than the project on disk, and knows it.
     /// </summary>
     /// <remarks>
-    /// Set when a load failed for a reason only a restart can fix, and when a saved form is placed
-    /// on another one — both are the same fact said twice: this run's types are behind the files.
+    /// Set when a load failed for a reason new types would fix, and when a build has moved the
+    /// types on disk past the ones this run holds — the same fact said twice. It lights the
+    /// command that brings them in, which swaps in place and restarts only as a fallback; the
+    /// name is the older of the two behaviours and the banner it drives is the newer.
     /// </remarks>
     public bool NeedsRestart
     {
@@ -695,7 +707,14 @@ public sealed partial class DesignerViewModel
         _typesBehind = false;
     }
 
-    /// <summary>Offers the restart, in words, and lights the command that performs it.</summary>
+    /// <summary>
+    /// Says the types are behind, in words, and lights the command that brings them in.
+    /// </summary>
+    /// <remarks>
+    /// The command swaps the generation in place and restarts only if the old one will not leave,
+    /// so what is offered here is "the new types", not "a new process" — the studio decides which
+    /// of the two it takes when the button is pressed.
+    /// </remarks>
     private void AskForRestart(string because)
     {
         RestartReason = because;
@@ -707,7 +726,7 @@ public sealed partial class DesignerViewModel
 
         NeedsRestart = true;
 
-        Log($"! {because} — press Reload to restart the studio with the project as it is now");
+        Log($"! {because} — press Reload to bring the new types in");
     }
 
     private static async Task<string> ReadAsync(CanonicalPath file) =>
@@ -865,12 +884,10 @@ public sealed partial class DesignerViewModel
 
     private void CloseAllForms()
     {
-        foreach (FormViewModel form in Forms)
+        foreach (FormViewModel form in Forms.ToArray())
         {
-            form.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            CloseFormForSwap(form);
         }
-
-        Forms.Clear();
 
         foreach ((ProjectAssemblyContext context, ProjectXamlPopulation? population) in _retired)
         {

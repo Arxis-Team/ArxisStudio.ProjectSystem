@@ -219,8 +219,7 @@ public sealed partial class DesignerViewModel
     private static bool IsProjectFile(string path) =>
         Path.GetExtension(path).ToUpperInvariant() is ".CSPROJ" or ".SLN" or ".SLNX" or ".PROPS" or ".TARGETS";
 
-    private static bool IsMarkupPath(string path) =>
-        Path.GetExtension(path).ToUpperInvariant() is ".AXAML" or ".XAML";
+    private static bool IsMarkupPath(string path) => IsMarkupExtension(Path.GetExtension(path));
 
     private static bool IsCodePath(string path) =>
         Path.GetExtension(path).ToUpperInvariant() is ".CS";

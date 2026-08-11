@@ -150,7 +150,10 @@ public sealed partial class App : Application
     }
 
     /// <summary>The arguments that are not a switch and are not a switch's value.</summary>
-    /// <remarks>Every switch this sample takes takes a value: `--shot`, `--verify`, `--stress`, `--view` and `--active`.</remarks>
+    /// <remarks>
+    /// Every switch this sample takes takes a value: `--shot`, `--verify`, `--stress`,
+    /// `--reclaim`, `--view` and `--active`.
+    /// </remarks>
     private static string[] Positional(string[] args)
     {
         var positional = new List<string>();

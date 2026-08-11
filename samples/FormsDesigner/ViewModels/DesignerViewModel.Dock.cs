@@ -30,9 +30,7 @@ public sealed class FileTile(string name, CanonicalPath path, Geometry glyph, st
     public string Hue { get; } = hue;
 
     /// <summary>Whether this is markup, and so a form the designer can open and delete.</summary>
-    public bool IsMarkup =>
-        Path.Extension.Equals(".axaml", StringComparison.OrdinalIgnoreCase)
-            || Path.Extension.Equals(".xaml", StringComparison.OrdinalIgnoreCase);
+    public bool IsMarkup => DesignerViewModel.IsMarkupExtension(Path.Extension);
 
     /// <summary>Whether this file has a tab, which the grid shows without anybody having to look up.</summary>
     public bool IsOpen

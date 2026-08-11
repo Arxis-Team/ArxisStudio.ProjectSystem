@@ -9,7 +9,6 @@
   <ResourceDictionary.ThemeDictionaries>
 
     <ResourceDictionary x:Key="Dark">
-      <Color x:Key="Bg1Color">#1E1F22</Color>
       <SolidColorBrush x:Key="Bg1" Color="#1E1F22" />
       <SolidColorBrush x:Key="Bg2" Color="#2B2D30" />
       <SolidColorBrush x:Key="Bg3" Color="#393B40" />
@@ -24,19 +23,15 @@
       <SolidColorBrush x:Key="OnAcc" Color="#FFFFFF" />
       <SolidColorBrush x:Key="Sel" Color="#2E436E" />
       <SolidColorBrush x:Key="Canvas" Color="#191A1D" />
-      <SolidColorBrush x:Key="Dot" Color="#33353A" />
       <SolidColorBrush x:Key="Inp" Color="#1E1F22" />
       <SolidColorBrush x:Key="Grn" Color="#5FAD65" />
       <SolidColorBrush x:Key="Red" Color="#E55765" />
       <SolidColorBrush x:Key="Yel" Color="#D6AE58" />
       <SolidColorBrush x:Key="Org" Color="#E08855" />
       <SolidColorBrush x:Key="Pur" Color="#9A7CF7" />
-      <SolidColorBrush x:Key="TitleBg" Color="#0B0C0E" />
-      <SolidColorBrush x:Key="TitleBrd" Color="#1D1F24" />
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Light">
-      <Color x:Key="Bg1Color">#FFFFFF</Color>
       <SolidColorBrush x:Key="Bg1" Color="#FFFFFF" />
       <SolidColorBrush x:Key="Bg2" Color="#F7F8FA" />
       <SolidColorBrush x:Key="Bg3" Color="#EBECF0" />
@@ -51,15 +46,12 @@
       <SolidColorBrush x:Key="OnAcc" Color="#FFFFFF" />
       <SolidColorBrush x:Key="Sel" Color="#D4E2FF" />
       <SolidColorBrush x:Key="Canvas" Color="#EDEEF1" />
-      <SolidColorBrush x:Key="Dot" Color="#D5D7DE" />
       <SolidColorBrush x:Key="Inp" Color="#FFFFFF" />
       <SolidColorBrush x:Key="Grn" Color="#1E8934" />
       <SolidColorBrush x:Key="Red" Color="#CC3B49" />
       <SolidColorBrush x:Key="Yel" Color="#9E6C00" />
       <SolidColorBrush x:Key="Org" Color="#BD5B15" />
       <SolidColorBrush x:Key="Pur" Color="#6F4FD9" />
-      <SolidColorBrush x:Key="TitleBg" Color="#EBECF0" />
-      <SolidColorBrush x:Key="TitleBrd" Color="#DFE1E5" />
     </ResourceDictionary>
 
   </ResourceDictionary.ThemeDictionaries>

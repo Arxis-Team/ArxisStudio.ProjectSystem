@@ -143,9 +143,6 @@ public static class Glyphs
     public static string HueOf(string? typeName) =>
         typeName is not null && Hues.TryGetValue(Bare(typeName), out string? hue) ? hue : "Fg2";
 
-    /// <summary>The glyph for a document, for the tabs and the project list.</summary>
-    public static Geometry DocumentGlyph { get; } = Geometry.Parse(Document);
-
     private const string Markup = "M2.5 3.5h11v9h-11zM2.5 6h11";
     private const string Picture = "M2.5 3.5h11v9h-11zM2.5 10l3.5-3 3 2.5 2-1.5 2.5 2";
 

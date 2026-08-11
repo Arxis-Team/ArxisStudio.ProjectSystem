@@ -10,6 +10,7 @@
         FontFamily="{DynamicResource UiFont}"
         MinWidth="1360"
         Width="1600" Height="980"
+        WindowState="Maximized"
         WindowDecorations="BorderOnly">
 
   <Window.KeyBindings>
@@ -184,8 +185,9 @@
         <!-- The run bezel. Idle and running are two different sets of controls, as the design has them. -->
         <!--
           Shown only when this run is holding types the project has moved past — a class added or
-          changed since it was opened. The studio cannot replace loaded types in place, so the
-          honest offer is to start again on the same project, which is one press.
+          changed since it was opened. Pressing it swaps the types in place, keeping the tabs, the
+          edits and the history; it starts the studio again only when the old types will not leave
+          the process, which is the one case a swap cannot be honest about.
         -->
         <Button Grid.Column="6" Classes="chip" Height="26" Margin="8,0,0,0" VerticalAlignment="Center"
                 Command="{Binding RestartCommand}" IsVisible="{Binding NeedsRestart}"

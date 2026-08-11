@@ -288,7 +288,8 @@ public sealed partial class DesignerViewModel
     /// </summary>
     /// <remarks>
     /// The ordinary close picks the next tab, logs, and sweeps retired generations — all of which
-    /// are wrong in the middle of a swap, where every form is going and coming back.
+    /// are wrong in the middle of a swap, where every form is going and coming back, and equally
+    /// wrong when the project is closing and every form is going for good. Both use this.
     /// </remarks>
     private void CloseFormForSwap(FormViewModel form)
     {
