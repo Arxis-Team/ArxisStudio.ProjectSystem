@@ -378,9 +378,31 @@ do is let go on the host's behalf, and the list of what a host must release firs
 - every session, and every `Window` a session produced, closed — constructing one puts it in the
   windowing platform's own static list;
 - every form or view that shows the generation's objects, closed rather than merely hidden;
-- any population registry, which holds delegates on the generation's own types.
+- any population registry, which holds delegates on the generation's own types;
+- **whatever the host's own UI libraries left pointing at a live control** — see below.
 
 A host that misses one of these sees an honest "no" and a fallback, never a wrong preview.
+
+That last item is the one nobody predicts, and the sample carries the worked example. A person who
+*clicked* a form before editing its code got a restart; a script that opened the same forms and
+changed the same file got a swap. A heap dump of the failing moment named exactly one root:
+`AvaloniaEdit.RoutedCommand._inputElement`, a process-wide static in a text-editor library, holding
+the studio's own editor item — whose composition subtree contains the drawn form, and through it
+every type in the generation. A click is what routes a command through it; nothing else in the
+studio's code was involved, and no amount of releasing the studio's own state would have helped.
+
+Two things generalise from it. A host embedding third-party controls should expect *any* of them to
+keep a static pointing at the last thing a person touched, and the way to find one is a heap dump
+at the moment of the failure rather than a reading of the code. And the clearing goes **last**:
+closing forms moves focus and routes commands, so a static cleared before the teardown is a static
+put straight back by it — measured, in that order, both ways.
+
+Clearing it turned the reliable failure into a reliable swap, and did not turn the swap into a
+promise. A second click-and-edit round in the same process was seen to answer "still held" once and
+to swap the next time, on the same project with the same steps — so the fallback is not a leftover
+from before the fix, it is the standing answer for the day something else is holding. The studio is
+started with `--probe` to chase the next one: it stays put instead of restarting, which is what
+lets a dump be taken while the root still holds.
 
 Beyond that, `false` is not always the host's fault: a user control that starts a timer, an
 animation or a subscription in its constructor can root its generation, and nothing here can

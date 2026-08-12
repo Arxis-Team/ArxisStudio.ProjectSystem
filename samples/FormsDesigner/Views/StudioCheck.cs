@@ -43,6 +43,18 @@ namespace FormsDesigner.Views;
 /// </remarks>
 internal static class StudioCheck
 {
+    /// <summary>
+    /// Whether a swap that could not reclaim should stay put instead of restarting.
+    /// </summary>
+    /// <remarks>
+    /// Off unless <c>--probe</c> was passed. A restart is the right answer for a person and the
+    /// wrong one for a measurement: the root is only nameable while it still holds, and the one
+    /// tool that names it — a heap dump, read with <c>gcroot</c> — needs the process to still be
+    /// there. That is how <c>AvaloniaEdit.RoutedCommand._inputElement</c> was found, after a
+    /// reflective walk of the same graph had said nothing held it.
+    /// </remarks>
+    internal static bool NameRootsOnFallback { get; set; }
+
     public static void RunWhenShown(MainWindow window, DesignerViewModel designer, string folder) =>
         window.Opened += (_, _) => _ = RunAsync(window, designer, folder);
 
@@ -199,6 +211,16 @@ internal static class StudioCheck
             if (!await MeasureStudioAsync(designer, "after a build", placed: null))
             {
                 Fail(ref failures, "a build in this process kept the generation alive");
+            }
+
+            // And the arrangement a person is in, which is not the same as the one a script is in:
+            // they clicked something. A selection is the studio holding a live control on purpose,
+            // and holding one of a generation is what a swap has to survive.
+            Say("— and once more, after a click on the canvas, which is what a person does —");
+
+            if (!await MeasureStudioAsync(designer, "after a click", placed: null, click: true))
+            {
+                Fail(ref failures, "a click on the canvas kept the generation alive");
             }
 
             return failures;
@@ -380,8 +402,12 @@ internal static class StudioCheck
     /// worth taking — or <see langword="null"/> for a real project, where whatever the forms draw
     /// is what there is.
     /// </param>
+    /// <param name="click">
+    /// Whether to select a control on the canvas first, the way a person does before wondering why
+    /// their edit needs a restart.
+    /// </param>
     private static async Task<bool> MeasureStudioAsync(
-        DesignerViewModel designer, string what, string? placed = "ReclaimControl")
+        DesignerViewModel designer, string what, string? placed = "ReclaimControl", bool click = false)
     {
         // Two forms, because that is how the studio is actually used — a form and the control it
         // places, open side by side — and because a swap that only ever met one would be a swap
@@ -417,12 +443,107 @@ internal static class StudioCheck
 
         Say($"  {what}: {designer.Forms.Count} form(s) open");
 
+        if (click)
+        {
+            // After the canvas has laid out, because there is nothing to click before it has.
+            await Until(() => Clickable(designer), 60);
+
+            Say(ClickOnCanvas(designer)
+                ? $"  {what}: selected a control the project's own code drew"
+                : $"  {what}: nothing of the project's own was drawn to click");
+        }
+
         // The designer's own teardown, and then the adapter's own reclaim: a harness that used a
         // second copy of either would be measuring something the studio does not do.
         await RunSwapTeardownAsync(designer);
 
         return await ReclaimStudioGenerationAsync(designer, what);
     }
+
+    /// <summary>
+    /// Selects a control the project's own code drew, the way a click on the canvas does.
+    /// </summary>
+    /// <remarks>
+    /// Answers <see langword="bool"/> rather than handing back what it found, and does not inline:
+    /// a <see cref="Control"/> of the dying generation in a local of the measuring frame would be
+    /// a root the measurement brought with it.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool ClickOnCanvas(DesignerViewModel designer)
+    {
+        foreach (FormViewModel form in designer.Forms)
+        {
+            if (Deepest(form) is not { } target)
+            {
+                continue;
+            }
+
+            designer.SelectFromCanvas(form, target);
+
+            // And the half a view model never sees. A pointer press focuses what it landed on, and
+            // the focus manager is a thing that lives as long as the window rather than as long as
+            // the generation whose control it is now pointing at.
+            target.Focus();
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Whether any open form has drawn something a click could land inside.</summary>
+    private static bool Clickable(DesignerViewModel designer) =>
+        designer.Forms.Any(static form => Deepest(form) is not null);
+
+    /// <summary>
+    /// The last control inside something the project's own code drew.
+    /// </summary>
+    /// <remarks>
+    /// The deepest one, because that is what a pointer actually lands on — a text box inside a
+    /// user control, not the user control — and the walk up to whatever the document mapped is
+    /// the studio's own business, which is exactly the part being measured.
+    /// </remarks>
+    private static Control? Deepest(FormViewModel form)
+    {
+        Control? target = null;
+
+        foreach (Control control in Avalonia.VisualTree.VisualExtensions
+            .GetVisualDescendants(form.Surface).OfType<Control>())
+        {
+            if (InsideTheProjectsOwn(control))
+            {
+                target = control;
+            }
+        }
+
+        return target;
+    }
+
+    /// <summary>Whether a control is, or sits inside, something the project being edited declares.</summary>
+    private static bool InsideTheProjectsOwn(Control control)
+    {
+        for (Control? current = control; current is not null; current = current.Parent as Control)
+        {
+            if (IsTheProjectsOwn(current.GetType()))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a type came from the generation rather than from the studio.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the load context, not of the name. A project called <c>AvaloniaApplication1</c> —
+    /// which is what the template calls one — answers yes to every name test that tries to tell
+    /// the studio's assemblies from the project's, and a measurement that skipped the project
+    /// would report the arrangement it failed to set up as the arrangement being safe.
+    /// </remarks>
+    private static bool IsTheProjectsOwn(Type type) =>
+        AssemblyLoadContext.GetLoadContext(type.Assembly) is { IsCollectible: true };
 
     /// <summary>Runs the swap's own release step, whatever it is called this week.</summary>
     private static async Task RunSwapTeardownAsync(DesignerViewModel designer)
@@ -529,18 +650,34 @@ internal static class StudioCheck
     {
         var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
         var reported = new HashSet<string>(StringComparer.Ordinal);
-        var budget = 40_000_000;
+        var queue = new Queue<(object Value, string Path)>();
+        var fields = new Dictionary<Type, FieldInfo[]>();
 
-        // The application is walked first and by name, because the interesting paths run through
-        // the studio's own visual tree — application, lifetime, window, editor, item, view model —
-        // which is deeper than a sweep of static fields reaches before its depth limit.
-        Walk(Application.Current, "Application.Current", 0);
+        // Enough to cross a studio with forms open, and not enough to spend minutes doing it. A
+        // walk that gives up says so; a walk that runs for five minutes on the UI thread looks
+        // like a hang, and a diagnostic nobody waits for answers nothing.
+        var budget = 2_000_000;
+
+        // The application is seeded by name as well as swept for, because the interesting paths run
+        // through the studio's own visual tree — application, lifetime, window, editor, item, view
+        // model — and a path that says so reads better than the static it also hangs from.
+        Seed(Application.Current, "Application.Current");
 
         foreach (Assembly probe in AppDomain.CurrentDomain.GetAssemblies())
         {
             if (reported.Count >= 20)
             {
                 break;
+            }
+
+            // The generation's own statics are not roots of it: they live in the context that is
+            // being unloaded and go when it goes. Walking them anyway is how a project that the
+            // template called AvaloniaApplication1 gets its own compiler-generated singletons
+            // reported as the thing holding it — a name test cannot tell the two apart, and the
+            // load context can.
+            if (AssemblyLoadContext.GetLoadContext(probe) is { IsCollectible: true })
+            {
+                continue;
             }
 
             if (probe.GetName().Name is not { } name
@@ -558,11 +695,11 @@ internal static class StudioCheck
                     continue;
                 }
 
-                FieldInfo[] fields;
+                FieldInfo[] statics;
 
                 try
                 {
-                    fields = type.GetFields(
+                    statics = type.GetFields(
                         BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                 }
                 catch (Exception)
@@ -570,11 +707,11 @@ internal static class StudioCheck
                     continue;
                 }
 
-                foreach (FieldInfo field in fields)
+                foreach (FieldInfo field in statics)
                 {
                     try
                     {
-                        Walk(field.GetValue(null), $"{type.Name}.{field.Name}", 0);
+                        Seed(field.GetValue(null), $"{type.Name}.{field.Name}");
                     }
                     catch (Exception)
                     {
@@ -584,6 +721,8 @@ internal static class StudioCheck
             }
         }
 
+        Drain();
+
         if (reported.Count == 0)
         {
             Say(budget <= 0
@@ -592,93 +731,149 @@ internal static class StudioCheck
                     + "the root is a stack slot, a thread-static, or native");
         }
 
-        void Walk(object? value, string path, int depth)
+        // Breadth first, and with no depth limit. Depth first with a limit answers a different
+        // question than the one being asked: it says "not within fourteen hops of a seed", which
+        // reads exactly like "nothing holds it" and is not the same statement. Breadth also names
+        // the shortest path to a holder, which is the one worth printing.
+        void Drain()
         {
-            if (value is null || budget-- <= 0 || reported.Count >= 20)
+            while (queue.Count > 0 && budget-- > 0 && reported.Count < 20)
             {
-                return;
-            }
+                (object value, string path) = queue.Dequeue();
 
-            switch (value)
-            {
-                case Type type when Suspect(type):
-                    Report($"{path} → typeof({type.Name})");
-                    return;
+                switch (value)
+                {
+                    case Type type when Suspect(type):
+                        Report($"{path} → typeof({type.Name})");
+                        continue;
 
-                case AvaloniaProperty property when Suspect(property.OwnerType):
-                    Report($"{path} → {property.OwnerType.Name}.{property.Name}");
-                    return;
+                    case AvaloniaProperty property when Suspect(property.OwnerType):
+                        Report($"{path} → {property.OwnerType.Name}.{property.Name}");
+                        continue;
 
-                case Type or AvaloniaProperty or string or Delegate:
-                    return;
-            }
+                    case Type or AvaloniaProperty or string:
+                        continue;
+                }
 
-            if (Suspect(value.GetType()))
-            {
-                Report($"{path} → an instance of {value.GetType().Name}");
+                if (Suspect(value.GetType()))
+                {
+                    Report($"{path} → an instance of {value.GetType().Name}");
 
-                return;
-            }
+                    continue;
+                }
 
-            if (depth >= 14 || value.GetType().IsPrimitive || !visited.Add(value))
-            {
-                return;
-            }
+                if (value.GetType().IsPrimitive)
+                {
+                    continue;
+                }
 
-            // A conditional weak table's entries are not roots, and reporting them names
-            // Avalonia's weak-event plumbing for something the collector is perfectly happy with.
-            if (value.GetType() is { IsGenericType: true } table
-                && table.GetGenericTypeDefinition() == typeof(ConditionalWeakTable<,>))
-            {
-                return;
-            }
+                // A conditional weak table's entries are not roots, and reporting them names
+                // Avalonia's weak-event plumbing for something the collector is perfectly happy with.
+                if (value.GetType() is { IsGenericType: true } table
+                    && table.GetGenericTypeDefinition() == typeof(ConditionalWeakTable<,>))
+                {
+                    continue;
+                }
 
-            switch (value)
-            {
-                case System.Collections.IDictionary map:
-                    try
-                    {
-                        foreach (System.Collections.DictionaryEntry entry in map)
+                switch (value)
+                {
+                    // A subscription is a reference like any other, and the commonest one a person
+                    // makes by accident: what the delegate closed over is reached through here or
+                    // not at all.
+                    case Delegate handler:
+                        foreach (Delegate one in handler.GetInvocationList())
                         {
-                            Walk(entry.Key, path + "{key}", depth + 1);
-                            Walk(entry.Value, path + "{value}", depth + 1);
+                            Seed(one.Target, $"{path}→{one.Method.DeclaringType?.Name}.{one.Method.Name}()");
                         }
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        // Mutated while being read; a diagnostic does not get to insist.
-                    }
 
-                    return;
+                        continue;
 
-                case System.Collections.IEnumerable sequence:
-                    try
-                    {
-                        foreach (object? item in sequence)
-                        {
-                            Walk(item, path + "[]", depth + 1);
-                        }
-                    }
-                    catch (Exception)
-                    {
-                    }
-
-                    return;
-
-                default:
-                    foreach (FieldInfo field in value.GetType()
-                        .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-                    {
+                    case System.Collections.IDictionary map:
                         try
                         {
-                            Walk(field.GetValue(value), $"{path}.{field.Name}", depth + 1);
+                            foreach (System.Collections.DictionaryEntry entry in map)
+                            {
+                                Seed(entry.Key, path + "{key}");
+                                Seed(entry.Value, path + "{value}");
+                            }
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // Mutated while being read; a diagnostic does not get to insist.
+                        }
+
+                        continue;
+
+                    case System.Collections.IEnumerable sequence:
+                        try
+                        {
+                            foreach (object? item in sequence)
+                            {
+                                Seed(item, path + "[]");
+                            }
                         }
                         catch (Exception)
                         {
                         }
-                    }
 
-                    return;
+                        continue;
+
+                    default:
+                        foreach (FieldInfo field in FieldsOf(value.GetType()))
+                        {
+                            try
+                            {
+                                Seed(field.GetValue(value), $"{path}.{field.Name}");
+                            }
+                            catch (Exception)
+                            {
+                            }
+                        }
+
+                        continue;
+                }
+            }
+        }
+
+        // Claimed on the way in rather than on the way out. A queue that admits an object once per
+        // reference to it holds one entry — and one freshly built path string — per edge in the
+        // graph rather than per object, which is the difference between a walk and an out-of-memory.
+        // Strings and the types reported by name are let through, because they are examined and
+        // never traversed.
+        // Types repeat and their field lists do not change, so asking reflection once per type
+        // rather than once per object is most of the difference between a walk that answers and a
+        // walk somebody gives up on.
+        FieldInfo[] FieldsOf(Type type)
+        {
+            if (fields.TryGetValue(type, out FieldInfo[]? known))
+            {
+                return known;
+            }
+
+            try
+            {
+                known = type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            }
+            catch (Exception)
+            {
+                known = [];
+            }
+
+            fields[type] = known;
+
+            return known;
+        }
+
+        void Seed(object? value, string path)
+        {
+            if (value is null)
+            {
+                return;
+            }
+
+            if (value is Type or AvaloniaProperty or string || visited.Add(value))
+            {
+                queue.Enqueue((value, path));
             }
         }
 

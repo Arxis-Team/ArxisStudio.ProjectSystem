@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.Loader;
 using System.Threading.Tasks;
 using ArxisStudio.Markup;
 using ArxisStudio.Markup.Xaml;
@@ -74,6 +76,17 @@ public sealed partial class DesignerViewModel
 
         if (!reclaimed)
         {
+            // Under --probe the studio stays exactly here instead of restarting, because the one
+            // thing that can name the root is a heap dump of the process while the root still
+            // holds. A restart is the honest answer for a person and the wrong one for a
+            // measurement: it takes the evidence with it.
+            if (Views.StudioCheck.NameRootsOnFallback)
+            {
+                Log("  ! the old types would not leave — holding here so a dump can say why (--probe)");
+
+                return;
+            }
+
             Log("  ! the old types would not leave this process — restarting instead");
 
             Restart();
@@ -148,6 +161,90 @@ public sealed partial class DesignerViewModel
         // One turn of the dispatcher, so the layout and render work queued for the tree that has
         // just gone lets go of it before anything asks whether it did.
         await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+
+        // Last, and that ordering was measured too: closing a form moves focus and routes commands
+        // through the editor, which is what puts these back on a live tree a moment after they
+        // were cleared. Clearing them first and closing afterwards left the swap failing exactly
+        // as it had.
+        ClearInputState();
+
+        await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// Lets go of what the input system, and the libraries listening to it, are pointing at.
+    /// </summary>
+    /// <remarks>
+    /// Two things a click leaves behind, neither of them visible to a view model. The focus
+    /// manager belongs to the studio's window and goes on holding whatever was clicked until
+    /// something else takes focus. And <see cref="ForgetTheEditorsLastInputElement"/> is the one
+    /// that actually mattered — measured, and named by a heap dump rather than by reading.
+    /// </remarks>
+    private void ClearInputState()
+    {
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is not Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return;
+        }
+
+        foreach (Window window in desktop.Windows)
+        {
+            if (window.FocusManager is not { } focus)
+            {
+                continue;
+            }
+
+            // Said out loud when it was one of the project's own, because that is the difference
+            // between a swap and a restart and nothing else in the log would mention it.
+            if (focus.GetFocusedElement() is { } focused
+                && AssemblyLoadContext.GetLoadContext(focused.GetType().Assembly) is { IsCollectible: true })
+            {
+                Log($"  the focus was on {focused.GetType().Name}, which the generation owns");
+            }
+
+            focus.Focus(null);
+        }
+
+        ForgetTheEditorsLastInputElement();
+    }
+
+    /// <summary>
+    /// Clears the static AvaloniaEdit leaves pointing at whatever last routed a command.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Measured, not guessed: a heap dump of a swap that fell back named exactly one root, and it
+    /// was <c>AvaloniaEdit.RoutedCommand._inputElement</c> holding this studio's editor item —
+    /// whose composition subtree contains the drawn form, and through it every type in the
+    /// generation. A person who clicked a form before editing its code got a restart; a script
+    /// that never clicked got a swap, which is why this took a dump to find rather than a reading.
+    /// </para>
+    /// <para>
+    /// Reflective and shape-checked, in the posture ADR 0020 sets for reaching into somebody
+    /// else's statics: a field that is no longer there, or no longer holds what it held, leaves
+    /// this doing nothing and the swap falling back to the restart it did before.
+    /// </para>
+    /// </remarks>
+    private static void ForgetTheEditorsLastInputElement()
+    {
+        try
+        {
+            if (Type.GetType("AvaloniaEdit.RoutedCommand, AvaloniaEdit", throwOnError: false) is not { } command
+                || command.GetField("_inputElement", BindingFlags.Static | BindingFlags.NonPublic)
+                    is not { } element
+                || !element.FieldType.IsAssignableFrom(typeof(Avalonia.Input.IInputElement)))
+            {
+                return;
+            }
+
+            element.SetValue(null, null);
+        }
+        catch (Exception)
+        {
+            // A static that will not be written is a swap that falls back, which is a worse
+            // answer than this and not a worse one than crashing here.
+        }
     }
 
     /// <summary>Reclaims the current generation and every retired one, and says whether all went.</summary>

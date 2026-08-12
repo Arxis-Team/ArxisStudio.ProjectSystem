@@ -51,6 +51,9 @@ public sealed partial class App : Application
             int stress = Array.IndexOf(args, "--stress");
             int reclaim = Array.IndexOf(args, "--reclaim");
 
+            // For the one question a fallback cannot answer by itself: what held the old types.
+            StudioCheck.NameRootsOnFallback = Array.IndexOf(args, "--probe") >= 0;
+
             if (reclaim >= 0 && reclaim + 1 < args.Length)
             {
                 var model = new DesignerViewModel();
@@ -151,8 +154,9 @@ public sealed partial class App : Application
 
     /// <summary>The arguments that are not a switch and are not a switch's value.</summary>
     /// <remarks>
-    /// Every switch this sample takes takes a value: `--shot`, `--verify`, `--stress`,
-    /// `--reclaim`, `--view` and `--active`.
+    /// All but one of this sample's switches take a value: `--shot`, `--verify`, `--stress`,
+    /// `--reclaim`, `--view` and `--active` do, and `--probe` does not — so the project path can
+    /// follow it without being read as the thing it turns on.
     /// </remarks>
     private static string[] Positional(string[] args)
     {
@@ -162,7 +166,10 @@ public sealed partial class App : Application
         {
             if (args[index].StartsWith("--", StringComparison.Ordinal))
             {
-                index++;
+                if (!args[index].Equals("--probe", StringComparison.Ordinal))
+                {
+                    index++;
+                }
 
                 continue;
             }
