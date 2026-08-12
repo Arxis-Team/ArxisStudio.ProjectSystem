@@ -169,6 +169,11 @@ internal static class MSBuildOperationRunner
     /// <remarks>
     /// Project-started is the granularity a progress bar can use. Target and task events arrive in
     /// their thousands and would turn a progress report into a log.
+    /// <para>
+    /// Nearly identical to <c>MSBuildProjectEvaluator</c>'s, and deliberately not shared — see the
+    /// remark there. Sharing it would mean a third type naming <c>Microsoft.Build</c>, and only
+    /// these two may.
+    /// </para>
     /// </remarks>
     private sealed class OperationListener(Action<string>? onProgress) : ILogger
     {

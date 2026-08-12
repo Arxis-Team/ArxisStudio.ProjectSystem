@@ -172,16 +172,8 @@ public sealed partial class MSBuildProjectProvider : IProjectOperationProvider
 
     private static Dictionary<string, string> Properties(ProjectOperationRequest request)
     {
-        var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (KeyValuePair<string, string> property in request.GlobalProperties)
-        {
-            properties[property.Key] = property.Value;
-        }
-
-        Set(properties, "Configuration", request.Configuration);
-        Set(properties, "Platform", request.Platform);
-        Set(properties, "TargetFramework", request.TargetFramework);
+        Dictionary<string, string> properties = GlobalProperties(
+            request.GlobalProperties, request.Configuration, request.Platform, request.TargetFramework);
 
         if (request.Kind == ProjectOperationKind.Restore)
         {
@@ -199,17 +191,7 @@ public sealed partial class MSBuildProjectProvider : IProjectOperationProvider
     {
         foreach (EngineMessage message in outcome.Messages)
         {
-            // The engine's own codes, kept. See ADR 0013: a compiler error is CS0103 to everyone who
-            // has met one, and renaming it would leave a caller parsing text to tell it apart.
-            yield return new ProjectDiagnostic(
-                message.Code,
-                message.Message,
-                message.IsError ? ProjectDiagnosticSeverity.Error : ProjectDiagnosticSeverity.Warning)
-            {
-                FilePath = message.File.IsEmpty ? entryPoint : message.File,
-                Span = message.Line > 0 ? FileSpan.At(message.Line, message.Column) : FileSpan.None,
-                ProviderName = "MSBuild",
-            };
+            yield return Translate(message, entryPoint);
         }
     }
 }

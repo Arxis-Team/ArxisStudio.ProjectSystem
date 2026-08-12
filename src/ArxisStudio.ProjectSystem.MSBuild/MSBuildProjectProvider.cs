@@ -233,21 +233,10 @@ public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
         var diagnostics = new List<ProjectDiagnostic>();
         ImmutableArray<ResolvedPackage> resolved = [];
 
-        // What the engine said, with its own codes kept. An unresolvable SDK is MSB4236 and a
-        // missing workload is NETSDK1147 to everyone who has met them; renaming those into this
-        // library's range would leave a caller unable to act on either without reading the message
-        // text, which the diagnostics policy exists to make unnecessary.
+        // What the engine said, with its own codes kept — see Translate.
         foreach (EngineMessage message in evaluated.Messages)
         {
-            diagnostics.Add(new ProjectDiagnostic(
-                message.Code,
-                message.Message,
-                message.IsError ? ProjectDiagnosticSeverity.Error : ProjectDiagnosticSeverity.Warning)
-            {
-                FilePath = message.File.IsEmpty ? evaluated.FullPath : message.File,
-                Span = message.Line > 0 ? FileSpan.At(message.Line, message.Column) : FileSpan.None,
-                ProviderName = Name,
-            });
+            diagnostics.Add(Translate(message, evaluated.FullPath));
         }
 
         CanonicalPath assets = RestoreAssetsReader.Locate(evaluated);
@@ -434,23 +423,57 @@ public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
         }
     }
 
-    private static Dictionary<string, string> GlobalProperties(WorkspaceLoadRequest request)
+    private static Dictionary<string, string> GlobalProperties(WorkspaceLoadRequest request) =>
+        GlobalProperties(
+            request.GlobalProperties, request.Configuration, request.Platform, request.TargetFramework);
+
+    /// <summary>
+    /// The properties an engine run starts from, assembled the one way both kinds of run assemble
+    /// them.
+    /// </summary>
+    /// <remarks>
+    /// Loading and building took the same three properties the same way in two copies, which is
+    /// one precedence rule written twice: a change to it would have applied to whichever half the
+    /// author was looking at. Restore adds its own two on top, which is the only difference and is
+    /// stated where restore is.
+    /// </remarks>
+    private static Dictionary<string, string> GlobalProperties(
+        ProjectMetadata declared, string? configuration, string? platform, string? framework)
     {
         var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (KeyValuePair<string, string> property in request.GlobalProperties)
+        foreach (KeyValuePair<string, string> property in declared)
         {
             properties[property.Key] = property.Value;
         }
 
         // The request's own choices win over anything it also passed as a global property, because
         // they are the more specific statement of the same thing.
-        Set(properties, "Configuration", request.Configuration);
-        Set(properties, "Platform", request.Platform);
-        Set(properties, "TargetFramework", request.TargetFramework);
+        Set(properties, "Configuration", configuration);
+        Set(properties, "Platform", platform);
+        Set(properties, "TargetFramework", framework);
 
         return properties;
     }
+
+    /// <summary>
+    /// Turns one of the engine's messages into a diagnostic, keeping the engine's own code.
+    /// </summary>
+    /// <remarks>
+    /// See ADR 0013: a compiler error is CS0103 to everyone who has met one, and an unresolvable
+    /// SDK is MSB4236, so renaming them into this library's range would leave a caller parsing
+    /// message text to tell them apart. Shared by evaluation and by building, because a message
+    /// means the same thing whichever of the two produced it.
+    /// </remarks>
+    private static ProjectDiagnostic Translate(EngineMessage message, CanonicalPath fallback) =>
+        new(message.Code,
+            message.Message,
+            message.IsError ? ProjectDiagnosticSeverity.Error : ProjectDiagnosticSeverity.Warning)
+        {
+            FilePath = message.File.IsEmpty ? fallback : message.File,
+            Span = message.Line > 0 ? FileSpan.At(message.Line, message.Column) : FileSpan.None,
+            ProviderName = "MSBuild",
+        };
 
     private static void Set(Dictionary<string, string> properties, string name, string? value)
     {

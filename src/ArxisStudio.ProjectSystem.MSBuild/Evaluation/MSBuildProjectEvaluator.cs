@@ -123,6 +123,13 @@ internal static class MSBuildProjectEvaluator
     /// The only way to hear about an unresolvable SDK or a missing import without giving up the
     /// partial evaluation: MSBuild reports them through its logging service, and a project loaded
     /// with the ignore-import settings otherwise looks like it evaluated cleanly.
+    /// <para>
+    /// <b>Nearly identical to <c>MSBuildOperationRunner</c>'s, and deliberately not shared.</b> A
+    /// common base would be a third type naming <c>Microsoft.Build</c>, and the rule that only
+    /// these two engine-facing types may is what keeps the locator ahead of the first load — a
+    /// rule whose violation shows up as an unrelated failure somewhere else entirely. Thirty
+    /// lines is the cheaper half of that trade.
+    /// </para>
     /// </remarks>
     private sealed class EvaluationListener : ILogger
     {
