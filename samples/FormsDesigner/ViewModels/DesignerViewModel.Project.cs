@@ -10,6 +10,7 @@ using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
 using ArxisStudio.ProjectSystem.Markup.Xaml;
 using Avalonia;
+using Avalonia.Styling;
 using Avalonia.Threading;
 
 namespace FormsDesigner.ViewModels;
@@ -61,6 +62,7 @@ public sealed partial class DesignerViewModel
         FormFile? previous = SelectedProjectForm;
 
         ProjectForms.Clear();
+        _applicationVariants.Clear();
 
         foreach (ProjectSnapshot project in snapshot.Projects)
         {
@@ -68,8 +70,21 @@ public sealed partial class DesignerViewModel
             {
                 if (item.FullPath.IsEmpty
                     || !IsMarkup(item.FullPath)
-                    || !IsDesignable(item.FullPath)
                     || !item.FullPath.StartsWith(project.ProjectDirectory))
+                {
+                    continue;
+                }
+
+                (string? root, string? requested) = Sniff(item.FullPath);
+
+                // The application is not a form, but it is the one document that decides what
+                // every form is drawn with, so its variant is remembered on the way past.
+                if (root is "Application")
+                {
+                    _applicationVariants[project.Identity] = DeclaredVariant(requested);
+                }
+
+                if (root is not null && NotAForm.Contains(root, StringComparer.Ordinal))
                 {
                     continue;
                 }
@@ -90,6 +105,7 @@ public sealed partial class DesignerViewModel
 
         BuildProjectPane(snapshot);
         MarkOpenFiles();
+        ApplyApplicationVariants();
 
         Log($"  {Describe(ProjectForms.Count, "form")} in the project");
 
@@ -118,29 +134,29 @@ public sealed partial class DesignerViewModel
         ["Application", "ResourceDictionary", "Styles", "Style", "ControlTheme"];
 
     /// <summary>
-    /// Whether a markup document is one this designer can put on the canvas.
+    /// Reads a markup document's root tag and its requested theme variant, and nothing further.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A project's markup is not all forms. <c>App.axaml</c> declares the application — the styles
-    /// and resources every form is then drawn with — and a resource dictionary or a style sheet
-    /// declares no control at all. Loading one produces an object that is not a <c>Control</c>, so
-    /// the canvas showed a card with an error written across it, the tab strip offered it beside the
-    /// real forms, and the status bar counted it as one.
+    /// The root answers two questions at once. Whether the document is a form: <c>App.axaml</c>
+    /// declares the application and a resource dictionary declares no control at all, so a root on
+    /// the <see cref="NotAForm"/> list is kept off the canvas, the tab strip and the count. And
+    /// what the project's forms are drawn with: the <c>Application</c> root is where a project
+    /// declares its theme variant, which is what the previews must follow rather than the
+    /// designer's own.
     /// </para>
     /// <para>
-    /// The root element is what answers this, and it is read with an XML reader rather than by
-    /// parsing the document: the answer is the first tag, and a designer that parsed every markup
-    /// file in the solution to build a list would pay for it again on every refresh.
+    /// An XML reader rather than a parse, because both answers are in the first tag, and a
+    /// designer that parsed every markup file in the solution to build a list would pay for it
+    /// again on every refresh.
     /// </para>
     /// <para>
-    /// The list is of Avalonia's own non-visual roots, so a document rooted in anything else is still
-    /// offered — including a control this designer has never heard of. The test on the way in is a
-    /// convenience; the open path remains the authority and still says, in words, when a document
-    /// turned out to produce something that cannot be shown.
+    /// A file that cannot be read answers <see langword="null"/>, which offers it as a form: the
+    /// open path remains the authority and says, in words, what is wrong with it — better than a
+    /// document silently missing from the list.
     /// </para>
     /// </remarks>
-    private static bool IsDesignable(CanonicalPath file)
+    private static (string? Root, string? RequestedThemeVariant) Sniff(CanonicalPath file)
     {
         try
         {
@@ -155,16 +171,77 @@ public sealed partial class DesignerViewModel
                 });
 
             return reader.MoveToContent() != System.Xml.XmlNodeType.Element
-                || !NotAForm.Contains(reader.LocalName, StringComparer.Ordinal);
+                ? (null, null)
+                : (reader.LocalName, reader.GetAttribute("RequestedThemeVariant"));
         }
         catch (Exception error)
             when (error is System.IO.IOException
                 or UnauthorizedAccessException
                 or System.Xml.XmlException)
         {
-            // A file that cannot be read is not a file to hide. Offering it puts the reason in front
-            // of somebody, in words, instead of leaving a document silently missing from the list.
-            return true;
+            return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// What each project's <c>App.axaml</c> declares its variant to be, or <see langword="null"/>
+    /// for one that leaves it to the platform.
+    /// </summary>
+    /// <remarks>
+    /// Declared, not resolved: "Default" and "no App.axaml" both store <see langword="null"/>, and
+    /// the platform is asked at apply time — so an operating system that changes its mind changes
+    /// the previews, the same way it would change the running application.
+    /// </remarks>
+    private readonly System.Collections.Generic.Dictionary<ProjectIdentity, ThemeVariant?>
+        _applicationVariants = [];
+
+    /// <summary>Maps what an <c>App.axaml</c> writes to what it means, when it means one.</summary>
+    private static ThemeVariant? DeclaredVariant(string? requested) => requested switch
+    {
+        "Dark" => ThemeVariant.Dark,
+        "Light" => ThemeVariant.Light,
+
+        // "Default" spelled out, misspelled, or absent: the application follows the platform, and
+        // so must the preview. Guessing a misspelling to be dark or light would be inventing a
+        // declaration the project has not made.
+        _ => null,
+    };
+
+    /// <summary>
+    /// The theme variant a form's own application would draw it with.
+    /// </summary>
+    /// <remarks>
+    /// The layer the surface cannot know — see <c>XamlDesignSurface.ApplicationThemeVariant</c>.
+    /// The project's <c>App.axaml</c> is the authority when it declares a side; when it declares
+    /// "Default", or there is no application document at all, the answer is the platform's, which
+    /// is what the running application would resolve it to. The designer's own variant is never
+    /// the answer: the studio being dark is a fact about the studio.
+    /// </remarks>
+    private ThemeVariant VariantFor(CanonicalPath file) =>
+        _workspace.CurrentSnapshot is { } snapshot
+            && snapshot.TryGetProjectForFile(file, out ProjectSnapshot? owner)
+            && _applicationVariants.TryGetValue(owner.Identity, out ThemeVariant? declared)
+            && declared is not null
+            ? declared
+            : PlatformVariant();
+
+    /// <summary>The variant the operating system is set to, which is what "Default" runs as.</summary>
+    private static ThemeVariant PlatformVariant() =>
+        Avalonia.Application.Current?.PlatformSettings?.GetColorValues().ThemeVariant
+            == Avalonia.Platform.PlatformThemeVariant.Dark
+            ? ThemeVariant.Dark
+            : ThemeVariant.Light;
+
+    /// <summary>Tells a form's surface which application it is being previewed for.</summary>
+    internal void ApplyApplicationVariant(FormViewModel form) =>
+        form.Surface.ApplicationThemeVariant = VariantFor(form.File);
+
+    /// <summary>Re-answers the variant question for every open form.</summary>
+    private void ApplyApplicationVariants()
+    {
+        foreach (FormViewModel form in Forms)
+        {
+            ApplyApplicationVariant(form);
         }
     }
 
@@ -251,6 +328,10 @@ public sealed partial class DesignerViewModel
         var opened = new FormViewModel(form.Path, NextFreeSpot())
         {
         };
+
+        // Told before it is shown, so the first frame is already the right one. What the form's
+        // application would draw it with is not something the surface can know by itself.
+        ApplyApplicationVariant(opened);
 
         Forms.Add(opened);
         ActiveForm = opened;

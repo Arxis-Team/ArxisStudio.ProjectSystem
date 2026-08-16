@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ArxisStudio.Markup.Xaml;
 using ArxisStudio.ProjectSystem;
+using Avalonia.Styling;
 using Avalonia.Threading;
 
 namespace FormsDesigner.ViewModels;
@@ -253,6 +254,8 @@ public sealed partial class DesignerViewModel
                 {
                     await RegisterUnopenedAsync(path);
                 }
+
+                RefreshVariantIfApplication(path);
             }
             else
             {
@@ -271,6 +274,39 @@ public sealed partial class DesignerViewModel
         {
             await RebuildForCodeAsync(code);
         }
+    }
+
+    /// <summary>
+    /// Follows a save to <c>App.axaml</c>, because the application's variant is every preview's.
+    /// </summary>
+    /// <remarks>
+    /// The other editor is where a project's theme gets flipped, and a designer that only read the
+    /// declaration on load showed yesterday's variant until the project was reopened. The sniff is
+    /// the same first-tag read the project tree does, so a save to any other document costs one
+    /// root element.
+    /// </remarks>
+    private void RefreshVariantIfApplication(string path)
+    {
+        if (!CanonicalPath.TryCreate(path, out CanonicalPath file)
+            || Sniff(file) is not ("Application", var requested)
+            || _workspace.CurrentSnapshot is not { } snapshot
+            || !snapshot.TryGetProjectForFile(file, out ProjectSnapshot? owner))
+        {
+            return;
+        }
+
+        ThemeVariant? declared = DeclaredVariant(requested);
+
+        if (_applicationVariants.TryGetValue(owner.Identity, out ThemeVariant? known) && known == declared)
+        {
+            return;
+        }
+
+        _applicationVariants[owner.Identity] = declared;
+
+        Log($"  the application asks for {declared?.ToString() ?? "the platform's variant"} — the previews follow");
+
+        ApplyApplicationVariants();
     }
 
     /// <summary>

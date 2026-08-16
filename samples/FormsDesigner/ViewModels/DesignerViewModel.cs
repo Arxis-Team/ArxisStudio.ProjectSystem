@@ -80,9 +80,25 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
 
         _workspace.SnapshotChanged += OnSnapshotChanged;
 
+        // A project whose App.axaml says "Default" is previewed in the platform's variant, so the
+        // platform changing its mind must reach the previews — the same way it reaches the
+        // running application.
+        _platform = Avalonia.Application.Current?.PlatformSettings;
+
+        if (_platform is not null)
+        {
+            _platform.ColorValuesChanged += OnPlatformColorsChanged;
+        }
+
         Log("Ready. Open a .sln, .slnx or .csproj, then open a form from the Project panel.");
         Log(Environment());
     }
+
+    /// <summary>The platform's settings, held so the subscription above can be released.</summary>
+    private readonly Avalonia.Platform.IPlatformSettings? _platform;
+
+    private void OnPlatformColorsChanged(object? sender, Avalonia.Platform.PlatformColorValues e) =>
+        Dispatcher.UIThread.Post(ApplyApplicationVariants);
 
     /// <summary>The forms open on the canvas. The editor's items are forms, not controls.</summary>
     /// <remarks>
@@ -264,6 +280,11 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
         _disposed = true;
 
         _shutdown.Cancel();
+
+        if (_platform is not null)
+        {
+            _platform.ColorValuesChanged -= OnPlatformColorsChanged;
+        }
 
         StopWatching();
         StopProject();

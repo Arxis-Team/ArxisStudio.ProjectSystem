@@ -317,6 +317,7 @@ public sealed partial class DesignerViewModel
             var form = new FormViewModel(memory.File, memory.Location);
 
             form.Recall(memory);
+            ApplyApplicationVariant(form);
 
             Forms.Add(form);
 

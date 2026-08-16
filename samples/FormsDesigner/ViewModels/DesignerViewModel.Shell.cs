@@ -298,7 +298,9 @@ public sealed partial class DesignerViewModel
     /// <remarks>
     /// On the application rather than on the window, because the palette is a resource dictionary
     /// keyed by variant and every panel reads it — including the canvas grid, which belongs to a
-    /// library and would otherwise stay dark on a light desk.
+    /// library and would otherwise stay dark on a light desk. The previews do not follow: each
+    /// form's surface carries the variant of the application it belongs to, and the studio
+    /// changing its clothes is a fact about the studio.
     /// </remarks>
     private void SwitchTheme()
     {
@@ -309,10 +311,6 @@ public sealed partial class DesignerViewModel
         if (Avalonia.Application.Current is { } application)
         {
             application.RequestedThemeVariant = variant;
-        }
-
-        foreach (FormViewModel form in Forms)
-        {
         }
     }
 

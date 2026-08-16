@@ -473,6 +473,22 @@ The map from an assembly name to a file is built from the file names in the snap
 build produces that is exactly the assembly's simple name, and packages lay their files out the same
 way — but a file whose contents disagree with its name resolves under the name on disk.
 
+### A preview follows the project's theme variant, not the project's theme
+
+A preview's theme variant is the project's, not the tool's: the sample reads `RequestedThemeVariant`
+from the project's own `App.axaml` — "Default" and no declaration resolve to the operating system's
+variant, the way the running application would — and hands it to each form's surface, which also
+paints an undecided window with the themed background that variant selects. The tool switching its
+own theme does not touch the previews, and an external save to `App.axaml` reaches them without a
+reload.
+
+What is *not* reproduced is the rest of the application's markup: the styles and resources
+`App.axaml` declares are never evaluated, so the previews are drawn with the designer's own
+`FluentTheme`. A project using a different theme, custom application-level styles, or
+application-level resources is previewed without them — a form referencing an app-level resource
+shows the fallback its markup provides, or nothing. Evaluating the project's application markup is
+a feature with its own lifetime problems (an application's styles load types), not a small gap.
+
 ## Deferred by design
 
 Not limitations of the implementation so much as scope boundaries, listed so nobody looks for them.
