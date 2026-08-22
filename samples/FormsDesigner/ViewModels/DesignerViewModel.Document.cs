@@ -664,16 +664,32 @@ public sealed partial class DesignerViewModel
         // editor has only just been given, is the panel above it. The element resolved here is the
         // better answer and this is where it was resolved, so the echo is ignored. The tree is kept
         // in step the same way, by the same kind of flag.
-        _syncingCanvas = true;
-
-        try
+        using (SyncingCanvas())
         {
             CanvasSelectionRequested?.Invoke(this, element);
         }
-        finally
-        {
-            _syncingCanvas = false;
-        }
+    }
+
+    /// <summary>
+    /// Marks the canvas's selection as this designer's own doing until disposed.
+    /// </summary>
+    /// <remarks>
+    /// A scope rather than a flag set in place, because the canvas cannot always answer at once: a
+    /// control the document has only just produced has no bounds until the layout has run, and the
+    /// editor will not report a target it cannot draw a frame around. The view therefore asks
+    /// again after a layout pass, and that second ask is the same designer's doing as the first —
+    /// so the guard has to be something the view can hold across the wait.
+    /// </remarks>
+    internal IDisposable SyncingCanvas()
+    {
+        _syncingCanvas = true;
+
+        return new CanvasSync(this);
+    }
+
+    private sealed class CanvasSync(DesignerViewModel designer) : IDisposable
+    {
+        public void Dispose() => designer._syncingCanvas = false;
     }
 
     /// <summary>Whether the canvas's selection is currently this designer's own doing.</summary>

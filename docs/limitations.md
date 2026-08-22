@@ -397,6 +397,14 @@ at the moment of the failure rather than a reading of the code. And the clearing
 closing forms moves focus and routes commands, so a static cleared before the teardown is a static
 put straight back by it — measured, in that order, both ways.
 
+Since the `ArxisStudio.DesignEditor` update of 2026-08-22 the fallback is no longer the rare answer.
+Measured on the `--reclaim` harness, whose third case is the studio's own generation with two forms
+open: two runs in three answered "still held" with the sample untouched, one in three with it
+updated — the same binary each time, no gesture involved, nothing the designer does differently.
+The root was not chased: the walk gives up on a graph that size, and the tool that names one is a
+heap dump, which is what `--probe` is for. What this says is that a code edit now restarts the
+studio more often than it swaps, and that the cause is in the editor rather than in the host.
+
 Clearing it turned the reliable failure into a reliable swap, and did not turn the swap into a
 promise. A second click-and-edit round in the same process was seen to answer "still held" once and
 to swap the next time, on the same project with the same steps — so the fallback is not a leftover

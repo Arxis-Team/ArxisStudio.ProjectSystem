@@ -115,6 +115,7 @@ view of it** — a canvas that could disagree with the file is a designer that l
 | Project | folders on the left, the folder's files on the right; **double-click a file to open it**. The tree is every item the project compiles, so a `.cs` file is there and says why it does not open; the forms are `ProjectSnapshot.Items` filtered to markup, and a file the project does not compile is correctly absent |
 | Toolbox | markup snippets, dragged with Avalonia's own drag-and-drop. A drop lands in the deepest control the document owns whose rectangle contains the pointer and which can hold a child, so a control goes into the panel it was dropped on rather than at the top of the form. By rectangle rather than by hit-testing, for the same reason the editor decides selection that way: a loaded form takes no input, and a panel that paints no background renders nothing to hit |
 | Hierarchy | both directions. The canvas reports a selection through `DesignSelectionChanged` and the object map turns the control into an element; the tree returns the favour through `DesignEditor.SelectDesignTarget`, which the map answers the other way round. That method did not exist until this sample needed it |
+| Rulers | two `DesignRuler` controls beside the editor, told only which editor they belong to; they take the zoom and the offset from it. What they produce is a request, so the set of guides lives in the designer and nothing reaches the document |
 | Canvas | one `DesignEditor` item per open form in `ContentMode="Annotated"`, and the item's content is the form and nothing else. In `ContentMode="Loaded"` the editor offers every control the author wrote as a design target and finds them by walking the container's content, so a caption or a title bar put in there is — correctly, and unhelpfully — something the user can select and resize. The card is the container's own `Background`, `BorderBrush` and `CornerRadius`; everything else the designer draws sits in a layer above the canvas, in world coordinates, through the editor's public `ViewportTransform`. What is editable is stated rather than guessed: after every load the object map says which controls have a document element behind them, and those are marked `Layout.IsTracked` |
 | Inspector | the properties a control actually has, offered whether or not the document has written them — a short curated list per group, each name asked of the control first, so a Border is offered `CornerRadius` and a TextBlock is not, plus whatever the parent attaches (`Canvas.Left` inside a Canvas) and anything else the file says. Clearing a field removes the attribute. One editor per kind of value, which the document cannot decide and `XamlMemberDescriptor` can: a `bool` is a checkbox, an enum is its own values (side by side when there are four or fewer, a drop-down when more), a brush shows its colour, a number is a number. `ConvertFromText` is asked before anything is written, so text the load could not have meant is reported instead of saved. A value that is a binding is shown and not edited — typing a literal over one would replace it with whatever the text looked like |
 | Resize | `EditCompleted` on release, written to the element the control came from — and for the card itself, to the document's root, because a gesture on the card is a gesture on the form. A control with nothing behind it says so instead of skipping the write in silence |
@@ -141,6 +142,23 @@ Configured as `ArxisStudio.DesignEditor` documents them, mapped for a form desig
 | `Ctrl+S`, `Ctrl+Shift+S` | save this form, save every form that has edits |
 | `Ctrl+0` | fit the form to the window |
 | `Alt+Up`, `Alt+Down` | move the control among its siblings — one history step each |
+| drag off a ruler | pulls out a guide; dragging one off the canvas is how it goes away |
+
+`Ctrl+Z` and `Ctrl+Y` reach the editor first when the pointer is over the canvas, and it asks rather
+than acts: history belongs to whoever keeps it, and here that is the document. Answering the request
+is what makes the shortcut work there; unanswered, it bubbles to the window's own key bindings,
+which is why it worked before anything answered.
+
+**Rulers and guides.** The rulers stand beside the editor rather than inside it, which is the
+library's rule and not a layout preference: the editor's input point is its viewport's origin, and a
+strip taking the top or the left from within its template would move that origin and all three
+coordinate systems with it. A guide is dragged off a ruler, moved by dragging it, and removed by
+dragging it off the canvas — each of those is a request the designer answers, and the set belongs to
+the designer. Guides are **not** written to the document and are not meant to be: a guide is
+scaffolding for the person laying a form out, not a fact about the form, and nothing in a project's
+markup describes one. Three separate switches, because people reach for them separately — hide the
+rulers, hide the lines, clear the set — and hiding never stops the pull to a line, exactly as hiding
+the grid does not.
 
 Snapping is on — to the grid and to the neighbours' edges and centres — and both are checkboxes on
 the toolbar. Resize is contained to the form, because a button hanging outside the window it belongs

@@ -3,6 +3,7 @@
         xmlns:vm="using:FormsDesigner.ViewModels"
         xmlns:edit="using:AvaloniaEdit"
         xmlns:design="clr-namespace:ArxisStudio;assembly=ArxisStudio.DesignEditor"
+        xmlns:designControls="clr-namespace:ArxisStudio.Controls;assembly=ArxisStudio.DesignEditor"
         x:Class="FormsDesigner.Views.MainWindow"
         x:DataType="vm:DesignerViewModel"
         Title="ArxisStudio — Forms Designer"
@@ -267,6 +268,16 @@
               <MenuItem Header="Snap to grid" Command="{Binding ToggleSnapToGridCommand}" />
               <MenuItem Header="Snap to guides" Command="{Binding ToggleSnapToGuidesCommand}" />
               <MenuItem Header="-" />
+              <!--
+                Three switches that people reach for separately. Hiding the rulers takes away the
+                way to make a guide; hiding the guides leaves the lines in the set and leaves the
+                pull to them working, the same way hiding the grid does. Clearing is the only one
+                of the three that throws anything away.
+              -->
+              <MenuItem Header="Rulers" Command="{Binding ToggleRulersCommand}" />
+              <MenuItem Header="Guides" Command="{Binding ToggleGuidesCommand}" />
+              <MenuItem Header="Clear guides" Command="{Binding ClearGuidesCommand}" />
+              <MenuItem Header="-" />
               <MenuItem Header="Restore packages" Command="{Binding RestoreCommand}" />
             </MenuFlyout>
           </Button.Flyout>
@@ -527,11 +538,52 @@
             screen, while the card it belongs to stayed plainly visible. The editor's own theme
             arranges it the same way round: clip the untransformed root, never the transformed layer.
           -->
-          <Panel Grid.Column="0" ClipToBounds="True" IsVisible="{Binding IsDesignVisible}">
+          <!--
+            The rulers stand beside the editor rather than inside it, which is the library's own
+            rule and not a layout preference: the editor's input point is its viewport's origin, so
+            a strip taking the top or the left from within its template would move that origin and
+            all three coordinate systems with it. Placed here they read the editor's zoom and
+            offset through `Editor` and stay in step without knowing how either works.
+
+            Guides are dragged off them, which is why hiding the rulers hides the way to make one
+            while leaving the lines already made exactly where they were.
+          -->
+          <Grid Grid.Column="0" IsVisible="{Binding IsDesignVisible}"
+                ColumnDefinitions="Auto,*" RowDefinitions="Auto,*">
+
+            <Border Grid.Row="0" Grid.Column="0"
+                    Background="{DynamicResource Bg2}"
+                    BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,1,1"
+                    IsVisible="{Binding ShowRulers}" />
+
+            <designControls:DesignRuler Grid.Row="0" Grid.Column="1"
+                                        x:Name="TopRuler"
+                                        Orientation="Horizontal"
+                                        Height="18"
+                                        IsVisible="{Binding ShowRulers}"
+                                        Editor="{Binding #Surface}"
+                                        Background="{DynamicResource Bg2}"
+                                        TickBrush="{DynamicResource Fg3}"
+                                        LabelBrush="{DynamicResource Fg3}" />
+
+            <designControls:DesignRuler Grid.Row="1" Grid.Column="0"
+                                        Orientation="Vertical"
+                                        Width="18"
+                                        IsVisible="{Binding ShowRulers}"
+                                        Editor="{Binding #Surface}"
+                                        Background="{DynamicResource Bg2}"
+                                        TickBrush="{DynamicResource Fg3}"
+                                        LabelBrush="{DynamicResource Fg3}"
+                                        IsScaleVisible="{Binding #TopRuler.IsScaleVisible}" />
+
+          <Panel Grid.Row="1" Grid.Column="1" ClipToBounds="True">
             <design:DesignEditor x:Name="Surface"
                                  ItemsSource="{Binding Shown}"
                                  SelectedItems="{Binding SelectedForms}"
                                  SelectionMode="Multiple"
+                                 Guides="{Binding Guides}"
+                                 ShowGuides="{Binding ShowGuides}"
+                                 ShowRulers="{Binding ShowRulers}"
                                  ViewportZoom="{Binding Zoom, Mode=TwoWay}">
               <design:DesignEditor.InputGestures>
                 <design:DesignEditorInputGestures PanButton="Middle"
@@ -603,6 +655,7 @@
               </StackPanel>
             </Border>
           </Panel>
+          </Grid>
 
           <GridSplitter Classes="chrome" Grid.Column="1" Width="4" IsVisible="{Binding IsSplitView}" />
 

@@ -71,6 +71,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
             () => NeedsRestart && !EntryPoint.IsEmpty && _typeSwap is not { IsCompleted: false });
 
         InitialiseHeader();
+        InitialiseGuides();
         InitialiseShell();
         InitialiseRun();
         InitialisePackages();

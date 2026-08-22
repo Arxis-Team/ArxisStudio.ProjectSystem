@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ArxisStudio;
 using ArxisStudio.Markup.Xaml;
+using ArxisStudio.ProjectSystem;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -10,6 +11,7 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using FormsDesigner.ViewModels;
 
@@ -60,6 +62,31 @@ public sealed partial class MainWindow : Window
         this.GetControl<ListBox>("HierarchyTree").AddHandler(
             PointerPressedEvent, OnTreePressed, RoutingStrategies.Tunnel);
         surface.ReorderRequested += OnReorderRequested;
+
+        // The set of guides is the designer's, so the editor asks rather than changes it. Until
+        // this answers, a line dragged off a ruler is only a preview — the same division the
+        // control tree is under, and the reason dragging one anywhere does nothing without it.
+        surface.GuideChangeRequested += (_, e) =>
+            e.Handled = Designer?.ApplyGuideChange(e.Kind, e.Guide, e.Original) == true;
+
+        // History belongs to whoever keeps it, and here that is the document: the editor knows a
+        // gesture finished, not what a step means in XAML. So it asks, and answering is what makes
+        // Ctrl+Z work while the pointer is over the canvas — the window's own key bindings only see
+        // what the focused control did not take. Unanswered, the request bubbles and they still do.
+        surface.UndoRequested += (_, e) => e.Handled = Run(Designer?.UndoCommand);
+        surface.RedoRequested += (_, e) => e.Handled = Run(Designer?.RedoCommand);
+
+        static bool Run(RelayCommand? command)
+        {
+            if (command is null || !command.CanExecute(null))
+            {
+                return false;
+            }
+
+            command.Execute(null);
+
+            return true;
+        }
 
         // Drag out of the toolbox, drop onto the surface. Avalonia's own drag-and-drop rather than a
         // hand-rolled pointer dance, so the cursor, the escape key and the drop feedback are the
@@ -284,20 +311,71 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (TrySelectOnCanvas(surface, form, element))
+        {
+            return;
+        }
+
+        // Not yet, rather than not at all. A control the document has only just produced has not
+        // been through a layout pass, and until it has it measures nothing — the editor refuses a
+        // target it cannot draw a frame around, which is what keeps a zero-sized control from being
+        // reported as whatever sits behind it. Every selection that follows an edit arrives in
+        // exactly that window, so the ask is repeated once the layout has run.
+        //
+        // Below normal priority, because that is what puts it after the layout the rebuild queued.
+        // The guard that tells this designer's own selection from the user's is held across the
+        // wait: without it the editor's answer comes back as though somebody had clicked, and the
+        // walk that answers a click resolves to the panel above the control rather than to it.
+        IDisposable sync = designer.SyncingCanvas();
+
+        // The form is named rather than captured. A queued operation holds everything its closure
+        // mentions, and a form holds the session, the live objects and through them every type in
+        // the project's generation — which the studio has to be able to give back when the project
+        // is rebuilt. A path holds nothing, and re-reading the active form is also the check that
+        // it is still the same one.
+        CanonicalPath file = form.File;
+
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                try
+                {
+                    if (Designer is not { ActiveForm: { } current } model || current.File != file)
+                    {
+                        return;
+                    }
+
+                    if (!TrySelectOnCanvas(surface, current, element))
+                    {
+                        model.Log($"! {element.Name} is not on the canvas to select");
+                    }
+                }
+                finally
+                {
+                    sync.Dispose();
+                }
+            },
+            DispatcherPriority.Background);
+    }
+
+    /// <summary>Selects whatever stands for an element on the canvas, if anything does.</summary>
+    /// <remarks>
+    /// Two answers, in order. The control the element produced is the direct one. A window's root
+    /// produced no control of its own — the card is what stands for it — so the container is
+    /// selected instead, which is the same answer the canvas gives in the other direction when a
+    /// click lands on the stand-in.
+    /// </remarks>
+    private static bool TrySelectOnCanvas(DesignEditor surface, FormViewModel form, XamlElement element)
+    {
         if (DesignerViewModel.ControlFor(form, element) is { } control
             && surface.SelectDesignTarget(control))
         {
-            return;
+            return true;
         }
 
-        if (ReferenceEquals(element, form.Document?.Root)
+        return ReferenceEquals(element, form.Document?.Root)
             && surface.ContainerFromItem(form) is Control card
-            && surface.SelectDesignTarget(card))
-        {
-            return;
-        }
-
-        designer.Log($"! {element.Name} is not on the canvas to select");
+            && surface.SelectDesignTarget(card);
     }
 
     /// <summary>
@@ -364,7 +442,7 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private void OnContextMenuRequesting(object? sender, DesignEditorContextRequestingEventArgs e)
     {
-        if (Designer is not { } designer)
+        if (Designer is not { } designer || sender is not DesignEditor surface)
         {
             return;
         }
@@ -407,7 +485,31 @@ public sealed partial class MainWindow : Window
                 Command = new RelayCommand(designer.Unwrap),
             },
             new DesignEditorContextAction { Id = "---", IsSeparator = true, Group = "edit", Order = 12 },
-            Action("delete", "Удалить", "Del", designer.DeleteSelectedCommand, 13),
+
+            // Distribution is the editor's own arithmetic, not the document's: it moves the
+            // selected controls and reports the moves through EditCompleted like any gesture, so
+            // they reach the document by the path every other move takes. Offered only when the
+            // editor says it can — three controls in one form, in a layout that lets them move.
+            new DesignEditorContextAction
+            {
+                Id = "distribute.h",
+                Header = "Разложить по горизонтали",
+                Group = "arrange",
+                Order = 13,
+                Command = new RelayCommand(() => surface.DistributeHorizontally()),
+                IsEnabled = surface.SelectedDesignTargets.Count > 2,
+            },
+            new DesignEditorContextAction
+            {
+                Id = "distribute.v",
+                Header = "Разложить по вертикали",
+                Group = "arrange",
+                Order = 14,
+                Command = new RelayCommand(() => surface.DistributeVertically()),
+                IsEnabled = surface.SelectedDesignTargets.Count > 2,
+            },
+            new DesignEditorContextAction { Id = "----", IsSeparator = true, Group = "arrange", Order = 15 },
+            Action("delete", "Удалить", "Del", designer.DeleteSelectedCommand, 16),
         ];
 
         static DesignEditorContextAction Action(
