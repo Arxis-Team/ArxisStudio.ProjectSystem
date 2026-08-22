@@ -145,6 +145,11 @@ public sealed partial class MainWindow : Window
 
                 designer.CanvasSelectionRequested += (_, element) => ShowOnCanvas(surface, element);
 
+                // Grouping is asked of the canvas, because the selection lives there and what a
+                // group may contain is the editor's rule, not this designer's.
+                designer.GroupSelection = surface.GroupSelection;
+                designer.UngroupSelection = surface.UngroupSelection;
+
                 // The documented way to clear the canvas: dropping the item selection takes the
                 // design targets with it, which is what the frame is drawn from.
                 designer.CanvasSelectionCleared += (_, _) => surface.SelectedItems?.Clear();
@@ -393,6 +398,25 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // A group is not geometry: nothing moved, and what changed is a mark saying which controls
+        // belong together. It is also several controls at once, and they go down in one edit — the
+        // first write replaces the document and the live tree with it, so a second write naming a
+        // control of the tree that has just gone lands nowhere.
+        if (e.Kind == DesignEditKind.Group)
+        {
+            foreach (IGrouping<FormViewModel, DesignGroupChange> byForm in e.Changes
+                .OfType<DesignGroupChange>()
+                .GroupBy(change => FormOf(change.Target)!)
+                .Where(group => group.Key is not null))
+            {
+                designer.WriteGroups(
+                    byForm.Key,
+                    [.. byForm.Select(change => (change.Target, change.NewId))]);
+            }
+
+            return;
+        }
+
         foreach (DesignChange change in e.Changes)
         {
             if (FormOf(change.Target) is { } form)
@@ -486,6 +510,29 @@ public sealed partial class MainWindow : Window
             },
             new DesignEditorContextAction { Id = "---", IsSeparator = true, Group = "edit", Order = 12 },
 
+            // Grouping is the editor's, and what it produces is a mark on the controls rather than
+            // a change to the tree — so it needs no answer from here beyond writing the mark down
+            // when EditCompleted reports it. Availability is the editor's answer too: two clusters
+            // in one form to group, a group under the pointer to ungroup.
+            new DesignEditorContextAction
+            {
+                Id = "group",
+                Header = "Сгруппировать   Ctrl+G",
+                Group = "arrange",
+                Order = 12,
+                Command = new RelayCommand(() => surface.GroupSelection()),
+                IsEnabled = surface.CanGroupSelection(),
+            },
+            new DesignEditorContextAction
+            {
+                Id = "ungroup",
+                Header = "Разгруппировать   Ctrl+Shift+G",
+                Group = "arrange",
+                Order = 13,
+                Command = new RelayCommand(() => surface.UngroupSelection()),
+                IsEnabled = surface.CanUngroupSelection(),
+            },
+
             // Distribution is the editor's own arithmetic, not the document's: it moves the
             // selected controls and reports the moves through EditCompleted like any gesture, so
             // they reach the document by the path every other move takes. Offered only when the
@@ -495,7 +542,7 @@ public sealed partial class MainWindow : Window
                 Id = "distribute.h",
                 Header = "Разложить по горизонтали",
                 Group = "arrange",
-                Order = 13,
+                Order = 14,
                 Command = new RelayCommand(() => surface.DistributeHorizontally()),
                 IsEnabled = surface.SelectedDesignTargets.Count > 2,
             },
@@ -504,12 +551,12 @@ public sealed partial class MainWindow : Window
                 Id = "distribute.v",
                 Header = "Разложить по вертикали",
                 Group = "arrange",
-                Order = 14,
+                Order = 15,
                 Command = new RelayCommand(() => surface.DistributeVertically()),
                 IsEnabled = surface.SelectedDesignTargets.Count > 2,
             },
-            new DesignEditorContextAction { Id = "----", IsSeparator = true, Group = "arrange", Order = 15 },
-            Action("delete", "Удалить", "Del", designer.DeleteSelectedCommand, 16),
+            new DesignEditorContextAction { Id = "----", IsSeparator = true, Group = "arrange", Order = 16 },
+            Action("delete", "Удалить", "Del", designer.DeleteSelectedCommand, 17),
         ];
 
         static DesignEditorContextAction Action(

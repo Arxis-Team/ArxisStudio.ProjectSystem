@@ -1040,6 +1040,10 @@ internal static class StudioCheck
     /// </remarks>
     private static async Task<int> StressAsync(Window window, DesignerViewModel designer, string folder)
     {
+        // Held under a second name because a local further down is also called `window` — that one
+        // is a form, this one is the studio, and the grouping step at the end needs the studio's.
+        Window studio = window;
+
         var failures = 0;
 
         // A studio that replaced itself mid-story would take the story with it. The reload's
@@ -1466,6 +1470,7 @@ internal static class StudioCheck
         }
 
         failures += await EmbeddedControlAsync(designer, form, controlFile);
+        failures += await GroupingAsync(studio, designer);
 
         return failures;
     }
@@ -1718,6 +1723,117 @@ internal static class StudioCheck
         else
         {
             Say("deleting a window's only content clears the canvas with the document");
+        }
+
+        return failures;
+    }
+
+    /// <summary>
+    /// Groups two controls, writes the mark, and proves it comes back.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The whole round trip, because every leg of it is somewhere the mark could be lost. The
+    /// editor forms the group and reports it; the designer writes it into the design-time namespace,
+    /// which is the one place a project that has never heard of the editor can carry it without its
+    /// own build failing; the loader then skips that attribute for the same reason the compiler
+    /// does, so the designer has to put it back on the live control after the reload. A test of any
+    /// one leg would pass while the mark went missing on another.
+    /// </para>
+    /// <para>
+    /// Grouping is asked of the surface rather than of the view model: the selection lives there,
+    /// and additive selection has no other public door.
+    /// </para>
+    /// </remarks>
+    private static async Task<int> GroupingAsync(Window window, DesignerViewModel designer)
+    {
+        var failures = 0;
+
+        if (!Open(designer, "MainWindow.axaml")
+            || !await Until(
+                () => designer.ActiveForm is { Problem: null, Root: not null } opened
+                    && opened.Name == "MainWindow.axaml",
+                300))
+        {
+            return Fail(ref failures, "the window would not open for the grouping check");
+        }
+
+        FormViewModel form = designer.ActiveForm!;
+
+        if (window.FindControl<DesignEditor>("Surface") is not { } surface)
+        {
+            return Fail(ref failures, "there is no surface to group on");
+        }
+
+        Control? first = Drawn(form, "TextBlock");
+        Control? second = Drawn(form, "Button");
+
+        if (first is null || second is null)
+        {
+            return Fail(ref failures, "the window has nothing to group");
+        }
+
+        if (!surface.SelectDesignTarget(first) || !surface.SelectDesignTarget(second, additive: true))
+        {
+            return Fail(ref failures, "the two controls would not select together");
+        }
+
+        if (!surface.CanGroupSelection())
+        {
+            return Fail(ref failures, "the editor refuses to group two controls of one form");
+        }
+
+        surface.GroupSelection();
+
+        if (!await Until(() => Text(form).Contains("DesignGroup=", StringComparison.Ordinal), 60))
+        {
+            return Fail(ref failures, "grouping did not reach the document");
+        }
+
+        designer.SaveCommand.Execute(null);
+
+        if (!await Until(() => !form.IsDirty, 120))
+        {
+            return Fail(ref failures, "the grouped form would not save");
+        }
+
+        string onDisk = await System.IO.File.ReadAllTextAsync(form.File.Value);
+
+        if (!onDisk.Contains("DesignGroup=", StringComparison.Ordinal))
+        {
+            Fail(ref failures, "the group was not saved");
+        }
+
+        // The mark has to be ignorable, or the project it is written into stops building for its
+        // own author — which is the entire reason it goes in this namespace rather than the
+        // editor's own.
+        if (!onDisk.Contains("mc:Ignorable=\"d\"", StringComparison.Ordinal))
+        {
+            Fail(ref failures, "the group was written without the ignorable declaration that makes it safe");
+        }
+
+        designer.CloseForm(form);
+
+        if (!Open(designer, "MainWindow.axaml")
+            || !await Until(
+                () => designer.ActiveForm is { Problem: null, Root: not null } again
+                    && again.Name == "MainWindow.axaml"
+                    && Drawn(again, "Button") is not null,
+                300))
+        {
+            return Fail(ref failures, "the window would not reopen after the group was saved");
+        }
+
+        FormViewModel reopened = designer.ActiveForm!;
+
+        if (Drawn(reopened, "Button") is not { } restored
+            || string.IsNullOrEmpty(ArxisStudio.Attached.DesignGroup.GetId(restored)))
+        {
+            Fail(ref failures, "the saved group did not come back onto the live control");
+        }
+        else
+        {
+            Say($"a group survives a save and a reload as {ArxisStudio.Attached.DesignGroup.GetId(restored)}");
         }
 
         return failures;

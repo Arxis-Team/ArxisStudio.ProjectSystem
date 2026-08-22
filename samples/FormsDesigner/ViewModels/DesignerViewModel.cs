@@ -72,6 +72,7 @@ public sealed partial class DesignerViewModel : Observable, IDisposable
 
         InitialiseHeader();
         InitialiseGuides();
+        InitialiseGroups();
         InitialiseShell();
         InitialiseRun();
         InitialisePackages();

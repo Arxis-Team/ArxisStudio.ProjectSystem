@@ -143,6 +143,7 @@ Configured as `ArxisStudio.DesignEditor` documents them, mapped for a form desig
 | `Ctrl+0` | fit the form to the window |
 | `Alt+Up`, `Alt+Down` | move the control among its siblings — one history step each |
 | drag off a ruler | pulls out a guide; dragging one off the canvas is how it goes away |
+| `Ctrl+G`, `Ctrl+Shift+G` | group the selection, and take the outermost level off again |
 
 `Ctrl+Z` and `Ctrl+Y` reach the editor first when the pointer is over the canvas, and it asks rather
 than acts: history belongs to whoever keeps it, and here that is the document. Answering the request
@@ -159,6 +160,26 @@ scaffolding for the person laying a form out, not a fact about the form, and not
 markup describes one. Three separate switches, because people reach for them separately — hide the
 rulers, hide the lines, clear the set — and hiding never stops the pull to a line, exactly as hiding
 the grid does not.
+
+**Groups, and where one is written down.** A group is a mark on the controls rather than a node in
+the tree — the editor does not write the tree, and a container it invented would change what the
+canvas shows without changing the file. The mark is a path, outermost first, and the editor keeps it
+in an attached property of its own.
+
+Where it is written is the design decision. That attached property belongs to
+`ArxisStudio.DesignEditor`, and a project being edited has never heard of that assembly: an `xmlns`
+naming it would compile here, where the studio has it loaded, and fail the user's own build with an
+unresolvable assembly. So the mark goes in the design-time namespace, beside the `d:DesignWidth`
+every template already carries — attributes the XAML compiler skips because `mc:Ignorable` says to.
+The declarations are added if the document lacks them, once per edit. A project carrying
+`d:DesignGroup="group-1"` builds and runs exactly as before, which the stress harness checks by
+building it.
+
+The cost of that choice, stated rather than discovered: the runtime loader skips those attributes
+too, so a live control does not receive its group by being loaded — the designer puts it back after
+every load, the same arrangement `Layout.IsTracked` is under. And the whole group is written in one
+edit, because the first write replaces the document and the live tree with it: a second write naming
+a control of the tree that has just gone lands nowhere.
 
 Snapping is on — to the grid and to the neighbours' edges and centres — and both are checkboxes on
 the toolbar. Resize is contained to the form, because a button hanging outside the window it belongs

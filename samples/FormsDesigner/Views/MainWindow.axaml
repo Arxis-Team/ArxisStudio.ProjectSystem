@@ -29,6 +29,8 @@
     <KeyBinding Gesture="Ctrl+D" Command="{Binding DuplicateCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveAllCommand}" />
     <KeyBinding Gesture="Ctrl+D0" Command="{Binding ZoomToFitCommand}" />
+    <KeyBinding Gesture="Ctrl+G" Command="{Binding GroupCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+G" Command="{Binding UngroupCommand}" />
     <KeyBinding Gesture="Alt+Up" Command="{Binding MoveUpCommand}" />
     <KeyBinding Gesture="Alt+Down" Command="{Binding MoveDownCommand}" />
   </Window.KeyBindings>

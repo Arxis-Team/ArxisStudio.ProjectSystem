@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using ArxisStudio.Markup.Xaml;
 using ArxisStudio.Attached;
@@ -496,6 +497,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
         Surface.Attach(session);
 
         MarkEditable(session);
+        MarkGroups(session);
 
         Raise(nameof(Objects));
     }
@@ -558,6 +560,42 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
                 && ReferenceEquals(map.GetObject(element), control))
             {
                 Layout.SetIsTracked(control, true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Puts the groups the document records back onto the live controls.
+    /// </summary>
+    /// <remarks>
+    /// The mark lives in the design-time namespace so that a project that has never heard of the
+    /// editor still builds — see <see cref="DesignerViewModel.WriteGroup"/> — and the runtime loader
+    /// skips those attributes for exactly the same reason the compiler does. So nothing arrives on
+    /// the control by being loaded, and this is where it arrives instead: after every load, from the
+    /// document, which is the only place the group was ever written down.
+    /// </remarks>
+    internal static void MarkGroups(XamlLoadSession session)
+    {
+        XamlObjectMap map = session.Objects;
+
+        foreach (XamlElement element in map.MappedElements)
+        {
+            if (map.GetObject(element) is not Control control)
+            {
+                continue;
+            }
+
+            string? id = element.Attributes
+                .Where(attribute =>
+                    attribute.Name.LocalName == "DesignGroup"
+                    && element.NamespaceContext.LookupNamespace(attribute.Name.Prefix)
+                        == XamlNamespaces.Design)
+                .Select(attribute => attribute.GetValueText())
+                .FirstOrDefault();
+
+            if (!string.IsNullOrEmpty(id))
+            {
+                ArxisStudio.Attached.DesignGroup.SetId(control, id);
             }
         }
     }
