@@ -147,7 +147,7 @@ public sealed partial class MainWindow : Window
 
                 // Grouping is asked of the canvas, because the selection lives there and what a
                 // group may contain is the editor's rule, not this designer's.
-                designer.GroupSelection = surface.GroupSelection;
+                designer.GroupSelection = () => Group(surface, designer);
                 designer.UngroupSelection = surface.UngroupSelection;
 
                 // The documented way to clear the canvas: dropping the item selection takes the
@@ -411,7 +411,7 @@ public sealed partial class MainWindow : Window
             {
                 designer.WriteGroups(
                     byForm.Key,
-                    [.. byForm.Select(change => (change.Target, change.NewId))]);
+                    [.. byForm.Select(change => (change.Target, change.NewId, change.OldId))]);
             }
 
             return;
@@ -570,6 +570,44 @@ public sealed partial class MainWindow : Window
                 Command = command,
                 IsEnabled = command.CanExecute(null),
             };
+    }
+
+    /// <summary>
+    /// Groups, unless the selection holds a control and something inside it.
+    /// </summary>
+    /// <remarks>
+    /// A group whose members include both a panel and its own children is not a group anybody can
+    /// work with: a click inside the panel expands to the cluster, the cluster contains the panel,
+    /// and the panel is what gets selected — so nothing in it can be reached again. It is easy to
+    /// arrive at by accident, because a marquee over a form takes the panel along with what it
+    /// holds, and every control here is selectable in its own right.
+    /// <para>
+    /// Refused here rather than untangled: which of the two the person meant is not knowable, and
+    /// silently dropping one of them would group something other than what is on screen.
+    /// </para>
+    /// </remarks>
+    private static bool Group(DesignEditor surface, DesignerViewModel designer)
+    {
+        Control[] selected = [.. surface.SelectedDesignTargets.Select(target => target.Target)];
+
+        foreach (Control control in selected)
+        {
+            for (Control? above = control.Parent as Control; above is not null;
+                above = above.Parent as Control)
+            {
+                if (System.Array.IndexOf(selected, above) < 0)
+                {
+                    continue;
+                }
+
+                designer.Log($"! {above.GetType().Name} is selected along with what is inside it — "
+                    + "select either the container or its contents, not both");
+
+                return false;
+            }
+        }
+
+        return surface.GroupSelection();
     }
 
     private void OnDeleteRequested(object? sender, DesignEditorDeleteRequestedEventArgs e)

@@ -1512,6 +1512,12 @@ internal static class StudioCheck
         // Placed the way the other editor would place it: written into the file while the form is
         // closed. The open below is what builds the project, which is what makes the type exist.
         string text = await System.IO.File.ReadAllTextAsync(form.File.Value);
+
+        // From a clean document. The file on disk still carries whatever the round trip above saved
+        // before it ungrouped — the ungroup was never saved — and inserting a second mark into an
+        // element that already has one produces a document with two of the same attribute, which is
+        // ambiguous rather than stale. That is a fixture that tests itself, and it did.
+        text = System.Text.RegularExpressions.Regex.Replace(text, " ?d:DesignGroup=\"[^\"]*\"", "");
         int closing = text.LastIndexOf("</StackPanel>", StringComparison.Ordinal);
         int root = text.IndexOf("<Window", StringComparison.Ordinal);
 
@@ -1836,8 +1842,237 @@ internal static class StudioCheck
             Say($"a group survives a save and a reload as {ArxisStudio.Attached.DesignGroup.GetId(restored)}");
         }
 
+        // And the half a save-and-reopen makes reachable: ungrouping a group that came out of the
+        // file rather than out of this session. Reported from the studio — after it, the controls
+        // inside the panel could not be clicked at all.
+        Control? member = Drawn(reopened, "Button");
+        Control? sibling = Drawn(reopened, "TextBox");
+
+        if (member is null || sibling is null)
+        {
+            return Fail(ref failures, "the reopened window lost the controls the ungroup needs");
+        }
+
+        // Both members, because a group is a cluster only when all of it is selected — a click
+        // expands to that by itself, and the public API does not.
+        surface.SelectDesignTarget(Drawn(reopened, "TextBlock")!);
+        surface.SelectDesignTarget(member, additive: true);
+
+        Say("  after reload: "
+            + string.Join(
+                ", ",
+                GroupProbeNames
+                    .Select(name => name + "=" + (Drawn(reopened, name) is { } drawn
+                        ? "\"" + (ArxisStudio.Attached.DesignGroup.GetId(drawn) ?? "-") + "\""
+                        : "?"))));
+
+        if (!surface.CanUngroupSelection())
+        {
+            Fail(ref failures, "a group that came from the file cannot be ungrouped");
+        }
+        else
+        {
+            surface.UngroupSelection();
+
+            if (!await Until(
+                () => !Text(reopened).Contains("DesignGroup=", StringComparison.Ordinal), 60))
+            {
+                Fail(ref failures, "ungrouping did not reach the document");
+            }
+        }
+
+        FormViewModel after = designer.ActiveForm!;
+
+        Say("  after ungroup: "
+            + string.Join(
+                ", ",
+                GroupProbeNames
+                    .Select(name => name + "=" + (Drawn(after, name) is { } drawn
+                        ? "\"" + (ArxisStudio.Attached.DesignGroup.GetId(drawn) ?? "-") + "\""
+                        : "?"))));
+
+        // The report, stated as an assertion, and asked the way a click asks: through the canvas,
+        // which is the path that expands a member to its whole group. Selecting a control and
+        // landing on the panel around it is exactly what was reported.
+        if (Drawn(after, "TextBox") is not { } clickable)
+        {
+            Fail(ref failures, "the panel's controls are gone after the ungroup");
+        }
+        else
+        {
+            designer.SelectFromCanvas(after, clickable);
+
+            if (designer.Selected?.Name.LocalName != "TextBox")
+            {
+                Fail(ref failures, "after ungrouping a reloaded group, clicking a control inside the "
+                    + "panel selects " + (designer.Selected?.Name.LocalName ?? "nothing"));
+            }
+            else
+            {
+                Say("a reloaded group ungroups, and the panel's controls stay clickable");
+            }
+        }
+
+        failures += await StaleGroupAsync(designer, surface, after);
+
         return failures;
     }
+
+    /// <summary>
+    /// A file whose group holds a panel and what is inside it opens usable, and ungroups clean.
+    /// </summary>
+    /// <remarks>
+    /// Reported from the studio, and easy to arrive at: a marquee over a form takes the panel along
+    /// with its contents, every control here is selectable in its own right, and grouping the lot
+    /// marks all of them. From then on nothing inside the panel can be clicked — the click expands
+    /// to the cluster, the cluster holds the panel, and the panel is what gets selected. The
+    /// designer now refuses to make such a group; this is the other half, for the files that
+    /// already have one.
+    /// </remarks>
+    private static async Task<int> StaleGroupAsync(
+        DesignerViewModel designer, DesignEditor surface, FormViewModel form)
+    {
+        var failures = 0;
+
+        string text = await System.IO.File.ReadAllTextAsync(form.File.Value);
+
+        // From a clean document, for the same reason the embedded-control step starts from one: the
+        // ungroup above happened in the editor and was never saved, so the file still carries the
+        // group before it. Marking the first Button of that file puts a second DesignGroup on an
+        // element that already has one, and a document with two of the same attribute does not
+        // compile at all — the build failed, the form opened degraded, and the step reported stale
+        // marks that were really its own fixture.
+        text = System.Text.RegularExpressions.Regex.Replace(text, " ?d:DesignGroup=\"[^\"]*\"", "");
+
+        // The panel and two of the controls inside it, which is the shape that was reported. One
+        // element each, by construction: this form has collected controls from earlier cycles, and
+        // marking every `<Button` would put a member in the group that nothing then selects — two
+        // chosen out of three is not a group, and the step would fail for a reason of its own
+        // making. (It did.)
+        text = MarkOnce(text, "StackPanel");
+        text = MarkOnce(text, "Button");
+        text = MarkOnce(text, "TextBox");
+
+        designer.CloseForm(form);
+
+        await System.IO.File.WriteAllTextAsync(form.File.Value, text);
+
+        if (!Open(designer, "MainWindow.axaml")
+            || !await Until(
+                () => designer.ActiveForm is { Problem: null, Root: not null } o
+                    && o.Name == "MainWindow.axaml"
+                    && Drawn(o, "Button") is not null,
+                300))
+        {
+            return Fail(ref failures, "the window with the stale group would not open");
+        }
+
+        FormViewModel stale = designer.ActiveForm!;
+
+        // The panel's mark is not restored, which is what gives the file its contents back.
+        if (Drawn(stale, "StackPanel") is { } panel
+            && !string.IsNullOrEmpty(ArxisStudio.Attached.DesignGroup.GetId(panel)))
+        {
+            Fail(ref failures, "a panel grouped with its own contents was restored as a member, "
+                + "which is what makes everything inside it unclickable");
+        }
+
+        Say("  stale marks: "
+            + string.Join(
+                ", ",
+                StaleProbeNames
+                    .Select(name => name + "=" + (Drawn(stale, name) is { } drawn
+                        ? "\"" + (ArxisStudio.Attached.DesignGroup.GetId(drawn) ?? "-") + "\""
+                        : "?"))));
+
+        // Ungrouping takes the whole group out of the document, including the mark on the panel that
+        // the editor never knew about. The members are named one by one, because the public
+        // selection API deliberately does not expand a member to its cluster — that is what a
+        // pointer press does, and there is no pointer here.
+        //
+        // Named by their mark rather than by their type: this form has collected controls across
+        // cycles, and the first Button in the tree is not the Button the mark went on. Asked by
+        // type, the step selected an unmarked control, the canvas said so, and the ungroup then
+        // passed on the document sweep alone — a step proving something other than what it reads.
+        Control[] members = [.. Live(stale)
+            .Where(control => ArxisStudio.Attached.DesignGroup.GetId(control) == "group-9")];
+
+        if (members.Length < 2)
+        {
+            return Fail(ref failures, $"the stale group came back with {members.Length} member(s) "
+                + "in the tree, and a group needs two");
+        }
+
+        for (var i = 0; i < members.Length; i++)
+        {
+            surface.SelectDesignTarget(members[i], additive: i > 0);
+        }
+
+        // The selection is the premise of everything below: if the canvas refused a member, the
+        // ungroup would still clear the document by the sweep, and the step would pass without
+        // having asked the question.
+        if (surface.SelectedDesignTargets.Count != members.Length)
+        {
+            return Fail(ref failures, $"the canvas took {surface.SelectedDesignTargets.Count} of "
+                + $"{members.Length} member(s) into the selection");
+        }
+
+        if (!surface.CanUngroupSelection())
+        {
+            return Fail(
+                ref failures,
+                "the stale group cannot be ungrouped; selected "
+                    + surface.SelectedDesignTargets.Count + " target(s): "
+                    + string.Join(
+                        " + ",
+                        surface.SelectedDesignTargets.Select(target =>
+                            target.Target.GetType().Name + "/"
+                            + (ArxisStudio.Attached.DesignGroup.GetId(target.Target) ?? "-"))));
+        }
+
+        surface.UngroupSelection();
+
+        if (!await Until(
+            () => !Text(designer.ActiveForm!).Contains("DesignGroup=", StringComparison.Ordinal), 60))
+        {
+            Fail(ref failures, "ungrouping left marks in the document: "
+                + Text(designer.ActiveForm!).Split("DesignGroup=").Length + " occurrence(s)");
+        }
+        else
+        {
+            Say("a stale group opens usable and ungroups out of the document completely");
+        }
+
+        // And with the group gone, a control inside the panel is what a click lands on.
+        if (Drawn(designer.ActiveForm!, "CheckBox") is { } inside)
+        {
+            designer.SelectFromCanvas(designer.ActiveForm!, inside);
+
+            if (designer.Selected?.Name.LocalName != "CheckBox")
+            {
+                Fail(ref failures, "after the stale group went, clicking a control inside the panel "
+                    + "selects " + (designer.Selected?.Name.LocalName ?? "nothing"));
+            }
+        }
+
+        return failures;
+    }
+
+    /// <summary>The controls the grouping step reports the marks of, named once.</summary>
+    private static readonly string[] GroupProbeNames = ["TextBlock", "Button", "TextBox"];
+
+    /// <summary>Puts the stale group's mark on the first element of a name, and no other.</summary>
+    private static string MarkOnce(string text, string tag)
+    {
+        int at = text.IndexOf("<" + tag + " ", StringComparison.Ordinal);
+
+        return at < 0
+            ? text
+            : text.Insert(at + tag.Length + 2, "d:DesignGroup=\"group-9\" ");
+    }
+
+    /// <summary>The controls the stale-group step reports the marks of.</summary>
+    private static readonly string[] StaleProbeNames = ["StackPanel", "Button", "TextBox", "CheckBox"];
 
     /// <summary>Writes a control of the project's own beside its window, before anything opens it.</summary>
     private static async Task<string> WriteControlAsync(string project)
@@ -1921,6 +2156,10 @@ internal static class StudioCheck
             .FirstOrDefault(control => control.GetType().Name == typeName);
 
     private static bool OnCanvas(FormViewModel form, string typeName) => Drawn(form, typeName) is not null;
+
+    /// <summary>Every control the canvas has drawn for this form.</summary>
+    private static IEnumerable<Control> Live(FormViewModel form) =>
+        Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(form.Surface).OfType<Control>();
 
     /// <summary>Opens a project form by file name, the way a double-click in the pane would.</summary>
     private static bool Open(DesignerViewModel designer, string name)

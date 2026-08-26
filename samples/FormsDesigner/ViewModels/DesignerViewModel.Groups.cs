@@ -64,7 +64,7 @@ public sealed partial class DesignerViewModel
     /// replaced — so the second mark lands nowhere and says nothing. One edit is also what makes
     /// grouping one step of history, which is what undo has to take back.
     /// </remarks>
-    public void WriteGroups(FormViewModel form, IReadOnlyList<(Control Control, string? Id)> marks)
+    public void WriteGroups(FormViewModel form, IReadOnlyList<(Control Control, string? Id, string? Was)> marks)
     {
         if (marks.Count == 0)
         {
@@ -82,7 +82,10 @@ public sealed partial class DesignerViewModel
                 // the form goes blank on the next load.
                 Declare(editor, form.Document?.Root);
 
-                foreach ((Control control, string? id) in marks)
+                var handled = new HashSet<XamlElement>();
+                var retired = new HashSet<string>(StringComparer.Ordinal);
+
+                foreach ((Control control, string? id, string? was) in marks)
                 {
                     if (form.Objects?.GetElement(control) is not { } element)
                     {
@@ -94,11 +97,18 @@ public sealed partial class DesignerViewModel
 
                     XamlAttribute? existing = DesignAttribute(element, GroupAttribute);
 
+                    handled.Add(element);
+
                     if (string.IsNullOrEmpty(id))
                     {
                         if (existing is not null)
                         {
                             editor.RemoveAttribute(element, existing.Name);
+                        }
+
+                        if (!string.IsNullOrEmpty(was))
+                        {
+                            retired.Add(was);
                         }
 
                         continue;
@@ -110,8 +120,50 @@ public sealed partial class DesignerViewModel
                             ?? XamlQualifiedName.Parse(DesignPrefix(element) + ":" + GroupAttribute),
                         id);
                 }
+
+                // And every other element the document still marks with a group that has just been
+                // taken off, whether or not the editor named it. The editor reports the controls it
+                // knows are members; the document is what a file carries, and a group half-removed
+                // from it comes back on the next load and takes the clicks inside it with it.
+                //
+                // Once, after the loop. A sweep per control would try to remove the same attribute
+                // twice in one edit, and two edits over one span is refused — which is the honest
+                // answer to a caller asking for something incoherent.
+                Erase(editor, form.Document?.Root, retired, handled);
             },
             marks[0].Id is null or "" ? "ungroup" : "group"));
+    }
+
+    /// <summary>Takes a group id off every element that still carries it.</summary>
+    /// <remarks>
+    /// The one place that knows a group is a fact about the document rather than about whichever
+    /// controls the editor happened to report.
+    /// </remarks>
+    private static void Erase(
+        XamlDocumentEditor editor,
+        XamlElement? root,
+        HashSet<string> retired,
+        HashSet<XamlElement> handled)
+    {
+        if (root is null || retired.Count == 0)
+        {
+            return;
+        }
+
+        foreach (XamlElement element in root.DescendantElements().Prepend(root))
+        {
+            if (handled.Contains(element))
+            {
+                continue;
+            }
+
+            if (DesignAttribute(element, GroupAttribute) is { } mark
+                && mark.GetValueText() is { } value
+                && retired.Contains(value))
+            {
+                editor.RemoveAttribute(element, mark.Name);
+            }
+        }
     }
 
     /// <summary>The design-namespace attribute of this name, whatever prefix the document gave it.</summary>

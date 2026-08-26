@@ -578,6 +578,8 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     {
         XamlObjectMap map = session.Objects;
 
+        var marked = new System.Collections.Generic.Dictionary<Control, string>();
+
         foreach (XamlElement element in map.MappedElements)
         {
             if (map.GetObject(element) is not Control control)
@@ -595,8 +597,47 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
 
             if (!string.IsNullOrEmpty(id))
             {
-                ArxisStudio.Attached.DesignGroup.SetId(control, id);
+                marked[control] = id;
             }
+        }
+
+        foreach ((Control control, string id) in marked)
+        {
+            // A container marked with the same group as something inside it is not restored. Such a
+            // file can be written — a marquee takes a panel along with what it holds, and every
+            // control here is selectable in its own right — and the result is a form nothing inside
+            // the panel can be clicked in: the click expands to the cluster, the cluster holds the
+            // panel, and the panel is what gets selected. Leaving the ancestor out gives the file
+            // back its contents, and the next ungroup takes the stale mark out of the document.
+            if (Holds(control, marked, id))
+            {
+                continue;
+            }
+
+            ArxisStudio.Attached.DesignGroup.SetId(control, id);
+        }
+
+        static bool Holds(
+            Control control, System.Collections.Generic.Dictionary<Control, string> marked, string id)
+        {
+            foreach ((Control other, string mark) in marked)
+            {
+                if (ReferenceEquals(other, control) || mark != id)
+                {
+                    continue;
+                }
+
+                for (Control? above = other.Parent as Control; above is not null;
+                    above = above.Parent as Control)
+                {
+                    if (ReferenceEquals(above, control))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
     }
 
