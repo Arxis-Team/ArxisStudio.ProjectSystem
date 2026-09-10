@@ -267,6 +267,19 @@ The watcher reports paths. Whether a file was created, edited, renamed or delete
 because nothing here needs it: any of them makes a project stale in exactly the same way. A host
 that wants to distinguish them uses its own file observation, which it probably already has.
 
+### A file appearing under a glob changes nothing a project names
+
+`EvaluationInputs` are files: the project, its imports, the restore output and the places a
+convention file would be. The directories an SDK's default globs expand over are not among them, so
+creating, deleting or renaming a `.cs` or `.axaml` file under a project makes `Invalidate` answer
+`None` — even though the project's `Items` no longer match the disk.
+
+The reasoning that source code does not change what a project *says* holds for editing a file, not
+for adding or removing one. A host that shows items, or builds anything from them, watches the
+project directories for names appearing and disappearing, and refreshes on its own account. Folding
+glob roots into the evaluation inputs would need a new concept on the snapshot and a provider change,
+and would still leave the host filtering `bin` and `obj` out of a recursive watch.
+
 ## Package management
 
 ### Uninstalling leaves the central version behind
