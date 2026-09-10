@@ -109,6 +109,22 @@ public sealed class InvalidationTests
     }
 
     /// <summary>
+    /// The same rule for the XML solution format. A <c>.slnx</c> lists projects exactly as a
+    /// <c>.sln</c> does, so an edited one may have gained or lost them too.
+    /// </summary>
+    [Fact]
+    public void AChangedSolutionXmlFile_InvalidatesTheEntryPoint()
+    {
+        CanonicalPath solutionXml = TestPaths.At("src", "App.slnx");
+
+        WorkspaceInvalidation invalidation = Solution(entryPoint: solutionXml).Invalidate([solutionXml, Shared]);
+
+        Assert.Equal(WorkspaceInvalidationScope.EntryPoint, invalidation.Scope);
+        Assert.Equal([solutionXml], invalidation.Causes);
+        Assert.Empty(invalidation.Projects);
+    }
+
+    /// <summary>
     /// A project file cannot add a project to a workspace, so a standalone entry point is stale like
     /// any other project rather than reopening the workspace.
     /// </summary>

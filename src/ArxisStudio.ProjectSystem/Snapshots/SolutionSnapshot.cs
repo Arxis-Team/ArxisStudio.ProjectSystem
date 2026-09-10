@@ -229,12 +229,14 @@ public sealed class SolutionSnapshot
         }
 
         // The entry point first, and it short-circuits: a solution that changed may have gained or
-        // lost projects, so which of the current ones are stale is not the question any more.
+        // lost projects, so which of the current ones are stale is not the question any more. The
+        // XML format is no different -- a .slnx lists projects exactly as a .sln does.
         //
         // A standalone project entry point is not treated this way, because a project file cannot
         // add a project to the workspace. It is stale like any other project, through its own
         // evaluation inputs -- where it appears, since a project is always its own input.
-        if (EntryPoint.Kind == WorkspaceEntryPointKind.Solution && changed.Contains(EntryPoint.Path))
+        if (EntryPoint.Kind is WorkspaceEntryPointKind.Solution or WorkspaceEntryPointKind.SolutionXml
+            && changed.Contains(EntryPoint.Path))
         {
             return WorkspaceInvalidation.ForEntryPoint([EntryPoint.Path]);
         }
