@@ -41,6 +41,11 @@ public sealed class FileChangeCoalescer : IDisposable
     private readonly ITimer _timer;
     private readonly Lock _sync = new();
 
+    // Held while a batch is handed over, and only then. A second delivery waits for the first to
+    // return rather than running beside it. A handler that calls Flush itself re-enters on its own
+    // thread, which Lock permits, instead of waiting for itself.
+    private readonly Lock _delivery = new();
+
     private readonly HashSet<CanonicalPath> _seen = [];
     private readonly List<CanonicalPath> _pending = [];
 
@@ -49,8 +54,9 @@ public sealed class FileChangeCoalescer : IDisposable
 
     /// <summary>Creates a coalescer.</summary>
     /// <param name="onBatch">
-    /// Called with each batch, on a timer thread, never with an empty batch and never for two
-    /// batches at once. An exception it throws is swallowed — see the remarks on
+    /// Called with each batch — on a timer thread, or on the thread that called <see cref="Flush"/> —
+    /// never with an empty batch and never for two batches at once: a delivery that finds one in
+    /// progress waits for it. An exception it throws is swallowed — see the remarks on
     /// <see cref="Flush"/>.
     /// </param>
     /// <param name="options">How long to wait, or <see langword="null"/> for the defaults.</param>
@@ -97,11 +103,15 @@ public sealed class FileChangeCoalescer : IDisposable
             if (_seen.Add(path))
             {
                 _pending.Add(path);
-            }
 
-            if (_pending.Count == 1)
-            {
-                _firstChangeAt = _time.GetTimestamp();
+                // The ceiling counts from the first change of the batch. A repeat of a path already
+                // pending is not a first change however recently it arrived, and restarting the
+                // count on one let a single busy file postpone its own batch for as long as it kept
+                // changing.
+                if (_pending.Count == 1)
+                {
+                    _firstChangeAt = _time.GetTimestamp();
+                }
             }
 
             _timer.Change(NextDelay(), Timeout.InfiniteTimeSpan);
@@ -112,9 +122,17 @@ public sealed class FileChangeCoalescer : IDisposable
     /// Delivers whatever is pending now, without waiting.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// For a host that knows the burst is over — a save-all completing, a build finishing — and for
     /// shutting down without losing what had accumulated. Does nothing when nothing is pending, so
     /// it is safe to call unconditionally.
+    /// </para>
+    /// <para>
+    /// "Without waiting" is for the timer, not for a batch already being handled: that one is
+    /// finished first, so what this delivers always comes after it. A handler calling this from
+    /// inside its own delivery is the exception, and receives the next batch at once on its own
+    /// thread rather than waiting for itself.
+    /// </para>
     /// </remarks>
     public void Flush() => Deliver();
 
@@ -157,35 +175,42 @@ public sealed class FileChangeCoalescer : IDisposable
 
     private void Deliver()
     {
-        ImmutableArray<CanonicalPath> batch;
-
-        lock (_sync)
+        // One batch at a time, in the order they were taken. Without this, a timer firing while a
+        // slow handler was still running, or a Flush racing the timer, handed the next batch over
+        // on a second thread while the first was still being handled. The state lock is taken
+        // inside this one and never the other way round, so the two cannot wait on each other.
+        lock (_delivery)
         {
-            if (_disposed || _pending.Count == 0)
+            ImmutableArray<CanonicalPath> batch;
+
+            lock (_sync)
             {
-                return;
+                if (_disposed || _pending.Count == 0)
+                {
+                    return;
+                }
+
+                batch = [.. _pending];
+
+                _pending.Clear();
+                _seen.Clear();
+
+                // Nothing is pending now, so no wake-up is wanted. Without this a Flush would leave
+                // the timer armed to fire on an empty batch.
+                _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
             }
 
-            batch = [.. _pending];
-
-            _pending.Clear();
-            _seen.Clear();
-
-            // Nothing is pending now, so no wake-up is wanted. Without this a Flush would leave the
-            // timer armed to fire on an empty batch.
-            _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-        }
-
-        // Outside the lock, for the same reason the workspace raises its events outside the gate:
-        // this is arbitrary code, and it is entitled to call back in.
-        try
-        {
-            _onBatch(batch);
-        }
+            // Outside the state lock, for the same reason the workspace raises its events outside
+            // the gate: this is arbitrary code, and it is entitled to call back in.
+            try
+            {
+                _onBatch(batch);
+            }
 #pragma warning disable CA1031 // A batch handler throwing on a timer thread would take the process
-        catch (Exception)      // down. Isolated, exactly as a snapshot subscriber is -- ADR 0007.
+            catch (Exception)      // down. Isolated, exactly as a snapshot subscriber is -- ADR 0007.
 #pragma warning restore CA1031
-        {
+            {
+            }
         }
     }
 }

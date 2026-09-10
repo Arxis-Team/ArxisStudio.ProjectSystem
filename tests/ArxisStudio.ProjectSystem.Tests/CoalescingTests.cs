@@ -124,6 +124,32 @@ public sealed class CoalescingTests
         }
     }
 
+    /// <summary>
+    /// The ceiling holds for one file that keeps changing, not only for many files that do.
+    /// </summary>
+    /// <remarks>
+    /// A log or a generated file written more often than the quiet period never goes quiet, so the
+    /// ceiling is the only thing that will ever deliver it — and a ceiling counted from the latest
+    /// repeat instead of from the first change is not a ceiling.
+    /// </remarks>
+    [Fact]
+    public void TheSameFileChangingWithoutPause_IsDeliveredAtTheCeiling()
+    {
+        (FileChangeCoalescer coalescer, List<ImmutableArray<CanonicalPath>> batches, FakeTimeProvider time) =
+            Create();
+
+        using (coalescer)
+        {
+            for (int tick = 0; tick < 20; tick++)
+            {
+                coalescer.Add(A);
+                time.Advance(TimeSpan.FromMilliseconds(100));
+            }
+
+            Assert.Equal([A], Assert.Single(batches));
+        }
+    }
+
     [Fact]
     public void AnEmptyPath_IsIgnored()
     {
@@ -177,6 +203,46 @@ public sealed class CoalescingTests
             time.Advance(Options.MaximumDelay);
 
             Assert.Single(batches);
+        }
+    }
+
+    /// <summary>
+    /// A handler that flushes from inside its own delivery receives the next batch rather than
+    /// waiting for itself.
+    /// </summary>
+    /// <remarks>
+    /// Batches are handed over one at a time, so a delivery that finds one in progress waits for it.
+    /// The handler asking for the next batch from within is the one case that must not wait, because
+    /// what it would be waiting for is itself.
+    /// </remarks>
+    [Fact]
+    public void AHandlerThatFlushes_ReceivesTheNextBatchInsteadOfWaitingForItself()
+    {
+        var batches = new List<ImmutableArray<CanonicalPath>>();
+        FileChangeCoalescer? coalescer = null;
+
+        coalescer = new FileChangeCoalescer(
+            batch =>
+            {
+                batches.Add(batch);
+
+                if (batches.Count == 1)
+                {
+                    coalescer!.Add(B);
+                    coalescer.Flush();
+                }
+            },
+            Options,
+            new FakeTimeProvider());
+
+        using (coalescer)
+        {
+            coalescer.Add(A);
+            coalescer.Flush();
+
+            Assert.Equal(2, batches.Count);
+            Assert.Equal([A], batches[0]);
+            Assert.Equal([B], batches[1]);
         }
     }
 
