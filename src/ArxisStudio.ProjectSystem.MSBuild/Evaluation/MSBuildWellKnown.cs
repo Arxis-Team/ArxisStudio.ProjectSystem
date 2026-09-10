@@ -61,6 +61,10 @@ internal static class MSBuildWellKnown
         // where the walk it would repeat has to stop. See WalkedImports.
         "DirectoryBuildPropsPath", "DirectoryBuildTargetsPath", "DirectoryPackagesPropsPath",
 
+        // Whether that last file is in force. It can exist and still say false, so a package edit
+        // deciding where a version goes needs the switch as well as the path.
+        "ManagePackageVersionsCentrally",
+
         "LangVersion", "Nullable", "ImplicitUsings", "TreatWarningsAsErrors",
         "UseWPF", "UseWindowsForms", "IsPackable", "IsTestProject",
         "DocumentationFile", "AssemblyVersion", "FileVersion", "Version",

@@ -1,0 +1,13 @@
+<!-- A project under central package management: its package reference carries no version, and
+     the Directory.Packages.props beside it says which one. -->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" />
+  </ItemGroup>
+
+</Project>

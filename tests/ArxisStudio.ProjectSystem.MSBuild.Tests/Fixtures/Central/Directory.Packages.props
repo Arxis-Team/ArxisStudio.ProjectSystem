@@ -1,0 +1,13 @@
+<!-- Turns central package management back on for this fixture alone. The walk finds this file
+     before the one in Fixtures, which turns it off for everything else. -->
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Serilog" Version="4.1.0" />
+  </ItemGroup>
+
+</Project>

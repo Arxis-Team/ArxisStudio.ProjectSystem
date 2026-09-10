@@ -84,6 +84,29 @@ public sealed class MSBuildProjectProviderTests
     }
 
     /// <summary>
+    /// Whether a project's versions live beside its references or in a central file is a fact of
+    /// the evaluation, and a package edit cannot proceed without it.
+    /// </summary>
+    /// <remarks>
+    /// Surfacing the central file's path alone is not enough: the file can exist and still say
+    /// <c>false</c>. An edit that guessed from the path would write a version NuGet then refuses
+    /// (NU1008), which is the failure this assertion stands in front of.
+    /// </remarks>
+    [Fact]
+    public async Task CentralPackageManagement_IsSurfacedOnTheSnapshot()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("Central"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal("true", project.Properties.GetValueOrDefault("ManagePackageVersionsCentrally"), ignoreCase: true);
+        Assert.Equal(
+            CanonicalPath.Create(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Central", "Directory.Packages.props")),
+            CanonicalPath.Create(project.Properties["DirectoryPackagesPropsPath"]));
+    }
+
+    /// <summary>
     /// The claim ADR 0003 makes, at the one place it can actually be checked: the evaluation's
     /// ProjectCollection is disposed before the provider returns, so a snapshot that still reads
     /// afterwards is a snapshot that owns its data.
