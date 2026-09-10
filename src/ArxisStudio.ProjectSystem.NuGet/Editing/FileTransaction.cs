@@ -21,10 +21,10 @@ namespace ArxisStudio.ProjectSystem.NuGet;
 /// still restores and one that does not.
 /// </para>
 /// <para>
-/// A rollback writes back bytes this class already holds, so it needs nothing from the disk to
-/// succeed and cannot itself fail for want of information. If the rollback write fails too, the
-/// exception is swallowed: there is nothing further to try and the original failure is the one worth
-/// reporting.
+/// A rollback writes back text and an encoding this class already holds, so it needs nothing from
+/// the disk to succeed and cannot itself fail for want of information. If the rollback write fails
+/// too, the exception is swallowed: there is nothing further to try and the original failure is the
+/// one worth reporting.
 /// </para>
 /// </remarks>
 internal sealed class FileTransaction
@@ -35,8 +35,34 @@ internal sealed class FileTransaction
     /// <summary>Gets or sets why the edit could not proceed, when something was unreadable.</summary>
     internal ProjectOperationResult? Failure { get; set; }
 
-    /// <summary>Remembers a file's original text so it can be restored.</summary>
-    internal void Track(CanonicalPath path, string original, XDocument document) =>
+    /// <summary>Reads a file's text together with the encoding it was written in.</summary>
+    /// <remarks>
+    /// <see cref="File.ReadAllTextAsync(string, CancellationToken)"/> detects a byte-order mark and
+    /// then forgets it, so a file written back afterwards gains one or loses one depending on the
+    /// encoding picked for the write. Keeping the detected encoding is what lets a write reproduce
+    /// the file's bytes everywhere its text did not change.
+    /// </remarks>
+    /// <param name="path">The file to read.</param>
+    /// <param name="cancellationToken">A token to observe.</param>
+    /// <returns>The text, and the encoding to write it back in.</returns>
+    internal static async ValueTask<FileText> ReadTextAsync(CanonicalPath path, CancellationToken cancellationToken)
+    {
+        byte[] bytes = await File.ReadAllBytesAsync(path.Value, cancellationToken).ConfigureAwait(false);
+
+        // Without a mark the file is taken as UTF-8 and goes back without one. With a mark the
+        // reader switches to the encoding the mark names, and that encoding writes the mark again.
+        using var reader = new StreamReader(
+            new MemoryStream(bytes, writable: false),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            detectEncodingFromByteOrderMarks: true);
+
+        string text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+
+        return new FileText(text, reader.CurrentEncoding);
+    }
+
+    /// <summary>Remembers a file's original text and encoding so it can be restored.</summary>
+    internal void Track(CanonicalPath path, FileText original, XDocument document) =>
         _files.Add(new TrackedFile(path, original, document));
 
     /// <summary>Whether a document now differs from what was read.</summary>
@@ -46,7 +72,7 @@ internal sealed class FileTransaction
         {
             if (ReferenceEquals(file.Document, document))
             {
-                return !string.Equals(file.Original, Serialise(file), StringComparison.Ordinal);
+                return !string.Equals(file.Original.Text, Serialise(file), StringComparison.Ordinal);
             }
         }
 
@@ -60,14 +86,14 @@ internal sealed class FileTransaction
         {
             string updated = Serialise(file);
 
-            if (string.Equals(file.Original, updated, StringComparison.Ordinal))
+            if (string.Equals(file.Original.Text, updated, StringComparison.Ordinal))
             {
                 continue;
             }
 
             try
             {
-                await File.WriteAllTextAsync(file.Path.Value, updated, Encoding.UTF8, cancellationToken)
+                await File.WriteAllTextAsync(file.Path.Value, updated, file.Original.Encoding, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception)
@@ -88,7 +114,7 @@ internal sealed class FileTransaction
         {
             try
             {
-                await File.WriteAllTextAsync(file.Path.Value, file.Original, Encoding.UTF8, cancellationToken)
+                await File.WriteAllTextAsync(file.Path.Value, file.Original.Text, file.Original.Encoding, cancellationToken)
                     .ConfigureAwait(false);
             }
 #pragma warning disable CA1031 // Nothing further to try, and the failure that started this is the
@@ -147,5 +173,10 @@ internal sealed class FileTransaction
         return file.Document.Declaration is { } given ? given + body.ToString() : body.ToString();
     }
 
-    private sealed record TrackedFile(CanonicalPath Path, string Original, XDocument Document);
+    private sealed record TrackedFile(CanonicalPath Path, FileText Original, XDocument Document);
 }
+
+/// <summary>A file's text and the encoding it was written in.</summary>
+/// <param name="Text">The text, without a byte-order mark.</param>
+/// <param name="Encoding">The encoding that writes it back as it was.</param>
+internal readonly record struct FileText(string Text, Encoding Encoding);

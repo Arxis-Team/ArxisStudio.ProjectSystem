@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -67,7 +66,7 @@ public static class PackageInstaller
 
         // Read before editing, so the undo needs nothing from the disk to succeed. The same
         // principle as the editor's own transaction, one level up: the bytes are already in hand.
-        List<(CanonicalPath Path, string Text)> before =
+        List<(CanonicalPath Path, byte[] Bytes)> before =
             await ReadAsync(request, layout, cancellationToken).ConfigureAwait(false);
 
         ProjectOperationResult edit = await PackageEditor
@@ -106,21 +105,29 @@ public static class PackageInstaller
 
     /// <summary>The files this change could touch, as they are now.</summary>
     /// <remarks>
-    /// A file that is not there is recorded as absent rather than skipped, so that a change which
-    /// creates one can be undone by removing it again.
+    /// <para>
+    /// Kept as bytes rather than text, so that putting a file back puts back exactly what was there:
+    /// the same encoding, and the same byte-order mark or the same absence of one. Text read and
+    /// written again comes back re-encoded, which reads the same and still shows as a change.
+    /// </para>
+    /// <para>
+    /// A file that is not there is skipped. The editor never creates one — a central versions file
+    /// has to exist before an edit is attempted at all — so there is nothing an undo would have to
+    /// remove.
+    /// </para>
     /// </remarks>
-    private static async ValueTask<List<(CanonicalPath, string)>> ReadAsync(
+    private static async ValueTask<List<(CanonicalPath, byte[])>> ReadAsync(
         PackageEditRequest request,
         PackageVersionLayout layout,
         CancellationToken cancellationToken)
     {
-        var files = new List<(CanonicalPath, string)>();
+        var files = new List<(CanonicalPath, byte[])>();
 
         foreach (CanonicalPath path in Touched(request, layout))
         {
             if (File.Exists(path.Value))
             {
-                files.Add((path, await File.ReadAllTextAsync(path.Value, cancellationToken).ConfigureAwait(false)));
+                files.Add((path, await File.ReadAllBytesAsync(path.Value, cancellationToken).ConfigureAwait(false)));
             }
         }
 
@@ -145,13 +152,13 @@ public static class PackageInstaller
     /// something that happened to a file, and the file is where to look for it.
     /// </remarks>
     private static async ValueTask<bool> ChangedAsync(
-        List<(CanonicalPath Path, string Text)> before, CancellationToken cancellationToken)
+        List<(CanonicalPath Path, byte[] Bytes)> before, CancellationToken cancellationToken)
     {
-        foreach ((CanonicalPath path, string text) in before)
+        foreach ((CanonicalPath path, byte[] bytes) in before)
         {
-            string now = await File.ReadAllTextAsync(path.Value, cancellationToken).ConfigureAwait(false);
+            byte[] now = await File.ReadAllBytesAsync(path.Value, cancellationToken).ConfigureAwait(false);
 
-            if (!string.Equals(text, now, StringComparison.Ordinal))
+            if (!now.AsSpan().SequenceEqual(bytes))
             {
                 return true;
             }
@@ -172,7 +179,7 @@ public static class PackageInstaller
     /// </remarks>
     private static async ValueTask<ProjectOperationResult> UndoAsync(
         PackageEditRequest request,
-        List<(CanonicalPath Path, string Text)> before,
+        List<(CanonicalPath Path, byte[] Bytes)> before,
         ProjectOperationResult restore,
         CancellationToken cancellationToken)
     {
@@ -180,13 +187,13 @@ public static class PackageInstaller
 
         var diagnostics = new List<ProjectDiagnostic>(restore.Diagnostics);
 
-        foreach ((CanonicalPath path, string text) in before)
+        foreach ((CanonicalPath path, byte[] bytes) in before)
         {
             try
             {
                 // Not cancellable: an undo that stops halfway leaves exactly the state it exists to
                 // prevent, and the caller cancelling does not make a broken project acceptable.
-                await File.WriteAllTextAsync(path.Value, text, Encoding.UTF8, CancellationToken.None)
+                await File.WriteAllBytesAsync(path.Value, bytes, CancellationToken.None)
                     .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

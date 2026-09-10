@@ -416,6 +416,35 @@ public sealed class PackageEditorTests : IDisposable
             layout,
             TestContext.Current.CancellationToken);
 
+    /// <summary>
+    /// An edit writes a file back in the encoding it was read in. A byte-order mark is not
+    /// something the file said, and gaining one shows up in every diff of the repository.
+    /// </summary>
+    [Fact]
+    public async Task AFileWithoutAByteOrderMark_StaysWithoutOne()
+    {
+        CanonicalPath project = WriteEncoded(
+            "App.csproj", EmptyProject, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        await Apply(PackageEditKind.Install, project, "Serilog", "4.1.0");
+
+        Assert.False(StartsWithByteOrderMark(project), "The edit added a byte-order mark the file never had.");
+        Assert.Contains("Serilog", await ReadAsync(project), StringComparison.Ordinal);
+    }
+
+    /// <summary>The same rule the other way: a file that had a mark keeps it.</summary>
+    [Fact]
+    public async Task AFileWithAByteOrderMark_KeepsIt()
+    {
+        CanonicalPath project = WriteEncoded(
+            "App.csproj", EmptyProject, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        await Apply(PackageEditKind.Install, project, "Serilog", "4.1.0");
+
+        Assert.True(StartsWithByteOrderMark(project), "The edit dropped the file's byte-order mark.");
+        Assert.Contains("Serilog", await ReadAsync(project), StringComparison.Ordinal);
+    }
+
     private CanonicalPath Write(string name, string content)
     {
         string path = Path.Combine(_root, name);
@@ -424,6 +453,18 @@ public sealed class PackageEditorTests : IDisposable
 
         return CanonicalPath.Create(path);
     }
+
+    private CanonicalPath WriteEncoded(string name, string content, System.Text.Encoding encoding)
+    {
+        string path = Path.Combine(_root, name);
+
+        File.WriteAllText(path, content.ReplaceLineEndings("\n"), encoding);
+
+        return CanonicalPath.Create(path);
+    }
+
+    private static bool StartsWithByteOrderMark(CanonicalPath path) =>
+        File.ReadAllBytes(path.Value) is [0xEF, 0xBB, 0xBF, ..];
 
     private static async Task<string> ReadAsync(CanonicalPath path) =>
         (await File.ReadAllTextAsync(path.Value, TestContext.Current.CancellationToken))

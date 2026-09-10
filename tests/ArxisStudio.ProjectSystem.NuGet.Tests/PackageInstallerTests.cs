@@ -89,6 +89,26 @@ public sealed class PackageInstallerTests : IDisposable
         Assert.Contains(result.Diagnostics, d => d.Code == PackageDiagnosticCodes.ChangeUndone);
     }
 
+    /// <summary>
+    /// Put back means the bytes, not the text. An undo that re-encodes leaves a file that reads the
+    /// same and still shows as changed — carrying a byte-order mark it never had.
+    /// </summary>
+    [Fact]
+    public async Task AChangeThatDoesNotRestore_IsPutBackByteForByte()
+    {
+        string path = Path.Combine(_root, "App.csproj");
+        byte[] original = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
+            .GetBytes(EmptyProject.ReplaceLineEndings("\r\n"));
+
+        await File.WriteAllBytesAsync(path, original, TestContext.Current.CancellationToken);
+
+        ProjectOperationResult result = await Install(
+            CanonicalPath.Create(path), new RestoringProvider { Fail = "NU1102" });
+
+        Assert.Equal(ProjectOperationStatus.Failed, result.Status);
+        Assert.Equal(original, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+    }
+
     /// <summary>Both files go back, not just the one the reference went into.</summary>
     [Fact]
     public async Task AFailedRestoreUnderCentralManagement_PutsBothFilesBack()

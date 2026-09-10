@@ -251,16 +251,20 @@ public static class PackageEditor
     }
 
     /// <summary>Reads a document into the transaction, or records why it could not be.</summary>
+    /// <remarks>
+    /// The text is read together with the encoding it was written in, so the file goes back the way
+    /// it came: a byte-order mark stays where there was one and is not invented where there was not.
+    /// </remarks>
     private static async ValueTask<XDocument?> ReadAsync(
         CanonicalPath path,
         FileTransaction transaction,
         CancellationToken cancellationToken)
     {
-        string text;
+        FileText read;
 
         try
         {
-            text = await File.ReadAllTextAsync(path.Value, cancellationToken).ConfigureAwait(false);
+            read = await FileTransaction.ReadTextAsync(path, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -274,9 +278,9 @@ public static class PackageEditor
         {
             // PreserveWhitespace is the difference between an edit and a reformat: without it every
             // change rewrites the layout of the whole file.
-            XDocument document = XDocument.Parse(text, LoadOptions.PreserveWhitespace);
+            XDocument document = XDocument.Parse(read.Text, LoadOptions.PreserveWhitespace);
 
-            transaction.Track(path, text, document);
+            transaction.Track(path, read, document);
 
             return document;
         }
