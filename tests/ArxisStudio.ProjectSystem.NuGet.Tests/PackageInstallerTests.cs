@@ -241,6 +241,60 @@ public sealed class PackageInstallerTests : IDisposable
                 Request(TestProject()), workspace, cancellationToken: cancellation.Token));
     }
 
+    /// <summary>
+    /// The restore runs in the context the workspace was loaded in. A host that loads with its own
+    /// output path and configuration and then restores without them restores a different project:
+    /// one whose assets file is not the one its next build reads.
+    /// </summary>
+    [Fact]
+    public async Task ARestore_CarriesTheContextTheWorkspaceWasLoadedIn()
+    {
+        CanonicalPath project = Write("App.csproj", EmptyProject);
+        var provider = new RestoringProvider();
+
+        await using var workspace = new ProjectWorkspace(provider);
+
+        await workspace.LoadAsync(
+            new WorkspaceLoadRequest
+            {
+                Workspace = workspace.Identity,
+                EntryPointPath = project,
+                Configuration = "Release",
+                Platform = "x64",
+                TargetFramework = "net10.0",
+                GlobalProperties = ProjectMetadata.Create(
+                    [new KeyValuePair<string, string>("BaseOutputPath", "bin/Studio/")]),
+            },
+            TestContext.Current.CancellationToken);
+
+        await PackageInstaller.ApplyAndRestoreAsync(
+            Request(project), workspace, cancellationToken: TestContext.Current.CancellationToken);
+
+        ProjectOperationRequest restore = provider.LastRequest!;
+
+        Assert.Equal("Release", restore.Configuration);
+        Assert.Equal("x64", restore.Platform);
+        Assert.Equal("bin/Studio/", restore.GlobalProperties.GetValueOrDefault("BaseOutputPath"));
+
+        // Deliberately not the framework: a restore covers every framework a project targets, and
+        // narrowing it to the one being looked at would leave the others unrestored.
+        Assert.Null(restore.TargetFramework);
+    }
+
+    [Fact]
+    public async Task WithNothingLoaded_TheRestoreUsesTheProvidersDefaults()
+    {
+        CanonicalPath project = Write("App.csproj", EmptyProject);
+        var provider = new RestoringProvider();
+
+        ProjectOperationResult result = await Install(project, provider);
+
+        Assert.Equal(ProjectOperationStatus.Succeeded, result.Status);
+        Assert.Null(provider.LastRequest!.Configuration);
+        Assert.Null(provider.LastRequest.Platform);
+        Assert.Empty(provider.LastRequest.GlobalProperties);
+    }
+
     private static async ValueTask<ProjectOperationResult> Install(
         CanonicalPath project,
         RestoringProvider provider,
@@ -295,9 +349,31 @@ public sealed class PackageInstallerTests : IDisposable
 
         public bool CanLoad(WorkspaceEntryPoint entryPoint) => true;
 
+        /// <summary>
+        /// Loads a one-project snapshot of whatever it is asked for, so a test can open the workspace
+        /// in a context of its choosing before it restores.
+        /// </summary>
         public ValueTask<WorkspaceLoadResult> LoadAsync(
-            WorkspaceLoadRequest request, CancellationToken cancellationToken) =>
-            throw new NotSupportedException("This provider exists to restore.");
+            WorkspaceLoadRequest request, CancellationToken cancellationToken)
+        {
+            var project = new ProjectSnapshotBuilder
+            {
+                Identity = ProjectIdentity.Create(request.Workspace, request.EntryPointPath),
+                Name = request.EntryPointPath.FileName,
+                ProjectFilePath = request.EntryPointPath,
+            };
+
+            var solution = new SolutionSnapshotBuilder
+            {
+                Workspace = request.Workspace,
+                Name = request.EntryPointPath.FileName,
+                Request = request,
+            };
+
+            solution.Projects.Add(project.ToSnapshot());
+
+            return ValueTask.FromResult(WorkspaceLoadResult.Success(solution.ToSnapshot()));
+        }
 
         public bool CanExecute(ProjectOperationKind kind) => kind == ProjectOperationKind.Restore;
 

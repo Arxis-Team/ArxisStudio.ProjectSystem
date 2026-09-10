@@ -31,11 +31,18 @@ public static class PackageInstaller
 {
     /// <summary>Applies a change and restores the project.</summary>
     /// <remarks>
+    /// <para>
     /// The restore is not a mutation and does not take the workspace's boundary — see
     /// <see href="../../docs/adr/0014-an-operation-is-not-a-mutation.md">ADR 0014</see> — so no
     /// snapshot is published and the version does not advance. A caller that wants the model to
     /// reflect the new reference calls <see cref="ProjectWorkspace.RefreshAsync"/> afterwards, at a
     /// moment it chose.
+    /// </para>
+    /// <para>
+    /// The restore runs with the configuration, platform and global properties the workspace was
+    /// loaded with, and with the provider's defaults when nothing is loaded. The target framework is
+    /// deliberately not carried over: a restore covers every framework a project targets.
+    /// </para>
     /// </remarks>
     /// <param name="request">What to change.</param>
     /// <param name="workspace">The workspace whose provider will restore.</param>
@@ -85,12 +92,20 @@ public static class PackageInstaller
             return edit;
         }
 
+        // In the context the workspace was loaded in. A host that loads with its own configuration
+        // or output path and restores without them restores a different project, whose assets file
+        // is not the one its next build reads.
+        WorkspaceLoadRequest? loaded = workspace.CurrentRequest;
+
         ProjectOperationResult restore = await workspace.ExecuteAsync(
             new ProjectOperationRequest
             {
                 Kind = ProjectOperationKind.Restore,
                 Workspace = workspace.Identity,
                 EntryPointPath = request.ProjectFilePath,
+                Configuration = loaded?.Configuration,
+                Platform = loaded?.Platform,
+                GlobalProperties = loaded?.GlobalProperties ?? ProjectMetadata.Empty,
             },
             progress,
             cancellationToken).ConfigureAwait(false);
