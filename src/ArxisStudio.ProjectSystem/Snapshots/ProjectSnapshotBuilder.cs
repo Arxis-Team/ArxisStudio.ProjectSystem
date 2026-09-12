@@ -88,9 +88,11 @@ public sealed class ProjectSnapshotBuilder
     /// Gets the files whose contents produced this snapshot, and whose change makes it stale.
     /// </summary>
     /// <remarks>
-    /// Duplicates are removed and empty paths dropped on the way in, because these are compared
-    /// against a stream of file-change notifications and the same file arriving twice would cost a
-    /// comparison for every change, forever.
+    /// <see cref="ProjectFilePath"/> is added for you and named first, so a provider need not
+    /// remember to and a snapshot built after an evaluation failed still hears the file being
+    /// fixed. Duplicates are removed and empty paths dropped on the way in, because these are
+    /// compared against a stream of file-change notifications and the same file arriving twice
+    /// would cost a comparison for every change, forever.
     /// </remarks>
     public IList<CanonicalPath> EvaluationInputs { get; } = [];
 
@@ -158,8 +160,25 @@ public sealed class ProjectSnapshotBuilder
             [.. ResolvedPackages],
             [.. Items],
             [.. Outputs],
-            [.. EvaluationInputs.Where(static path => !path.IsEmpty).Distinct()],
+            Inputs(),
             [.. Diagnostics],
             ProjectMetadata.Create(Properties));
     }
+
+    /// <summary>
+    /// The evaluation inputs, with the project file named first whether a provider listed it or not.
+    /// </summary>
+    /// <remarks>
+    /// A project is always its own input — <see cref="SolutionSnapshot.Invalidate"/> is written on
+    /// that and a consumer watching a project relies on it — but a snapshot built when an evaluation
+    /// failed has no imports to list, and one built from nothing would then be watched by nothing:
+    /// the very file that has to be fixed would be the one file whose fixing went unheard. Held here
+    /// rather than asked of each provider, because a provider that forgot it would produce a project
+    /// that is stale forever and say nothing about why.
+    /// </remarks>
+    private ImmutableArray<CanonicalPath> Inputs() =>
+        [.. EvaluationInputs
+            .Prepend(ProjectFilePath)
+            .Where(static path => !path.IsEmpty)
+            .Distinct()];
 }

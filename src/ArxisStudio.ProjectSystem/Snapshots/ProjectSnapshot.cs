@@ -177,6 +177,11 @@ public sealed class ProjectSnapshot
     /// not.
     /// </para>
     /// <para>
+    /// <see cref="ProjectFilePath"/> is always here and always first, including on a project that
+    /// would not evaluate: that snapshot knows nothing else about itself, and a list without it
+    /// would leave the one file somebody is about to fix unwatched.
+    /// </para>
+    /// <para>
     /// A provider is expected to leave out the parts of the toolchain a project imports but nobody
     /// edits — the SDK's own targets, build logic shipped inside packages. Those are the
     /// overwhelming majority of what a project imports and none of them change while a solution is

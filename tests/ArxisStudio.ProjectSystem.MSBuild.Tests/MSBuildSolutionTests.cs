@@ -185,6 +185,11 @@ public sealed class MSBuildSolutionTests
 
         // And the failure is visible from the result without walking the tree.
         Assert.Contains(result.Diagnostics, static d => d.Code == MSBuildDiagnosticCodes.ProjectFileNotFound);
+
+        // It also names the file it could not read, which is what makes the file appearing -- or
+        // being fixed -- a change somebody hears about. A project with no inputs would be watched by
+        // nothing and would stay broken until the rest of the solution moved.
+        Assert.Equal([project.ProjectFilePath], project.EvaluationInputs);
     }
 
     [Fact]

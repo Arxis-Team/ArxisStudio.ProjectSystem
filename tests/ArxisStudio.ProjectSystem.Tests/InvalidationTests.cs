@@ -153,6 +153,62 @@ public sealed class InvalidationTests
         Assert.DoesNotContain(Identity("App"), invalidation.Projects);
     }
 
+    /// <summary>
+    /// A project that would not evaluate has nothing to list, and is invalidated by its own file
+    /// anyway: the builder names it whether the provider did or not.
+    /// </summary>
+    /// <remarks>
+    /// Without this the one file somebody is about to fix is the one file nobody is watching, and a
+    /// project that failed to load stays failed until something else in the solution changes.
+    /// </remarks>
+    [Fact]
+    public void AProjectThatListedNoInputs_IsStillInvalidatedByItsOwnFile()
+    {
+        var solution = new SolutionSnapshotBuilder
+        {
+            Workspace = Workspace,
+            Name = "App",
+            Request = new WorkspaceLoadRequest
+            {
+                Workspace = Workspace,
+                EntryPointPath = TestPaths.Solution(),
+            },
+        };
+
+        var unreadable = new ProjectSnapshotBuilder
+        {
+            Identity = Identity("App"),
+            Name = "App",
+            ProjectFilePath = TestPaths.Project("App"),
+        };
+
+        Assert.Equal([TestPaths.Project("App")], unreadable.ToSnapshot().EvaluationInputs);
+
+        solution.Projects.Add(unreadable.ToSnapshot());
+
+        WorkspaceInvalidation invalidation = solution.ToSnapshot().Invalidate([TestPaths.Project("App")]);
+
+        Assert.Equal([Identity("App")], invalidation.Projects);
+        Assert.Equal([TestPaths.Project("App")], invalidation.Causes);
+    }
+
+    /// <summary>The project file is named once and first, however a provider listed it.</summary>
+    [Fact]
+    public void AProjectThatListedItsOwnFile_NamesItOnce()
+    {
+        var project = new ProjectSnapshotBuilder
+        {
+            Identity = Identity("App"),
+            Name = "App",
+            ProjectFilePath = TestPaths.Project("App"),
+        };
+
+        project.EvaluationInputs.Add(Shared);
+        project.EvaluationInputs.Add(TestPaths.Project("App"));
+
+        Assert.Equal([TestPaths.Project("App"), Shared], project.ToSnapshot().EvaluationInputs);
+    }
+
     [Fact]
     public void AnInvalidation_DescribesItself()
     {
