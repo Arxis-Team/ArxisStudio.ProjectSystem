@@ -70,9 +70,15 @@
 
     Reading a search response, by contrast, is a documented JSON shape and is read by hand for the
     same reason project.assets.json is (ADR 0012).
+
+    The version must not lag the one the .NET SDK ships. Building a project in process loads the
+    SDK's own build tasks into the default load context, and they reference this assembly by its
+    exact version; a lower copy already loaded under the same simple name makes that load fail with
+    a manifest mismatch, and the build dies inside GetPackagesToPrune, far from anything naming the
+    cause. 7.9.0 is what SDK 10.0.4xx carries.
   -->
   <ItemGroup>
-    <PackageVersion Include="NuGet.Versioning" Version="7.6.0" />
+    <PackageVersion Include="NuGet.Versioning" Version="7.9.0" />
   </ItemGroup>
 
   <!--
