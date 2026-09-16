@@ -188,8 +188,8 @@ the core with it.
 ArxisStudio.ProjectSystem.MSBuild      ArxisStudio.ProjectSystem.NuGet
   reads projects                         writes them
 
-Later, optional:
-ArxisStudio.ProjectSystem.Markup.Xaml     adapter onto ArxisStudio.Markup (Milestone 7)
+Beside them, and the only one allowed near Markup and Avalonia:
+ArxisStudio.ProjectSystem.Markup.Xaml     adapter onto ArxisStudio.Markup (Milestone 7, complete)
 ```
 
 Arrows mean "depends on". The core depends on nothing but the base class library. A tool that only

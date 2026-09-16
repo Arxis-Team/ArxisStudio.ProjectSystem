@@ -38,8 +38,9 @@ locator's own, and `MSBuildProjectProvider` names none of them. Adding a
 That is why the evaluator has a `Try` shape rather than throwing, and why both engine-facing types
 are `[MethodImpl(MethodImplOptions.NoInlining)]`.
 
-`global.json` pins SDK `10.0.101` with `rollForward: latestFeature`; the installed SDK is
-`10.0.301` and satisfies it. Always invoke `dotnet` from the repository root.
+`global.json` pins SDK `10.0.101` with `rollForward: latestFeature`; any later 10.0.x feature
+band satisfies it (`10.0.400` at the time of writing). Always invoke `dotnet` from the repository
+root.
 
 The solution is `ArxisStudio.ProjectSystem.sln`, the classic format — a deliberate deviation from
 the task specification, which asks for `.slnx`. See
