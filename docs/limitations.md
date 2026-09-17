@@ -351,9 +351,11 @@ here except say so loudly.
 ### An edit is transactional, not durable
 
 If two files must change and the second write fails, the first is put back from bytes held in
-memory. That handles the failure that actually happens — a file open in another editor. It is not a
-journal: a process killed mid-write leaves what it left, and nothing defends against another process
-writing the same file at the same moment.
+memory. That handles the failure that actually happens — a file open in another editor. The file
+whose own write was interrupted is put back as well: opening it truncated it, so a cancellation or a
+full disk between the open and the write would otherwise leave it empty. It is not a journal: a
+process killed mid-write leaves what it left, and nothing defends against another process writing
+the same file at the same moment.
 
 ## The Markup adapter
 
