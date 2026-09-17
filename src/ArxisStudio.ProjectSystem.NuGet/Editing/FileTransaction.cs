@@ -18,7 +18,8 @@ namespace ArxisStudio.ProjectSystem.NuGet;
 /// no protection against another process writing the same file at the same moment. What it does is
 /// the thing that actually goes wrong — the second of two files fails to write because it is open
 /// in another editor — and it undoes the first, which is the difference between a repository that
-/// still restores and one that does not.
+/// still restores and one that does not. The file whose write was interrupted is undone as well:
+/// opening it truncated it, and it is the one most certainly left damaged.
 /// </para>
 /// <para>
 /// A rollback writes back text and an encoding this class already holds, so it needs nothing from
@@ -91,6 +92,14 @@ internal sealed class FileTransaction
                 continue;
             }
 
+            // Recorded before the write rather than after it. Opening a file for writing truncates
+            // it, so a write that fails once the file is open — a cancellation observed between the
+            // open and the write, a disk that fills, a share that drops — leaves exactly one file
+            // certainly damaged, and a list filled only on success restored every file but that
+            // one. Putting back a file that was never opened rewrites its own text, which is
+            // harmless; if it cannot be opened at all, that failure is swallowed like any other.
+            _written.Add(file);
+
             try
             {
                 await File.WriteAllTextAsync(file.Path.Value, updated, file.Original.Encoding, cancellationToken)
@@ -102,8 +111,6 @@ internal sealed class FileTransaction
 
                 throw;
             }
-
-            _written.Add(file);
         }
     }
 

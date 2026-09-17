@@ -226,6 +226,39 @@ public sealed class PackageEditorTests : IDisposable
         Assert.Equal(CentralVersions, await ReadAsync(versions));
     }
 
+    /// <summary>
+    /// A write that fails after the file was opened leaves it truncated, and that file has to come
+    /// back too — it is the one most certainly damaged.
+    /// </summary>
+    /// <remarks>
+    /// Opening for writing truncates, so anything that stops the write afterwards — a cancellation
+    /// observed between opening and writing, a disk that fills, a share that drops — leaves an empty
+    /// or half-written project file. The failure is made deterministic here with an encoding that
+    /// refuses a character: the refusal arrives after the truncation, which is the whole point.
+    /// </remarks>
+    [Fact]
+    public async Task WhenAWriteFailsAfterTheFileWasOpened_ThatFileIsPutBackToo()
+    {
+        CanonicalPath project = Write("App.csproj", EmptyProject);
+        string original = await ReadAsync(project);
+
+        var strict = System.Text.Encoding.GetEncoding(
+            "us-ascii", System.Text.EncoderFallback.ExceptionFallback, System.Text.DecoderFallback.ExceptionFallback);
+
+        var document = System.Xml.Linq.XDocument.Parse(original, System.Xml.Linq.LoadOptions.PreserveWhitespace);
+
+        document.Root!.Add(new System.Xml.Linq.XComment(" caf\u00e9 "));
+
+        var transaction = new FileTransaction();
+
+        transaction.Track(project, new FileText(original, strict), document);
+
+        await Assert.ThrowsAsync<System.Text.EncoderFallbackException>(
+            async () => await transaction.CommitAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(original, await ReadAsync(project));
+    }
+
     [Fact]
     public async Task AMissingProject_IsADiagnostic()
     {
