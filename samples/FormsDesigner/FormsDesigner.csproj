@@ -21,11 +21,11 @@
     references anything above it.
   -->
   <PropertyGroup>
-    <DesignEditorRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../ArxisStudio.DesignEditor/'))</DesignEditorRepositoryRoot>
+    <DesignEditorRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../ArxisStudio.Surface/'))</DesignEditorRepositoryRoot>
     <!--
-      The repository is still called ArxisStudio.DesignEditor, but it now ships three assemblies —
-      ArxisStudio.Surface, .Surface.Editing and .Surface.UiDesigner — and the form designer is the
-      top one; it brings the other two with it.
+      The repository was ArxisStudio.DesignEditor and is ArxisStudio.Surface now. It ships three
+      assemblies — ArxisStudio.Surface, .Surface.Editing and .Surface.UiDesigner — and the form
+      designer is the top one; it brings the other two with it.
     -->
     <DesignEditorProject>$(DesignEditorRepositoryRoot)src/Surface.UiDesigner/ArxisStudio.Surface.UiDesigner.csproj</DesignEditorProject>
 
@@ -41,7 +41,7 @@
     <Error
       Condition="!Exists('$(DesignEditorProject)')"
       Code="APSSAMPLE01"
-      Text="FormsDesigner is built on ArxisStudio.DesignEditor and expects that repository beside this one, at '$(DesignEditorRepositoryRoot)', with the form designer at '$(DesignEditorProject)'. Clone it there or update it, or exclude this project from the build." />
+      Text="FormsDesigner is built on ArxisStudio.Surface (formerly ArxisStudio.DesignEditor) and expects that repository beside this one, at '$(DesignEditorRepositoryRoot)', with the form designer at '$(DesignEditorProject)'. Clone it there or update it, or exclude this project from the build." />
   </Target>
 
   <ItemGroup>

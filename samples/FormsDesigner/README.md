@@ -16,8 +16,8 @@ pane is mirrored to standard output, so this doubles as a smoke test:
 dotnet run --project samples/FormsDesigner -- C:\src\App\App.csproj MainView.axaml
 ```
 
-It needs **both** `ArxisStudio.Markup` and `ArxisStudio.DesignEditor` checked out beside this
-repository. The project file fails with `APSSAMPLE01` and a sentence saying so if the second is
+It needs **both** `ArxisStudio.Markup` and `ArxisStudio.Surface` (formerly
+`ArxisStudio.DesignEditor`) checked out beside this repository. The project file fails with `APSSAMPLE01` and a sentence saying so if the second is
 missing.
 
 ## The design
@@ -28,7 +28,7 @@ under a breadcrumb and a Design/XAML/Split switch, a 212px dock of Project, Cons
 Packages, a 302px Inspector grouped into Layout, Appearance and Content, and a 26px status bar.
 
 Both variants of the palette ship, keyed by `ThemeVariant`, and the toolbar switches between them —
-including the canvas grid, whose colours are the same tokens under the keys `ArxisStudio.DesignEditor`
+including the canvas grid, whose colours are the same tokens under the keys `ArxisStudio.Surface`
 reads. Every colour in the window is a token; there is no literal outside `Views/Theme.axaml`.
 
 The icons are the mockup's own paths, in `Glyphs`, together with the hue each kind of control is
@@ -102,7 +102,7 @@ The division is the whole point, and none of the three knows about the others.
 | --- | --- |
 | `ArxisStudio.ProjectSystem` | which project is open, which files it contains, what it resolves to, restore, build, run, NuGet |
 | `ArxisStudio.Markup` | the document: parsing it, **every** edit to it, and building the live objects |
-| `ArxisStudio.DesignEditor` | the surface: viewport, grid, selection, handles, gestures |
+| `ArxisStudio.Surface` | the surface: viewport, grid, selection, handles, gestures — the form designer is `ArxisStudio.Surface.UiDesigner` |
 
 Every gesture takes the same route. The editor reports it, the view model turns it into a document
 edit, and the live tree is rebuilt from the document. **The document is the truth and the canvas is a
@@ -125,7 +125,7 @@ view of it** — a canvas that could disagree with the file is a designer that l
 
 ## The gestures
 
-Configured as `ArxisStudio.DesignEditor` documents them, mapped for a form designer.
+Configured as `ArxisStudio.Surface` documents them, mapped for a form designer.
 
 | Gesture | What it does |
 | --- | --- |
@@ -167,7 +167,7 @@ canvas shows without changing the file. The mark is a path, outermost first, and
 in an attached property of its own.
 
 Where it is written is the design decision. That attached property belongs to
-`ArxisStudio.DesignEditor`, and a project being edited has never heard of that assembly: an `xmlns`
+`ArxisStudio.Surface.UiDesigner`, and a project being edited has never heard of that assembly: an `xmlns`
 naming it would compile here, where the studio has it loaded, and fail the user's own build with an
 unresolvable assembly. So the mark goes in the design-time namespace, beside the `d:DesignWidth`
 every template already carries — attributes the XAML compiler skips because `mc:Ignorable` says to.
@@ -333,11 +333,12 @@ built and waits for nothing.
 **A document is parsed with the `avares` URI it will be embedded under.** Without one a relative URI
 means nothing, and a new Avalonia window says `Icon="/Assets/avalonia-logo.ico"` on its second line.
 
-**The editor's theme has to be merged, or there is no editor.** `ArxisStudio.DesignEditor` ships its
-template, its grid, its selection adorners and its resources in one dictionary:
+**The editor's theme has to be merged, or there is no editor.** Each of the three assemblies ships
+its own theme — the core its grid and surface, the tools the selection adorners and guides, the form
+designer its template — and the form designer's one entry point merges all three:
 
 ```xml
-<ResourceInclude Source="avares://ArxisStudio.DesignEditor/Themes/ArxisStudioDesignEditorTheme.axaml" />
+<ResourceInclude Source="avares://ArxisStudio.Surface.UiDesigner/Themes/ArxisStudioDesignEditorTheme.axaml" />
 ```
 
 Without it the control has no template and draws nothing — no grid, no forms, no handles — while
