@@ -2,10 +2,10 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using ArxisStudio.Markup.Xaml;
-using ArxisStudio.Attached;
 using ArxisStudio.Markup.Xaml.Design;
 using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
+using ArxisStudio.Surface.UiDesigner;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Reactive;
@@ -614,7 +614,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
                 continue;
             }
 
-            ArxisStudio.Attached.DesignGroup.SetId(control, id);
+            ArxisStudio.Surface.UiDesigner.DesignGroup.SetId(control, id);
         }
 
         static bool Holds(

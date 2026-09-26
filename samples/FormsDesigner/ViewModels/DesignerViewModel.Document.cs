@@ -4,11 +4,11 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
-using ArxisStudio;
 using ArxisStudio.Markup;
 using ArxisStudio.Markup.Xaml;
 using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
+using ArxisStudio.Surface.UiDesigner;
 using Avalonia.Controls;
 
 namespace FormsDesigner.ViewModels;

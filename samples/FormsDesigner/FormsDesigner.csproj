@@ -22,7 +22,12 @@
   -->
   <PropertyGroup>
     <DesignEditorRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../ArxisStudio.DesignEditor/'))</DesignEditorRepositoryRoot>
-    <DesignEditorProject>$(DesignEditorRepositoryRoot)src/ArxisStudio.DesignEditor.csproj</DesignEditorProject>
+    <!--
+      The repository is still called ArxisStudio.DesignEditor, but it now ships three assemblies —
+      ArxisStudio.Surface, .Surface.Editing and .Surface.UiDesigner — and the form designer is the
+      top one; it brings the other two with it.
+    -->
+    <DesignEditorProject>$(DesignEditorRepositoryRoot)src/Surface.UiDesigner/ArxisStudio.Surface.UiDesigner.csproj</DesignEditorProject>
 
     <!--
       Standing in for a window-rooted form is Markup's job, not this sample's. The adapter above
@@ -36,7 +41,7 @@
     <Error
       Condition="!Exists('$(DesignEditorProject)')"
       Code="APSSAMPLE01"
-      Text="FormsDesigner is built on ArxisStudio.DesignEditor and expects that repository beside this one, at '$(DesignEditorRepositoryRoot)'. Clone it there, or exclude this project from the build." />
+      Text="FormsDesigner is built on ArxisStudio.DesignEditor and expects that repository beside this one, at '$(DesignEditorRepositoryRoot)', with the form designer at '$(DesignEditorProject)'. Clone it there or update it, or exclude this project from the build." />
   </Target>
 
   <ItemGroup>

@@ -10,11 +10,11 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
-using ArxisStudio;
 using ArxisStudio.Markup.Xaml;
 using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
 using ArxisStudio.ProjectSystem.Markup.Xaml;
+using ArxisStudio.Surface.UiDesigner;
 using FormsDesigner.ViewModels;
 
 namespace FormsDesigner.Views;
@@ -1833,13 +1833,13 @@ internal static class StudioCheck
         FormViewModel reopened = designer.ActiveForm!;
 
         if (Drawn(reopened, "Button") is not { } restored
-            || string.IsNullOrEmpty(ArxisStudio.Attached.DesignGroup.GetId(restored)))
+            || string.IsNullOrEmpty(ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(restored)))
         {
             Fail(ref failures, "the saved group did not come back onto the live control");
         }
         else
         {
-            Say($"a group survives a save and a reload as {ArxisStudio.Attached.DesignGroup.GetId(restored)}");
+            Say($"a group survives a save and a reload as {ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(restored)}");
         }
 
         // And the half a save-and-reopen makes reachable: ungrouping a group that came out of the
@@ -1863,7 +1863,7 @@ internal static class StudioCheck
                 ", ",
                 GroupProbeNames
                     .Select(name => name + "=" + (Drawn(reopened, name) is { } drawn
-                        ? "\"" + (ArxisStudio.Attached.DesignGroup.GetId(drawn) ?? "-") + "\""
+                        ? "\"" + (ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(drawn) ?? "-") + "\""
                         : "?"))));
 
         if (!surface.CanUngroupSelection())
@@ -1888,7 +1888,7 @@ internal static class StudioCheck
                 ", ",
                 GroupProbeNames
                     .Select(name => name + "=" + (Drawn(after, name) is { } drawn
-                        ? "\"" + (ArxisStudio.Attached.DesignGroup.GetId(drawn) ?? "-") + "\""
+                        ? "\"" + (ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(drawn) ?? "-") + "\""
                         : "?"))));
 
         // The report, stated as an assertion, and asked the way a click asks: through the canvas,
@@ -1971,7 +1971,7 @@ internal static class StudioCheck
 
         // The panel's mark is not restored, which is what gives the file its contents back.
         if (Drawn(stale, "StackPanel") is { } panel
-            && !string.IsNullOrEmpty(ArxisStudio.Attached.DesignGroup.GetId(panel)))
+            && !string.IsNullOrEmpty(ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(panel)))
         {
             Fail(ref failures, "a panel grouped with its own contents was restored as a member, "
                 + "which is what makes everything inside it unclickable");
@@ -1982,7 +1982,7 @@ internal static class StudioCheck
                 ", ",
                 StaleProbeNames
                     .Select(name => name + "=" + (Drawn(stale, name) is { } drawn
-                        ? "\"" + (ArxisStudio.Attached.DesignGroup.GetId(drawn) ?? "-") + "\""
+                        ? "\"" + (ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(drawn) ?? "-") + "\""
                         : "?"))));
 
         // Ungrouping takes the whole group out of the document, including the mark on the panel that
@@ -1995,7 +1995,7 @@ internal static class StudioCheck
         // type, the step selected an unmarked control, the canvas said so, and the ungroup then
         // passed on the document sweep alone — a step proving something other than what it reads.
         Control[] members = [.. Live(stale)
-            .Where(control => ArxisStudio.Attached.DesignGroup.GetId(control) == "group-9")];
+            .Where(control => ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(control) == "group-9")];
 
         if (members.Length < 2)
         {
@@ -2027,7 +2027,7 @@ internal static class StudioCheck
                         " + ",
                         surface.SelectedDesignTargets.Select(target =>
                             target.Target.GetType().Name + "/"
-                            + (ArxisStudio.Attached.DesignGroup.GetId(target.Target) ?? "-"))));
+                            + (ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(target.Target) ?? "-"))));
         }
 
         surface.UngroupSelection();

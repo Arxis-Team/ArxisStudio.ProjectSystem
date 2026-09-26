@@ -2,8 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:FormsDesigner.ViewModels"
         xmlns:edit="using:AvaloniaEdit"
-        xmlns:design="clr-namespace:ArxisStudio;assembly=ArxisStudio.DesignEditor"
-        xmlns:designControls="clr-namespace:ArxisStudio.Controls;assembly=ArxisStudio.DesignEditor"
+        xmlns:surface="https://github.com/Arxis-Team/ArxisStudio.Surface"
         x:Class="FormsDesigner.Views.MainWindow"
         x:DataType="vm:DesignerViewModel"
         Title="ArxisStudio — Forms Designer"
@@ -89,7 +88,7 @@
   </Window.Resources>
 
   <Window.Styles>
-    <Style Selector="design|DesignEditorItem" x:DataType="vm:FormViewModel">
+    <Style Selector="surface|DesignEditorItem" x:DataType="vm:FormViewModel">
       <!--
         Annotated rather than Loaded, because this designer knows exactly what is editable and the
         editor should not have to guess. `Loaded` means "everything the author wrote", found by
@@ -558,7 +557,7 @@
                     BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,1,1"
                     IsVisible="{Binding ShowRulers}" />
 
-            <designControls:DesignRuler Grid.Row="0" Grid.Column="1"
+            <surface:DesignRuler Grid.Row="0" Grid.Column="1"
                                         x:Name="TopRuler"
                                         Orientation="Horizontal"
                                         Height="18"
@@ -568,7 +567,7 @@
                                         TickBrush="{DynamicResource Fg3}"
                                         LabelBrush="{DynamicResource Fg3}" />
 
-            <designControls:DesignRuler Grid.Row="1" Grid.Column="0"
+            <surface:DesignRuler Grid.Row="1" Grid.Column="0"
                                         Orientation="Vertical"
                                         Width="18"
                                         IsVisible="{Binding ShowRulers}"
@@ -579,7 +578,7 @@
                                         IsScaleVisible="{Binding #TopRuler.IsScaleVisible}" />
 
           <Panel Grid.Row="1" Grid.Column="1" ClipToBounds="True">
-            <design:DesignEditor x:Name="Surface"
+            <surface:DesignEditor x:Name="Surface"
                                  ItemsSource="{Binding Shown}"
                                  SelectedItems="{Binding SelectedForms}"
                                  SelectionMode="Multiple"
@@ -587,8 +586,8 @@
                                  ShowGuides="{Binding ShowGuides}"
                                  ShowRulers="{Binding ShowRulers}"
                                  ViewportZoom="{Binding Zoom, Mode=TwoWay}">
-              <design:DesignEditor.InputGestures>
-                <design:DesignEditorInputGestures PanButton="Middle"
+              <surface:DesignEditor.InputGestures>
+                <surface:DesignEditorInputGestures PanButton="Middle"
                                                   PanModifiers="None"
                                                   MarqueeButton="Left"
                                                   MarqueeModifiers="None"
@@ -598,9 +597,9 @@
                                                   LargeNudgeModifiers="Shift"
                                                   SnapBypassModifiers="Alt"
                                                   ContainerEmptyAreaDrag="Marquee" />
-              </design:DesignEditor.InputGestures>
-              <design:DesignEditor.InteractionOptions>
-                <design:DesignEditorInteractionOptions ZoomStep="1.1"
+              </surface:DesignEditor.InputGestures>
+              <surface:DesignEditor.InteractionOptions>
+                <surface:DesignEditorInteractionOptions ZoomStep="1.1"
                                                        DragStartThreshold="3"
                                                        ResizeMinSize="8"
                                                        IsResizeContainedToParent="True"
@@ -609,8 +608,8 @@
                                                        SnapGuideTolerance="6"
                                                        NudgeStep="1"
                                                        LargeNudgeStep="10" />
-              </design:DesignEditor.InteractionOptions>
-            </design:DesignEditor>
+              </surface:DesignEditor.InteractionOptions>
+            </surface:DesignEditor>
 
             <!--
               The chrome layer. Transformed by the editor's own viewport transform, so it pans and

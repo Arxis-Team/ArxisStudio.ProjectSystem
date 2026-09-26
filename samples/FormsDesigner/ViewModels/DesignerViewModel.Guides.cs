@@ -1,5 +1,5 @@
 using System.Collections.ObjectModel;
-using ArxisStudio;
+using ArxisStudio.Surface.Editing;
 
 namespace FormsDesigner.ViewModels;
 

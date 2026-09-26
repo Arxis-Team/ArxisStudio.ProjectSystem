@@ -1,9 +1,10 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using ArxisStudio;
 using ArxisStudio.Markup.Xaml;
 using ArxisStudio.ProjectSystem;
+using ArxisStudio.Surface;
+using ArxisStudio.Surface.UiDesigner;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
