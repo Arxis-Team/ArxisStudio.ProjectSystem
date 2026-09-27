@@ -594,7 +594,7 @@ public sealed partial class DesignerViewModel
     /// <summary>Whether this control is the form as it appears, rather than something inside it.</summary>
     private static bool StandsForTheForm(FormViewModel form, Control control) =>
         ReferenceEquals(control, form.Surface)
-        || (control is DesignEditorItem item && ReferenceEquals(item.DataContext, form));
+        || (control is UiDesignerItem item && ReferenceEquals(item.DataContext, form));
 
     /// <summary>
     /// Answers the editor's reorder request by moving the element in the document.

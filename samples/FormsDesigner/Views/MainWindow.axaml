@@ -40,7 +40,7 @@
       What the designer draws around a form, in the form's own coordinates.
 
       Not in the container's content, which is the whole point. In `ContentMode="Loaded"` the editor
-      offers every control the author wrote as a design target, and it finds them by walking the
+      offers every control the author wrote as a target, and it finds them by walking the
       container's content — so a caption or a title bar put in there is, correctly and unhelpfully,
       something the user can select, resize and ask the inspector about. The container holds the form
       and only the form; everything the designer adds is drawn over the canvas instead, in world
@@ -88,7 +88,7 @@
   </Window.Resources>
 
   <Window.Styles>
-    <Style Selector="surface|DesignEditorItem" x:DataType="vm:FormViewModel">
+    <Style Selector="surface|UiDesignerItem" x:DataType="vm:FormViewModel">
       <!--
         Annotated rather than Loaded, because this designer knows exactly what is editable and the
         editor should not have to guess. `Loaded` means "everything the author wrote", found by
@@ -101,8 +101,8 @@
 
       <!--
         The card is the container, not something wrapped around the form inside it. A frame drawn
-        in the content would be a design target like any other; drawn here it is the container's own
-        chrome, out of reach of the walk that looks for targets. `DesignEditorItem.OutlineOpacity`
+        in the content would be a target like any other; drawn here it is the container's own
+        chrome, out of reach of the walk that looks for targets. `UiDesignerItem.OutlineOpacity`
         turns on an overlay outline that costs no pixel — a BorderThickness would lay the form out
         inside the stroke and make it two pixels narrower than the document says.
       -->
@@ -557,7 +557,7 @@
                     BorderBrush="{DynamicResource Brd}" BorderThickness="0,0,1,1"
                     IsVisible="{Binding ShowRulers}" />
 
-            <surface:DesignRuler Grid.Row="0" Grid.Column="1"
+            <surface:SurfaceRuler Grid.Row="0" Grid.Column="1"
                                         x:Name="TopRuler"
                                         Orientation="Horizontal"
                                         Height="18"
@@ -567,7 +567,7 @@
                                         TickBrush="{DynamicResource Fg3}"
                                         LabelBrush="{DynamicResource Fg3}" />
 
-            <surface:DesignRuler Grid.Row="1" Grid.Column="0"
+            <surface:SurfaceRuler Grid.Row="1" Grid.Column="0"
                                         Orientation="Vertical"
                                         Width="18"
                                         IsVisible="{Binding ShowRulers}"
@@ -578,7 +578,7 @@
                                         IsScaleVisible="{Binding #TopRuler.IsScaleVisible}" />
 
           <Panel Grid.Row="1" Grid.Column="1" ClipToBounds="True">
-            <surface:DesignEditor x:Name="Surface"
+            <surface:UiDesignerView x:Name="Surface"
                                  ItemsSource="{Binding Shown}"
                                  SelectedItems="{Binding SelectedForms}"
                                  SelectionMode="Multiple"
@@ -586,8 +586,8 @@
                                  ShowGuides="{Binding ShowGuides}"
                                  ShowRulers="{Binding ShowRulers}"
                                  ViewportZoom="{Binding Zoom, Mode=TwoWay}">
-              <surface:DesignEditor.InputGestures>
-                <surface:DesignEditorInputGestures PanButton="Middle"
+              <surface:UiDesignerView.InputGestures>
+                <surface:SurfaceInputGestures PanButton="Middle"
                                                   PanModifiers="None"
                                                   MarqueeButton="Left"
                                                   MarqueeModifiers="None"
@@ -597,9 +597,9 @@
                                                   LargeNudgeModifiers="Shift"
                                                   SnapBypassModifiers="Alt"
                                                   ContainerEmptyAreaDrag="Marquee" />
-              </surface:DesignEditor.InputGestures>
-              <surface:DesignEditor.InteractionOptions>
-                <surface:DesignEditorInteractionOptions ZoomStep="1.1"
+              </surface:UiDesignerView.InputGestures>
+              <surface:UiDesignerView.InteractionOptions>
+                <surface:SurfaceInteractionOptions ZoomStep="1.1"
                                                        DragStartThreshold="3"
                                                        ResizeMinSize="8"
                                                        IsResizeContainedToParent="True"
@@ -608,8 +608,8 @@
                                                        SnapGuideTolerance="6"
                                                        NudgeStep="1"
                                                        LargeNudgeStep="10" />
-              </surface:DesignEditor.InteractionOptions>
-            </surface:DesignEditor>
+              </surface:UiDesignerView.InteractionOptions>
+            </surface:UiDesignerView>
 
             <!--
               The chrome layer. Transformed by the editor's own viewport transform, so it pans and

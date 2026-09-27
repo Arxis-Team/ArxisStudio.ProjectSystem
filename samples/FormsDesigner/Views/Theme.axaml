@@ -57,14 +57,14 @@
   </ResourceDictionary.ThemeDictionaries>
 
   <!--
-    The editor's own palette, keyed the way DesignEditor's theme expects, so the canvas and the
+    The editor's own palette, keyed the way UiDesignerView's theme expects, so the canvas and the
     grid belong to the same design as everything around them rather than to the library's defaults.
   -->
-  <SolidColorBrush x:Key="DesignEditor.Grid.BackgroundBrush" Color="#191A1D" />
-  <SolidColorBrush x:Key="DesignEditor.Grid.LineBrush" Color="#26292E" />
-  <SolidColorBrush x:Key="DesignEditor.Grid.MajorLineBrush" Color="#33353A" />
-  <x:Double x:Key="DesignEditor.Grid.CellSize">20</x:Double>
-  <x:Int32 x:Key="DesignEditor.Grid.MajorInterval">5</x:Int32>
+  <SolidColorBrush x:Key="Surface.Grid.BackgroundBrush" Color="#191A1D" />
+  <SolidColorBrush x:Key="Surface.Grid.LineBrush" Color="#26292E" />
+  <SolidColorBrush x:Key="Surface.Grid.MajorLineBrush" Color="#33353A" />
+  <x:Double x:Key="Surface.Grid.CellSize">20</x:Double>
+  <x:Int32 x:Key="Surface.Grid.MajorInterval">5</x:Int32>
 
   <FontFamily x:Key="UiFont">Inter,Segoe UI,system-ui,sans-serif</FontFamily>
   <FontFamily x:Key="MonoFont">JetBrains Mono,Cascadia Code,Consolas,monospace</FontFamily>

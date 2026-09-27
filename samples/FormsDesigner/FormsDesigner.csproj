@@ -15,19 +15,19 @@
 
       ProjectSystem  what project is open, which assemblies it resolves to, what it builds and runs
       Markup         what the document says, and every edit to it
-      DesignEditor   the surface, the selection, and the gestures that move things about
+      Surface        the surface, the selection, and the gestures that move things about
 
     The integration is here because integration is the consumer's job. Nothing below this directory
     references anything above it.
   -->
   <PropertyGroup>
-    <DesignEditorRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../ArxisStudio.Surface/'))</DesignEditorRepositoryRoot>
+    <SurfaceRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../ArxisStudio.Surface/'))</SurfaceRepositoryRoot>
     <!--
       The repository was ArxisStudio.DesignEditor and is ArxisStudio.Surface now. It ships three
       assemblies — ArxisStudio.Surface, .Surface.Editing and .Surface.UiDesigner — and the form
       designer is the top one; it brings the other two with it.
     -->
-    <DesignEditorProject>$(DesignEditorRepositoryRoot)src/Surface.UiDesigner/ArxisStudio.Surface.UiDesigner.csproj</DesignEditorProject>
+    <UiDesignerProject>$(SurfaceRepositoryRoot)src/Surface.UiDesigner/ArxisStudio.Surface.UiDesigner.csproj</UiDesignerProject>
 
     <!--
       Standing in for a window-rooted form is Markup's job, not this sample's. The adapter above
@@ -37,11 +37,11 @@
     <MarkupDesignProject>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../ArxisStudio.Markup/src/ArxisStudio.Markup.Xaml.Design/ArxisStudio.Markup.Xaml.Design.csproj'))</MarkupDesignProject>
   </PropertyGroup>
 
-  <Target Name="CheckDesignEditorIsBesideUs" BeforeTargets="CollectPackageReferences;ResolveProjectReferences">
+  <Target Name="CheckSurfaceIsBesideUs" BeforeTargets="CollectPackageReferences;ResolveProjectReferences">
     <Error
-      Condition="!Exists('$(DesignEditorProject)')"
+      Condition="!Exists('$(UiDesignerProject)')"
       Code="APSSAMPLE01"
-      Text="FormsDesigner is built on ArxisStudio.Surface (formerly ArxisStudio.DesignEditor) and expects that repository beside this one, at '$(DesignEditorRepositoryRoot)', with the form designer at '$(DesignEditorProject)'. Clone it there or update it, or exclude this project from the build." />
+      Text="FormsDesigner is built on ArxisStudio.Surface (formerly ArxisStudio.DesignEditor) and expects that repository beside this one, at '$(SurfaceRepositoryRoot)', with the UI designer at '$(UiDesignerProject)'. Clone it there or update it, or exclude this project from the build." />
   </Target>
 
   <ItemGroup>
@@ -50,7 +50,7 @@
     <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.NuGet/ArxisStudio.ProjectSystem.NuGet.csproj" />
     <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.Markup.Xaml/ArxisStudio.ProjectSystem.Markup.Xaml.csproj" />
 
-    <ProjectReference Include="$(DesignEditorProject)" />
+    <ProjectReference Include="$(UiDesignerProject)" />
     <ProjectReference Include="$(MarkupDesignProject)" />
   </ItemGroup>
 

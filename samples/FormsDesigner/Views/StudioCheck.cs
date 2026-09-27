@@ -1374,7 +1374,7 @@ internal static class StudioCheck
             else
             {
                 FormViewModel sized = designer.ActiveForm!;
-                DesignEditor? editor = window.FindControl<DesignEditor>("Surface");
+                UiDesignerView? editor = window.FindControl<UiDesignerView>("Surface");
 
                 sized.Width = 520;
                 sized.Height = 300;
@@ -1766,7 +1766,7 @@ internal static class StudioCheck
 
         FormViewModel form = designer.ActiveForm!;
 
-        if (window.FindControl<DesignEditor>("Surface") is not { } surface)
+        if (window.FindControl<UiDesignerView>("Surface") is not { } surface)
         {
             return Fail(ref failures, "there is no surface to group on");
         }
@@ -1779,7 +1779,7 @@ internal static class StudioCheck
             return Fail(ref failures, "the window has nothing to group");
         }
 
-        if (!surface.SelectDesignTarget(first) || !surface.SelectDesignTarget(second, additive: true))
+        if (!surface.SelectTarget(first) || !surface.SelectTarget(second, additive: true))
         {
             return Fail(ref failures, "the two controls would not select together");
         }
@@ -1833,13 +1833,13 @@ internal static class StudioCheck
         FormViewModel reopened = designer.ActiveForm!;
 
         if (Drawn(reopened, "Button") is not { } restored
-            || string.IsNullOrEmpty(ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(restored)))
+            || string.IsNullOrEmpty(ArxisStudio.Surface.UiDesigner.SurfaceGroup.GetId(restored)))
         {
             Fail(ref failures, "the saved group did not come back onto the live control");
         }
         else
         {
-            Say($"a group survives a save and a reload as {ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(restored)}");
+            Say($"a group survives a save and a reload as {ArxisStudio.Surface.UiDesigner.SurfaceGroup.GetId(restored)}");
         }
 
         // And the half a save-and-reopen makes reachable: ungrouping a group that came out of the
@@ -1855,15 +1855,15 @@ internal static class StudioCheck
 
         // Both members, because a group is a cluster only when all of it is selected — a click
         // expands to that by itself, and the public API does not.
-        surface.SelectDesignTarget(Drawn(reopened, "TextBlock")!);
-        surface.SelectDesignTarget(member, additive: true);
+        surface.SelectTarget(Drawn(reopened, "TextBlock")!);
+        surface.SelectTarget(member, additive: true);
 
         Say("  after reload: "
             + string.Join(
                 ", ",
                 GroupProbeNames
                     .Select(name => name + "=" + (Drawn(reopened, name) is { } drawn
-                        ? "\"" + (ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(drawn) ?? "-") + "\""
+                        ? "\"" + (ArxisStudio.Surface.UiDesigner.SurfaceGroup.GetId(drawn) ?? "-") + "\""
                         : "?"))));
 
         if (!surface.CanUngroupSelection())
@@ -1888,7 +1888,7 @@ internal static class StudioCheck
                 ", ",
                 GroupProbeNames
                     .Select(name => name + "=" + (Drawn(after, name) is { } drawn
-                        ? "\"" + (ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(drawn) ?? "-") + "\""
+                        ? "\"" + (ArxisStudio.Surface.UiDesigner.SurfaceGroup.GetId(drawn) ?? "-") + "\""
                         : "?"))));
 
         // The report, stated as an assertion, and asked the way a click asks: through the canvas,
@@ -1930,7 +1930,7 @@ internal static class StudioCheck
     /// already have one.
     /// </remarks>
     private static async Task<int> StaleGroupAsync(
-        DesignerViewModel designer, DesignEditor surface, FormViewModel form)
+        DesignerViewModel designer, UiDesignerView surface, FormViewModel form)
     {
         var failures = 0;
 
@@ -1971,7 +1971,7 @@ internal static class StudioCheck
 
         // The panel's mark is not restored, which is what gives the file its contents back.
         if (Drawn(stale, "StackPanel") is { } panel
-            && !string.IsNullOrEmpty(ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(panel)))
+            && !string.IsNullOrEmpty(ArxisStudio.Surface.UiDesigner.SurfaceGroup.GetId(panel)))
         {
             Fail(ref failures, "a panel grouped with its own contents was restored as a member, "
                 + "which is what makes everything inside it unclickable");
@@ -1982,7 +1982,7 @@ internal static class StudioCheck
                 ", ",
                 StaleProbeNames
                     .Select(name => name + "=" + (Drawn(stale, name) is { } drawn
-                        ? "\"" + (ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(drawn) ?? "-") + "\""
+                        ? "\"" + (ArxisStudio.Surface.UiDesigner.SurfaceGroup.GetId(drawn) ?? "-") + "\""
                         : "?"))));
 
         // Ungrouping takes the whole group out of the document, including the mark on the panel that
@@ -1995,7 +1995,7 @@ internal static class StudioCheck
         // type, the step selected an unmarked control, the canvas said so, and the ungroup then
         // passed on the document sweep alone — a step proving something other than what it reads.
         Control[] members = [.. Live(stale)
-            .Where(control => ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(control) == "group-9")];
+            .Where(control => ArxisStudio.Surface.UiDesigner.SurfaceGroup.GetId(control) == "group-9")];
 
         if (members.Length < 2)
         {
@@ -2005,15 +2005,15 @@ internal static class StudioCheck
 
         for (var i = 0; i < members.Length; i++)
         {
-            surface.SelectDesignTarget(members[i], additive: i > 0);
+            surface.SelectTarget(members[i], additive: i > 0);
         }
 
         // The selection is the premise of everything below: if the canvas refused a member, the
         // ungroup would still clear the document by the sweep, and the step would pass without
         // having asked the question.
-        if (surface.SelectedDesignTargets.Count != members.Length)
+        if (surface.SelectedTargets.Count != members.Length)
         {
-            return Fail(ref failures, $"the canvas took {surface.SelectedDesignTargets.Count} of "
+            return Fail(ref failures, $"the canvas took {surface.SelectedTargets.Count} of "
                 + $"{members.Length} member(s) into the selection");
         }
 
@@ -2022,12 +2022,12 @@ internal static class StudioCheck
             return Fail(
                 ref failures,
                 "the stale group cannot be ungrouped; selected "
-                    + surface.SelectedDesignTargets.Count + " target(s): "
+                    + surface.SelectedTargets.Count + " target(s): "
                     + string.Join(
                         " + ",
-                        surface.SelectedDesignTargets.Select(target =>
+                        surface.SelectedTargets.Select(target =>
                             target.Target.GetType().Name + "/"
-                            + (ArxisStudio.Surface.UiDesigner.DesignGroup.GetId(target.Target) ?? "-"))));
+                            + (ArxisStudio.Surface.UiDesigner.SurfaceGroup.GetId(target.Target) ?? "-"))));
         }
 
         surface.UngroupSelection();

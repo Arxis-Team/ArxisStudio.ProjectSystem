@@ -539,7 +539,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// <para>
     /// Everything else keeps working through the map rather than through this flag: a drop still
     /// finds the root as a container, the inspector still edits the root's own properties, and
-    /// selecting the root row still lands on the card — <c>SelectDesignTarget</c> refuses an unmarked
+    /// selecting the root row still lands on the card — <c>SelectTarget</c> refuses an unmarked
     /// control and <c>ShowOnCanvas</c> falls through to the card, which is the answer it already gave
     /// for a window-rooted form.
     /// </para>
@@ -614,7 +614,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
                 continue;
             }
 
-            ArxisStudio.Surface.UiDesigner.DesignGroup.SetId(control, id);
+            ArxisStudio.Surface.UiDesigner.SurfaceGroup.SetId(control, id);
         }
 
         static bool Holds(

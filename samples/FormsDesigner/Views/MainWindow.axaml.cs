@@ -37,7 +37,7 @@ public sealed partial class MainWindow : Window
 
         Activated += (_, _) => (DataContext as DesignerViewModel)?.OnStudioActivated();
 
-        DesignEditor surface = this.GetControl<DesignEditor>("Surface");
+        UiDesignerView surface = this.GetControl<UiDesignerView>("Surface");
         AvaloniaEdit.TextEditor markup = this.GetControl<AvaloniaEdit.TextEditor>("XamlView");
 
         // The editor's own XML rules, which is what "colour a tag differently from its attributes"
@@ -53,7 +53,7 @@ public sealed partial class MainWindow : Window
         ActualThemeVariantChanged += (_, _) => PaintMarkup(markup);
         ItemsControl toolbox = this.GetControl<ItemsControl>("ToolboxList");
 
-        surface.DesignSelectionChanged += OnDesignSelectionChanged;
+        surface.SurfaceSelectionChanged += OnSurfaceSelectionChanged;
         surface.EditCompleted += OnEditCompleted;
         surface.DeleteRequested += OnDeleteRequested;
         surface.ContextMenuRequesting += OnContextMenuRequesting;
@@ -152,7 +152,7 @@ public sealed partial class MainWindow : Window
                 designer.UngroupSelection = surface.UngroupSelection;
 
                 // The documented way to clear the canvas: dropping the item selection takes the
-                // design targets with it, which is what the frame is drawn from.
+                // targets with it, which is what the frame is drawn from.
                 designer.CanvasSelectionCleared += (_, _) => surface.SelectedItems?.Clear();
 
                 // The clipboard belongs to the top level, so the window is what reaches for it.
@@ -273,7 +273,7 @@ public sealed partial class MainWindow : Window
     /// form, the control is what the user pointed at, and the object map turns the second into the
     /// element that produced it.
     /// </remarks>
-    private void OnDesignSelectionChanged(object? sender, DesignSelectionChangedEventArgs e)
+    private void OnSurfaceSelectionChanged(object? sender, SurfaceSelectionChangedEventArgs e)
     {
         if (Designer is not { } designer || e.NewPrimary is not { } primary)
         {
@@ -306,11 +306,11 @@ public sealed partial class MainWindow : Window
     /// A row with nothing live behind it at all leaves the canvas as it was, and says so — because a
     /// selection that silently does not happen is indistinguishable from a designer that has stopped
     /// responding. Leaving it is a choice, not a limit: clearing the canvas is
-    /// <c>surface.SelectedItems.Clear()</c>, which drops the design targets with it. Keeping the
+    /// <c>surface.SelectedItems.Clear()</c>, which drops the targets with it. Keeping the
     /// last selection is the friendlier answer to "that row names nothing you can point at".
     /// </para>
     /// </remarks>
-    private void ShowOnCanvas(DesignEditor surface, XamlElement element)
+    private void ShowOnCanvas(UiDesignerView surface, XamlElement element)
     {
         if (Designer is not { ActiveForm: { } form } designer)
         {
@@ -371,17 +371,17 @@ public sealed partial class MainWindow : Window
     /// selected instead, which is the same answer the canvas gives in the other direction when a
     /// click lands on the stand-in.
     /// </remarks>
-    private static bool TrySelectOnCanvas(DesignEditor surface, FormViewModel form, XamlElement element)
+    private static bool TrySelectOnCanvas(UiDesignerView surface, FormViewModel form, XamlElement element)
     {
         if (DesignerViewModel.ControlFor(form, element) is { } control
-            && surface.SelectDesignTarget(control))
+            && surface.SelectTarget(control))
         {
             return true;
         }
 
         return ReferenceEquals(element, form.Document?.Root)
             && surface.ContainerFromItem(form) is Control card
-            && surface.SelectDesignTarget(card);
+            && surface.SelectTarget(card);
     }
 
     /// <summary>
@@ -392,7 +392,7 @@ public sealed partial class MainWindow : Window
     /// and only the one the user let go at is a fact about the form. Editing the document per frame
     /// would also rebuild the live tree per frame, which is a designer that fights the mouse.
     /// </remarks>
-    private void OnEditCompleted(object? sender, DesignEditCompletedEventArgs e)
+    private void OnEditCompleted(object? sender, SurfaceEditCompletedEventArgs e)
     {
         if (Designer is not { } designer)
         {
@@ -403,10 +403,10 @@ public sealed partial class MainWindow : Window
         // belong together. It is also several controls at once, and they go down in one edit — the
         // first write replaces the document and the live tree with it, so a second write naming a
         // control of the tree that has just gone lands nowhere.
-        if (e.Kind == DesignEditKind.Group)
+        if (e.Kind == SurfaceEditKind.Group)
         {
-            foreach (IGrouping<FormViewModel, DesignGroupChange> byForm in e.Changes
-                .OfType<DesignGroupChange>()
+            foreach (IGrouping<FormViewModel, GroupChange> byForm in e.Changes
+                .OfType<GroupChange>()
                 .GroupBy(change => FormOf(change.Target)!)
                 .Where(group => group.Key is not null))
             {
@@ -418,15 +418,15 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        foreach (DesignChange change in e.Changes)
+        foreach (TargetChange change in e.Changes)
         {
             if (FormOf(change.Target) is { } form)
             {
                 designer.WriteGeometry(
                     form,
                     change.Target,
-                    moved: e.Kind == DesignEditKind.Move,
-                    resized: e.Kind == DesignEditKind.Resize);
+                    moved: e.Kind == SurfaceEditKind.Move,
+                    resized: e.Kind == SurfaceEditKind.Resize);
             }
         }
     }
@@ -465,9 +465,9 @@ public sealed partial class MainWindow : Window
     /// of the commands themselves, so the menu cannot offer a paste when there is nothing to paste
     /// into.
     /// </remarks>
-    private void OnContextMenuRequesting(object? sender, DesignEditorContextRequestingEventArgs e)
+    private void OnContextMenuRequesting(object? sender, SurfaceContextRequestingEventArgs e)
     {
-        if (Designer is not { } designer || sender is not DesignEditor surface)
+        if (Designer is not { } designer || sender is not UiDesignerView surface)
         {
             return;
         }
@@ -478,13 +478,13 @@ public sealed partial class MainWindow : Window
             Action("cut", "Вырезать", "Ctrl+X", designer.CutCommand, 1),
             Action("paste", "Вставить", "Ctrl+V", designer.PasteCommand, 2),
             Action("duplicate", "Дублировать", "Ctrl+D", designer.DuplicateCommand, 3),
-            new DesignEditorContextAction { Id = "-", IsSeparator = true, Group = "edit", Order = 4 },
+            new SurfaceContextAction { Id = "-", IsSeparator = true, Group = "edit", Order = 4 },
             Action("undo", "Отменить", "Ctrl+Z", designer.UndoCommand, 5),
             Action("redo", "Вернуть", "Ctrl+Y", designer.RedoCommand, 6),
-            new DesignEditorContextAction { Id = "--", IsSeparator = true, Group = "edit", Order = 7 },
+            new SurfaceContextAction { Id = "--", IsSeparator = true, Group = "edit", Order = 7 },
             Action("up", "Выше", "Alt+Up", designer.MoveUpCommand, 8),
             Action("down", "Ниже", "Alt+Down", designer.MoveDownCommand, 9),
-            new DesignEditorContextAction
+            new SurfaceContextAction
             {
                 Id = "wrap",
                 Header = "Обернуть в",
@@ -493,7 +493,7 @@ public sealed partial class MainWindow : Window
                 Items =
                 [
                     .. DesignerViewModel.WrapContainers.Select(container =>
-                        new DesignEditorContextAction
+                        new SurfaceContextAction
                         {
                             Id = "wrap:" + container,
                             Header = container,
@@ -501,7 +501,7 @@ public sealed partial class MainWindow : Window
                         }),
                 ],
             },
-            new DesignEditorContextAction
+            new SurfaceContextAction
             {
                 Id = "unwrap",
                 Header = "Развернуть",
@@ -509,13 +509,13 @@ public sealed partial class MainWindow : Window
                 Order = 11,
                 Command = new RelayCommand(designer.Unwrap),
             },
-            new DesignEditorContextAction { Id = "---", IsSeparator = true, Group = "edit", Order = 12 },
+            new SurfaceContextAction { Id = "---", IsSeparator = true, Group = "edit", Order = 12 },
 
             // Grouping is the editor's, and what it produces is a mark on the controls rather than
             // a change to the tree — so it needs no answer from here beyond writing the mark down
             // when EditCompleted reports it. Availability is the editor's answer too: two clusters
             // in one form to group, a group under the pointer to ungroup.
-            new DesignEditorContextAction
+            new SurfaceContextAction
             {
                 Id = "group",
                 Header = "Сгруппировать   Ctrl+G",
@@ -524,7 +524,7 @@ public sealed partial class MainWindow : Window
                 Command = new RelayCommand(() => surface.GroupSelection()),
                 IsEnabled = surface.CanGroupSelection(),
             },
-            new DesignEditorContextAction
+            new SurfaceContextAction
             {
                 Id = "ungroup",
                 Header = "Разгруппировать   Ctrl+Shift+G",
@@ -538,29 +538,29 @@ public sealed partial class MainWindow : Window
             // selected controls and reports the moves through EditCompleted like any gesture, so
             // they reach the document by the path every other move takes. Offered only when the
             // editor says it can — three controls in one form, in a layout that lets them move.
-            new DesignEditorContextAction
+            new SurfaceContextAction
             {
                 Id = "distribute.h",
                 Header = "Разложить по горизонтали",
                 Group = "arrange",
                 Order = 14,
                 Command = new RelayCommand(() => surface.DistributeHorizontally()),
-                IsEnabled = surface.SelectedDesignTargets.Count > 2,
+                IsEnabled = surface.SelectedTargets.Count > 2,
             },
-            new DesignEditorContextAction
+            new SurfaceContextAction
             {
                 Id = "distribute.v",
                 Header = "Разложить по вертикали",
                 Group = "arrange",
                 Order = 15,
                 Command = new RelayCommand(() => surface.DistributeVertically()),
-                IsEnabled = surface.SelectedDesignTargets.Count > 2,
+                IsEnabled = surface.SelectedTargets.Count > 2,
             },
-            new DesignEditorContextAction { Id = "----", IsSeparator = true, Group = "arrange", Order = 16 },
+            new SurfaceContextAction { Id = "----", IsSeparator = true, Group = "arrange", Order = 16 },
             Action("delete", "Удалить", "Del", designer.DeleteSelectedCommand, 17),
         ];
 
-        static DesignEditorContextAction Action(
+        static SurfaceContextAction Action(
             string id, string header, string gesture, FormsDesigner.ViewModels.RelayCommand command, int order) =>
             new()
             {
@@ -587,9 +587,9 @@ public sealed partial class MainWindow : Window
     /// silently dropping one of them would group something other than what is on screen.
     /// </para>
     /// </remarks>
-    private static bool Group(DesignEditor surface, DesignerViewModel designer)
+    private static bool Group(UiDesignerView surface, DesignerViewModel designer)
     {
-        Control[] selected = [.. surface.SelectedDesignTargets.Select(target => target.Target)];
+        Control[] selected = [.. surface.SelectedTargets.Select(target => target.Target)];
 
         foreach (Control control in selected)
         {
@@ -611,14 +611,14 @@ public sealed partial class MainWindow : Window
         return surface.GroupSelection();
     }
 
-    private void OnDeleteRequested(object? sender, DesignEditorDeleteRequestedEventArgs e)
+    private void OnDeleteRequested(object? sender, SurfaceDeleteRequestedEventArgs e)
     {
         if (Designer is not { } designer)
         {
             return;
         }
 
-        foreach (DesignSelectionTarget target in e.Targets)
+        foreach (SurfaceSelectionTarget target in e.Targets)
         {
             if (target.Container.DataContext is FormViewModel form)
             {
@@ -639,7 +639,7 @@ public sealed partial class MainWindow : Window
     /// point is drawn and no order changes — so this handler is not a refinement of the gesture, it
     /// is the gesture.
     /// </remarks>
-    private void OnReorderRequested(object? sender, DesignEditorReorderRequestedEventArgs e)
+    private void OnReorderRequested(object? sender, UiDesignerReorderRequestedEventArgs e)
     {
         if (Designer is not { } designer || FormOf(e.Target) is not { } form)
         {
@@ -656,7 +656,7 @@ public sealed partial class MainWindow : Window
     {
         for (Control? current = control; current is not null; current = current.Parent as Control)
         {
-            if (current is DesignEditorItem item && item.DataContext is FormViewModel form)
+            if (current is UiDesignerItem item && item.DataContext is FormViewModel form)
             {
                 return form;
             }
@@ -727,7 +727,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        DesignEditor editor = this.GetControl<DesignEditor>("Surface");
+        UiDesignerView editor = this.GetControl<UiDesignerView>("Surface");
 
         if (FormUnder(editor, designer, e.GetPosition(editor)) is not { } form)
         {
@@ -742,7 +742,7 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>The form whose card is under a point on the canvas.</summary>
-    private static FormViewModel? FormUnder(DesignEditor editor, DesignerViewModel designer, Point at)
+    private static FormViewModel? FormUnder(UiDesignerView editor, DesignerViewModel designer, Point at)
     {
         foreach (FormViewModel form in designer.Forms)
         {
@@ -1018,7 +1018,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        DesignEditor surface = this.GetControl<DesignEditor>("Surface");
+        UiDesignerView surface = this.GetControl<UiDesignerView>("Surface");
 
         double width = form.Width;
         double height = form.Height;
@@ -1114,7 +1114,7 @@ public sealed partial class MainWindow : Window
         {
             field.Focus(NavigationMethod.Unspecified);
 
-            this.GetControl<DesignEditor>("Surface").Focus();
+            this.GetControl<UiDesignerView>("Surface").Focus();
 
             e.Handled = true;
         }

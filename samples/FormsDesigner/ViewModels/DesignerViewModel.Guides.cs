@@ -27,7 +27,7 @@ public sealed partial class DesignerViewModel
     /// Observable, because the editor tracks the collection rather than re-reading a property: a
     /// line added here shows at once, without the set being assigned again.
     /// </remarks>
-    public ObservableCollection<DesignGuide> Guides { get; } = [];
+    public ObservableCollection<SurfaceGuide> Guides { get; } = [];
 
     /// <summary>Whether the rulers are shown, and with them the way to make a guide.</summary>
     /// <remarks>
@@ -66,16 +66,16 @@ public sealed partial class DesignerViewModel
     /// the canvas arrives as a removal — the same gesture backwards, and the only way to be rid of
     /// one.
     /// </remarks>
-    public bool ApplyGuideChange(DesignGuideChangeKind kind, DesignGuide guide, DesignGuide? original)
+    public bool ApplyGuideChange(SurfaceGuideChangeKind kind, SurfaceGuide guide, SurfaceGuide? original)
     {
         switch (kind)
         {
-            case DesignGuideChangeKind.Add:
+            case SurfaceGuideChangeKind.Add:
                 Guides.Add(guide);
 
                 return true;
 
-            case DesignGuideChangeKind.Move:
+            case SurfaceGuideChangeKind.Move:
                 int at = original is { } was ? Guides.IndexOf(was) : -1;
 
                 if (at < 0)
@@ -87,7 +87,7 @@ public sealed partial class DesignerViewModel
 
                 return true;
 
-            case DesignGuideChangeKind.Remove:
+            case SurfaceGuideChangeKind.Remove:
                 return Guides.Remove(guide);
 
             default:
