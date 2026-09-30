@@ -25,9 +25,10 @@ and builds and runs the project, and searches and installs NuGet packages. Every
 through published API.
 
 The exception was that **a form whose root is a `Window` was not something either library had a
-story for**, and that is the most common form in any Avalonia application. It is
-`ArxisStudio.Markup.Xaml.Design` now, and the section below is left as it was written — the reasoning
-that led there is worth more than a note saying it is done. Everything else is either smaller than
+story for**, and that is the most common form in any Avalonia application. It was
+`ArxisStudio.Markup.Xaml.Design` for a while and is `UiDesignerFormItem` in ArxisStudio.Surface now,
+and the section below is left as it was written — the reasoning that led there is worth more than a
+note saying it is done. Everything else is either smaller than
 that or turned out on inspection not to be a gap at all.
 
 ## What the API does well
@@ -117,6 +118,16 @@ Avalonia allows each one owner and seals the interfaces a forwarder would need, 
 the duration and given back — binds size, theme variant and data context, and publishes the window's
 chrome as data for a host to draw from. FormsDesigner's `FormViewModel` is a caller now rather than an
 implementation.
+
+**Moved again, to where the host wanted it.** The package took a load session, and used it twice —
+for the root object and for a thread check. Everything else it did was Avalonia's. Nested inside the
+editor's container it left the host three things to keep in step: the card against the stand-in, the
+card's size against the root's, and a title bar drawn as a separate layer. So the same mechanics are
+the editor's own container now, `UiDesignerFormItem`
+([ADR 0020](../../ArxisStudio.Surface/docs/adr/0020-the-form-item-holds-the-document-root.md) in
+that repository): it takes the root as an object, so the surface library still knows nothing about
+documents; its size is the form's; and it draws the window's title bar itself. The Markup package
+is gone, and FormsDesigner no longer references it.
 
 Building it corrected two things this review had assumed. Resources cannot be shared by reference at
 all, and moving them turns out to be the better answer anyway: merged and theme dictionaries are

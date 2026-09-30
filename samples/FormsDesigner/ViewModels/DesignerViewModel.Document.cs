@@ -158,7 +158,7 @@ public sealed partial class DesignerViewModel
             }
         }
 
-        // The stand-in that hosts a window-rooted form has no element of its own, and should not:
+        // The card that stands for a window-rooted form has no element of its own, and should not:
         // it is what the root would be if the root could be shown. Falling back to the document's
         // root is therefore the right answer here rather than a shrug.
         Selected = form.Document?.Root;
@@ -241,10 +241,10 @@ public sealed partial class DesignerViewModel
         // the object map came back holding the window and its template alone. Every drop after the
         // first then had no container to land in.
         //
-        // Detach is what the surface offers for exactly this, and Attach — which detaches first —
-        // is how the new tree is borrowed once the update has built it. RefreshRoot below does the
+        // Letting go of the root is what the card offers for exactly this, and taking it again is
+        // how the new tree is borrowed once the update has built it. RefreshRoot below does the
         // second half.
-        form.Surface.Detach();
+        form.Card.Root = null;
 
         XamlUpdateResult result = await session.ApplyDocumentUpdateAsync(updated, _shutdown.Token);
 
@@ -319,7 +319,7 @@ public sealed partial class DesignerViewModel
 
         Control[] orphans =
         [
-            .. Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(form.Surface)
+            .. Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(form.Card)
                 .OfType<Control>()
                 .Where(control => control.GetType().Name == typeName && ElementBehind(map, control) is null),
         ];
@@ -423,8 +423,8 @@ public sealed partial class DesignerViewModel
     /// the form was reopened.
     /// </para>
     /// <para>
-    /// And the stand-in is re-attached whether or not the root object changed, which is the whole of
-    /// what a window-rooted form needs to survive being edited. The surface hosts a window by taking
+    /// And the card takes the root again whether or not the root object changed, which is the whole
+    /// of what a window-rooted form needs to survive being edited. The card hosts a window by taking
     /// its content out of it; an update that rebuilds that content puts the new tree into the window,
     /// where nothing is looking — so the canvas went on showing the tree from before the edit, the
     /// object map came back holding the window and its template and nothing else, and the next drop
@@ -554,10 +554,10 @@ public sealed partial class DesignerViewModel
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A gesture on the card is a gesture on the form. The card is the container, and inside it the
-    /// stand-in that hosts a root which cannot be shown; neither has an element of its own, nor
-    /// should — they are what the root is when the root is on screen. So they resolve to the
-    /// document's root, and resizing the card resizes the form.
+    /// A gesture on the card is a gesture on the form. The card is the container and the stand-in
+    /// for a root which cannot be shown, both at once; it has no element of its own, nor should —
+    /// it is what the root is when the root is on screen. So it resolves to the document's root, and
+    /// resizing the card resizes the form.
     /// </para>
     /// <para>
     /// Without that they resolved to nothing and the write was skipped in silence: the caption read
@@ -593,8 +593,7 @@ public sealed partial class DesignerViewModel
 
     /// <summary>Whether this control is the form as it appears, rather than something inside it.</summary>
     private static bool StandsForTheForm(FormViewModel form, Control control) =>
-        ReferenceEquals(control, form.Surface)
-        || (control is UiDesignerItem item && ReferenceEquals(item.DataContext, form));
+        ReferenceEquals(control, form.Card);
 
     /// <summary>
     /// Answers the editor's reorder request by moving the element in the document.

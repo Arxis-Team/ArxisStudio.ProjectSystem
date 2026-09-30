@@ -28,13 +28,6 @@
       designer is the top one; it brings the other two with it.
     -->
     <UiDesignerProject>$(SurfaceRepositoryRoot)src/Surface.UiDesigner/ArxisStudio.Surface.UiDesigner.csproj</UiDesignerProject>
-
-    <!--
-      Standing in for a window-rooted form is Markup's job, not this sample's. The adapter above
-      already requires that repository beside this one, so this reference adds a project rather
-      than a prerequisite.
-    -->
-    <MarkupDesignProject>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../ArxisStudio.Markup/src/ArxisStudio.Markup.Xaml.Design/ArxisStudio.Markup.Xaml.Design.csproj'))</MarkupDesignProject>
   </PropertyGroup>
 
   <Target Name="CheckSurfaceIsBesideUs" BeforeTargets="CollectPackageReferences;ResolveProjectReferences">
@@ -51,7 +44,6 @@
     <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.Markup.Xaml/ArxisStudio.ProjectSystem.Markup.Xaml.csproj" />
 
     <ProjectReference Include="$(UiDesignerProject)" />
-    <ProjectReference Include="$(MarkupDesignProject)" />
   </ItemGroup>
 
   <ItemGroup>

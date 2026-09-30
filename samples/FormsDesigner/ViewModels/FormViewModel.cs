@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using ArxisStudio.Markup.Xaml;
-using ArxisStudio.Markup.Xaml.Design;
 using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
 using ArxisStudio.Surface.UiDesigner;
@@ -37,7 +36,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
         Name = file.FileName;
         Location = location;
 
-        FollowTheSurface();
+        FollowTheCard();
     }
 
     /// <summary>The file this form was read from and will be written back to.</summary>
@@ -71,7 +70,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
             if (Set(ref field, value))
             {
                 Raise(nameof(SizeText));
-                FollowTheCard();
+                PreviewTheWidth();
             }
         }
     } = 480;
@@ -84,7 +83,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
             if (Set(ref field, value))
             {
                 Raise(nameof(SizeText));
-                FollowTheCard();
+                PreviewTheHeight();
             }
         }
     } = 360;
@@ -107,20 +106,32 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// what makes it true. The document remains the only thing an edit touches — a preview that was
     /// never committed is corrected by the next load, which reads the file.
     /// </para>
+    /// <para>
+    /// One side at a time, and that is not tidiness. The card takes its size from the root — it is
+    /// the form, so the root's declared size is its size — and hands each side on to this view
+    /// model as it arrives. Writing both sides back on either change wrote the side that had not
+    /// arrived yet: a window declared 900 × 600 had its width reach here first, and the answer
+    /// wrote the default height over the 600 the document said. Each side now answers only for
+    /// itself, so a value that came from the root goes back to the root unchanged.
+    /// </para>
+    /// <para>
+    /// A window needs none of this — its content is laid out by the card and follows it — but a
+    /// root shown as it stands carries its own declared size, and that one does not follow the card
+    /// until it is told.
+    /// </para>
     /// </remarks>
-    private void FollowTheCard()
+    private void PreviewTheWidth()
     {
-        if (Root is not { } root)
-        {
-            return;
-        }
-
-        if (double.IsFinite(Width) && Width > 0)
+        if (Root is { } root && double.IsFinite(Width) && Width > 0)
         {
             root.Width = Width;
         }
+    }
 
-        if (double.IsFinite(Height) && Height > 0)
+    /// <summary>The other side. See <see cref="PreviewTheWidth"/>.</summary>
+    private void PreviewTheHeight()
+    {
+        if (Root is { } root && double.IsFinite(Height) && Height > 0)
         {
             root.Height = Height;
         }
@@ -135,7 +146,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
 
     /// <summary>The live control tree the document produced.</summary>
     /// <remarks>
-    /// What the document means, not what the canvas shows — see <see cref="Surface"/> for the
+    /// What the document means, not what the canvas shows — see <see cref="Card"/> for the
     /// difference and why there is one.
     /// </remarks>
     public Control? Root
@@ -145,66 +156,75 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     }
 
     /// <summary>
-    /// The control the canvas actually hosts.
+    /// The card the canvas shows the form in — and the container the editor lays out, which is the
+    /// same object.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The same object as <see cref="Root"/> would be, except that a window cannot be a child of
-    /// anything: Avalonia gives one a <c>TopLevelHost</c> parent the moment it is constructed, so
-    /// putting it in a <c>ContentControl</c> throws during layout, off the stack of whatever asked
-    /// for the form. A window-rooted form used to leave the canvas empty with nothing said about it.
+    /// A window cannot be a child of anything: Avalonia gives one a <c>TopLevelHost</c> parent the
+    /// moment it is constructed, so putting it in a <c>ContentControl</c> throws during layout, off
+    /// the stack of whatever asked for the form. Something has to stand in for it.
     /// </para>
     /// <para>
-    /// This sample used to answer that itself — take the content out, host that, carry the data
-    /// context across by hand. It is <c>ArxisStudio.Markup.Xaml.Design</c>'s answer now, which is
-    /// where it belongs: every host that shows forms meets the same wall, and would meet the same
-    /// four consequences after it. What is left here is the frame the designer draws around it.
+    /// That something used to be a control nested inside the editor's container —
+    /// <c>XamlDesignSurface</c>, from Markup — and the nesting cost this sample three things to keep
+    /// in step: the card against the stand-in inside it, the card's size against the root's, and a
+    /// window's title bar drawn as a separate layer over the canvas. It is the editor's own
+    /// container now, <c>UiDesignerFormItem</c> (ADR 0020 of ArxisStudio.Surface): the card <em>is</em>
+    /// the stand-in, its size <em>is</em> the form's, and the title bar is part of it.
+    /// <c>FormsDesignerView</c> hands this object to the editor as the container for this form.
+    /// </para>
+    /// <para>
+    /// The form owns it from construction rather than waiting for the editor to make one, because
+    /// loading and appearing are different moments: a form is published, measured and asked whether
+    /// it has anything to show before the canvas has laid anything out.
     /// </para>
     /// </remarks>
-    /// <remarks>
-    /// Hit-testing is off because a loaded form must not live its own life: a button would eat the
-    /// press and a text box would take focus and accept typing. The editor does not need it — it
-    /// works out what was pointed at from rectangles in world coordinates — and in
-    /// <c>ContentMode="Loaded"</c> its own theme switches this off for the same reason. Annotated
-    /// mode leaves it to the host, so the host does it.
-    /// </remarks>
-    public XamlDesignSurface Surface { get; } = new() { IsHitTestVisible = false };
+    public UiDesignerFormItem Card { get; } = new();
 
-    /// <summary>Follows what the stand-in reports about the form, which it keeps current.</summary>
+    /// <summary>Follows what the card reports about the form, which it keeps current.</summary>
     /// <remarks>
-    /// Observed rather than copied on publication. A publication happens once per session, and the
-    /// title is a property an inspector edits — so a snapshot went stale the first time anybody used
-    /// the feature the title bar exists to show, while the doc above claimed the opposite.
+    /// Observed rather than copied on publication. The title bar appears and disappears with the
+    /// root — a window wears one, a user control does not, and <c>WindowDecorations</c> is a property
+    /// an inspector edits — and the caption this designer draws sits above whichever it is.
     /// </remarks>
-    private void FollowTheSurface() =>
-        Surface.GetObservable(XamlDesignSurface.TitleProperty).Subscribe(new AnonymousObserver<string?>(_ =>
-        {
-            Raise(nameof(WindowTitle));
-            Raise(nameof(ChromeTop));
-        }));
+    private void FollowTheCard()
+    {
+        var moved = new AnonymousObserver<object?>(_ => Raise(nameof(ChromeTop)));
+
+        Card.GetObservable(UiDesignerFormItem.RootProperty).Subscribe(moved);
+        Card.GetObservable(UiDesignerFormItem.DecorationsProperty)
+            .Subscribe(new AnonymousObserver<WindowDecorations>(_ => Raise(nameof(ChromeTop))));
+    }
 
     /// <summary>Where the designer's chrome starts, which is the card's left edge.</summary>
     public double ChromeLeft => Location.X;
 
     /// <summary>
-    /// Where the designer's chrome starts vertically, which is far enough above the card for it.
+    /// Where the designer's caption starts vertically, which is far enough above the card for it.
     /// </summary>
     /// <remarks>
-    /// The chrome hangs above the form rather than over it: a caption, and for a window the title
-    /// bar that belongs to the window rather than to its content. Both are laid out downwards from
-    /// here, so this is the card's top edge less however much of them there is.
+    /// The caption hangs above the form rather than over it, and above the window's title bar when
+    /// there is one. The title bar is the card's own and stands outside its bounds, so this is the
+    /// card's top edge less the caption and less the bar. The bar's height is asked of the theme
+    /// rather than repeated here: it is a resource somebody may change, and a number copied from it
+    /// would go on being the old one.
     /// </remarks>
-    public double ChromeTop => Location.Y - (WindowTitle is { Length: > 0 } ? 60 : 22);
+    public double ChromeTop => Location.Y - CaptionHeight - (WearsTitleBar ? TitleBarHeight : 0);
 
-    /// <summary>The title to draw, when the root is a window, and nothing otherwise.</summary>
-    /// <remarks>
-    /// The title is a property of a window nobody can see, so drawing it is the only way it appears.
-    /// It is read off the surface rather than off the window, because the surface keeps it current:
-    /// an edit to <c>Title</c> in the inspector changes what is drawn without anything being rebuilt.
-    /// </remarks>
-    public string? WindowTitle => Surface.IsTopLevel
-        ? Surface.Title is { Length: > 0 } title ? title : Name
-        : null;
+    /// <summary>The caption's row and the gap under it.</summary>
+    private const double CaptionHeight = 22;
+
+    /// <summary>Whether the card is drawing a window's title bar above itself.</summary>
+    private bool WearsTitleBar =>
+        Card.Root is Window && Card.Decorations == WindowDecorations.Full;
+
+    private static double TitleBarHeight =>
+        Application.Current is { } application
+            && application.TryFindResource("UiDesigner.Form.TitleBar.Height", out object? height)
+            && height is double value
+            ? value
+            : 0;
 
     /// <summary>The map between the two, in both directions.</summary>
     public XamlObjectMap? Objects => Session?.Objects;
@@ -452,7 +472,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
 
         Session = null;
 
-        Surface.Detach();
+        Card.Root = null;
         Root = null;
 
         // And the generation itself, or the sweep would find this form still using it and keep it
@@ -494,7 +514,10 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     {
         Root = session.RootObject as Control;
 
-        Surface.Attach(session);
+        // The root object, not the session: the card knows nothing about documents. Set again after
+        // an update that rebuilt the root, and the card stays the same card — same place, same
+        // selection.
+        Card.Root = session.RootObject;
 
         MarkEditable(session);
         MarkGroups(session);
@@ -508,7 +531,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
     /// <remarks>
     /// <para>
     /// Asked of the object map rather than worked out from the tree, because the map is the one
-    /// thing that knows. A walk would have to guess about the stand-in that hosts the form, about
+    /// thing that knows. A walk would have to guess about the parts the card adds to host the form, about
     /// anything a template generated, and about whatever the designer adds next — and it would guess
     /// silently.
     /// </para>
@@ -667,7 +690,7 @@ public sealed class FormViewModel : Observable, IAsyncDisposable
             await session.DisposeAsync();
         }
 
-        Surface.Dispose();
+        Card.Root = null;
 
         Root = null;
     }

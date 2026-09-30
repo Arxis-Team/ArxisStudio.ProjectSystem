@@ -5,7 +5,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using ArxisStudio.Markup;
 using ArxisStudio.Markup.Xaml;
-using ArxisStudio.Markup.Xaml.Design;
 using ArxisStudio.Markup.Xaml.Loader;
 using ArxisStudio.ProjectSystem;
 using ArxisStudio.ProjectSystem.Markup.Xaml;
@@ -211,7 +210,7 @@ public sealed partial class DesignerViewModel
     /// The theme variant a form's own application would draw it with.
     /// </summary>
     /// <remarks>
-    /// The layer the surface cannot know — see <c>XamlDesignSurface.ApplicationThemeVariant</c>.
+    /// The layer the surface cannot know — see <c>UiDesignerFormItem.ApplicationThemeVariant</c>.
     /// The project's <c>App.axaml</c> is the authority when it declares a side; when it declares
     /// "Default", or there is no application document at all, the answer is the platform's, which
     /// is what the running application would resolve it to. The designer's own variant is never
@@ -234,7 +233,7 @@ public sealed partial class DesignerViewModel
 
     /// <summary>Tells a form's surface which application it is being previewed for.</summary>
     internal void ApplyApplicationVariant(FormViewModel form) =>
-        form.Surface.ApplicationThemeVariant = VariantFor(form.File);
+        form.Card.ApplicationThemeVariant = VariantFor(form.File);
 
     /// <summary>Re-answers the variant question for every open form.</summary>
     private void ApplyApplicationVariants()
@@ -589,18 +588,18 @@ public sealed partial class DesignerViewModel
     {
         await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
 
-        // Asked of the surface, not of the reference. The stand-in is always there — it is a
-        // control the form owns from construction — so testing it for null tested nothing, and the
-        // one diagnostic this designer has for "the document loaded and there is nothing to show"
+        // Asked of the card, not of the reference. The card is always there — it is a control the
+        // form owns from construction — so testing it for null tested nothing, and the one
+        // diagnostic this designer has for "the document loaded and there is nothing to show"
         // silently stopped being reachable. HasContent is the question that still has an answer.
-        if (!form.Surface.HasContent)
+        if (!form.Card.HasContent)
         {
             Log($"  ! {form.Name} produced nothing the canvas can host");
 
             return;
         }
 
-        XamlDesignSurface surface = form.Surface;
+        Avalonia.Controls.Control surface = form.Card;
 
         // Reported, not judged. One yield is enough for the container to exist and not always
         // enough for it to have measured, so a zero here means "not yet or not at all" and this is

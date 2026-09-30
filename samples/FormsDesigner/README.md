@@ -234,7 +234,7 @@ is what every template's main form is:
 form whose `x:Class` names a type. So the restore comes first, and only when the build was going to
 happen anyway.
 
-**A window is whole while it is being updated.** The stand-in shows a window by taking its content
+**A window is whole while it is being updated.** The card shows a window by taking its content
 out of it; an update reads the live tree to work out what to change, and a live window with no
 content had nothing to change — so the document gained a control, the canvas did not, and the next
 drop had no container to land into. The content goes back for the length of the update and is
@@ -350,11 +350,22 @@ every log line still says the document loaded, because it did.
 
 This sample answered that itself for a while: take the content out of the window, show that, paint
 the title bar, and carry the data context across by hand because `Design.DataContext` is a property
-of the root and content taken out of the root loses it. That answer is
-`ArxisStudio.Markup.Xaml.Design` now, where it belongs — every host that shows forms meets the same
-wall and would meet the same consequences after it, in the same order. `FormViewModel` holds a
-`XamlDesignSurface` and calls `Attach` after every publication; what is left here is the frame the
-designer draws around it, and the title it reads off the surface.
+of the root and content taken out of the root loses it. Then it was a control from Markup nested
+inside the editor's container, which moved the answer to the right hands and left three things to
+keep in step here: the card against the stand-in inside it, the card's size against the root's, and
+the title bar, drawn as a layer of its own over the canvas.
+
+It is the editor's own container now — `UiDesignerFormItem`, ADR 0020 of ArxisStudio.Surface. The
+card *is* the stand-in: it takes the document's root as an object, borrows what a window will not
+share, and draws the window's title bar itself, above its own bounds and in the form's theme.
+`FormViewModel` holds that card and sets its `Root` after every publication, and
+`FormsDesignerView` — one override — hands it to the editor as the form's container. What is left
+here is the caption above the form and the message when something went wrong.
+
+Two things the move taught, both now written where they happened. The card's size is the form's,
+so it arrives from the root one side at a time — and a preview that wrote both sides back on either
+change overwrote the side that had not arrived. And the designer's own card colour is the
+container's `Background`, under the form's: a form that declares none shows the card, not the grid.
 
 **Documents load in `XamlLoadMode.Design`.** A form is usually a page of bindings with nothing bound
 at rest; the Avalonia template's window is one `TextBlock` reading `{Binding Greeting}`. Design mode

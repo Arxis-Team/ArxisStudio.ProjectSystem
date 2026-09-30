@@ -508,7 +508,7 @@ internal static class StudioCheck
         Control? target = null;
 
         foreach (Control control in Avalonia.VisualTree.VisualExtensions
-            .GetVisualDescendants(form.Surface).OfType<Control>())
+            .GetVisualDescendants(form.Card).OfType<Control>())
         {
             if (InsideTheProjectsOwn(control))
             {
@@ -2151,7 +2151,7 @@ internal static class StudioCheck
     /// walked the root would call every control absent — including one still plainly on screen.
     /// </remarks>
     private static Control? Drawn(FormViewModel form, string typeName) =>
-        Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(form.Surface)
+        Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(form.Card)
             .OfType<Control>()
             .FirstOrDefault(control => control.GetType().Name == typeName);
 
@@ -2159,7 +2159,7 @@ internal static class StudioCheck
 
     /// <summary>Every control the canvas has drawn for this form.</summary>
     private static IEnumerable<Control> Live(FormViewModel form) =>
-        Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(form.Surface).OfType<Control>();
+        Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(form.Card).OfType<Control>();
 
     /// <summary>Opens a project form by file name, the way a double-click in the pane would.</summary>
     private static bool Open(DesignerViewModel designer, string name)

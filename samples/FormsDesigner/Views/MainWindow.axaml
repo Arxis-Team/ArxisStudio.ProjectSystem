@@ -3,6 +3,7 @@
         xmlns:vm="using:FormsDesigner.ViewModels"
         xmlns:edit="using:AvaloniaEdit"
         xmlns:surface="https://github.com/Arxis-Team/ArxisStudio.Surface"
+        xmlns:views="using:FormsDesigner.Views"
         x:Class="FormsDesigner.Views.MainWindow"
         x:DataType="vm:DesignerViewModel"
         Title="ArxisStudio — Forms Designer"
@@ -65,18 +66,12 @@
                      VerticalAlignment="Center" />
         </StackPanel>
 
-        <!-- A window's title bar belongs to the window, not to its content, so it is drawn here. -->
-        <Border Height="36" Background="{DynamicResource Bg2}" CornerRadius="10,10,0,0"
-                BorderBrush="{DynamicResource Brd}" BorderThickness="1,1,1,0" Padding="12,0"
-                IsVisible="{Binding WindowTitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-            <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
-            <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
-            <Ellipse Width="10" Height="10" Fill="{DynamicResource Bg4}" />
-            <TextBlock Text="{Binding WindowTitle}" FontWeight="SemiBold" FontSize="12"
-                       Margin="6,0,0,0" VerticalAlignment="Center" />
-          </StackPanel>
-        </Border>
+        <!--
+          No title bar here any more. A window's title bar belongs to the window, and the card that
+          stands for the window draws it now — above itself, outside its own bounds, in the form's
+          theme rather than this tool's. This layer keeps what is the designer's and not the
+          window's: the caption above, and whatever went wrong below.
+        -->
 
         <TextBlock Text="{Binding Problem}" TextWrapping="Wrap" Margin="14"
                    Foreground="{DynamicResource Red}"
@@ -88,25 +83,25 @@
   </Window.Resources>
 
   <Window.Styles>
-    <Style Selector="surface|UiDesignerItem" x:DataType="vm:FormViewModel">
+    <Style Selector="surface|UiDesignerFormItem" x:DataType="vm:FormViewModel">
       <!--
         Annotated rather than Loaded, because this designer knows exactly what is editable and the
         editor should not have to guess. `Loaded` means "everything the author wrote", found by
-        walking the container's content — and the walk cannot tell the document's own controls from
-        the two the stand-in adds to host them, so a form offered three targets where it has one, and
-        two of them answered "UserControl". Annotated asks for designer metadata instead, and the
-        object map says precisely which controls have a document element behind them.
+        walking the form; Annotated asks for designer metadata instead, and the object map says
+        precisely which controls have a document element behind them — a button's own label is
+        in the map and is not the document's.
       -->
       <Setter Property="ContentMode" Value="Annotated" />
 
       <!--
-        The card is the container, not something wrapped around the form inside it. A frame drawn
-        in the content would be a target like any other; drawn here it is the container's own
-        chrome, out of reach of the walk that looks for targets. `UiDesignerItem.OutlineOpacity`
-        turns on an overlay outline that costs no pixel — a BorderThickness would lay the form out
-        inside the stroke and make it two pixels narrower than the document says.
+        The card is the container, and the container is the form: `UiDesignerFormItem` holds the
+        document's root itself, so nothing is nested inside it and nothing has to be kept the same
+        size as it. `Background` is the card under the form — a form that declares no background
+        shows it — and the form's own background is drawn over it by the item.
+        `UiDesignerItem.OutlineOpacity` turns on an overlay outline that costs no pixel — a
+        BorderThickness would lay the form out inside the stroke and make it two pixels narrower
+        than the document says.
       -->
-      <Setter Property="Content" Value="{Binding Surface}" />
       <Setter Property="Background" Value="{DynamicResource Bg1}" />
       <Setter Property="BorderBrush" Value="{DynamicResource Brd}" />
       <Setter Property="CornerRadius" Value="10" />
@@ -115,6 +110,17 @@
       <Setter Property="Height" Value="{Binding Height, Mode=TwoWay}" />
       <Setter Property="HorizontalAlignment" Value="Left" />
       <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+
+    <!--
+      A form on the canvas must not live its own life: a button would eat the press and a text box
+      would take focus and accept typing. The editor does not need the form to answer — it works out
+      what was pointed at from rectangles in world coordinates. In `Loaded` mode the item's own theme
+      switches this off; Annotated leaves it to the host, so the host does it, on the part that hosts
+      the form and not on the card, which has to go on answering presses.
+    -->
+    <Style Selector="surface|UiDesignerFormItem /template/ Decorator#PART_FormHost">
+      <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
   </Window.Styles>
 
@@ -578,7 +584,7 @@
                                         IsScaleVisible="{Binding #TopRuler.IsScaleVisible}" />
 
           <Panel Grid.Row="1" Grid.Column="1" ClipToBounds="True">
-            <surface:UiDesignerView x:Name="Surface"
+            <views:FormsDesignerView x:Name="Surface"
                                  ItemsSource="{Binding Shown}"
                                  SelectedItems="{Binding SelectedForms}"
                                  SelectionMode="Multiple"
@@ -609,7 +615,7 @@
                                                        NudgeStep="1"
                                                        LargeNudgeStep="10" />
               </surface:UiDesignerView.InteractionOptions>
-            </surface:UiDesignerView>
+            </views:FormsDesignerView>
 
             <!--
               The chrome layer. Transformed by the editor's own viewport transform, so it pans and

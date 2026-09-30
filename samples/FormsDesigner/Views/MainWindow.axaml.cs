@@ -296,10 +296,10 @@ public sealed partial class MainWindow : Window
     /// </para>
     /// <para>
     /// A window-rooted form needs the second attempt. Its root is a control the canvas cannot host —
-    /// that is the whole reason a stand-in exists — so it is nowhere under the editor and cannot be
-    /// selected as itself. The card is what stands in for it on screen, so the card is what gets
-    /// selected, which is the same answer the canvas gives in the other direction when a click lands
-    /// on the stand-in. Without it, picking the root row of a window form did nothing and said
+    /// that is the whole reason the card stands in for it — so it is nowhere under the editor and
+    /// cannot be selected as itself. The card is what stands in for it on screen, so the card is what
+    /// gets selected, which is the same answer the canvas gives in the other direction when a click
+    /// lands on the card. Without it, picking the root row of a window form did nothing and said
     /// nothing.
     /// </para>
     /// <para>
@@ -369,7 +369,7 @@ public sealed partial class MainWindow : Window
     /// Two answers, in order. The control the element produced is the direct one. A window's root
     /// produced no control of its own — the card is what stands for it — so the container is
     /// selected instead, which is the same answer the canvas gives in the other direction when a
-    /// click lands on the stand-in.
+    /// click lands on the card.
     /// </remarks>
     private static bool TrySelectOnCanvas(UiDesignerView surface, FormViewModel form, XamlElement element)
     {
@@ -734,7 +734,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        Point inForm = e.GetPosition(form.Surface);
+        Point inForm = e.GetPosition(form.Card);
 
         designer.Drop(form, entry, DeepestAt(form, inForm), inForm);
 
@@ -780,7 +780,7 @@ public sealed partial class MainWindow : Window
         {
             if (produced is not Control control
                 || map.GetElement(control) is null
-                || control.TranslatePoint(default, form.Surface) is not { } origin)
+                || control.TranslatePoint(default, form.Card) is not { } origin)
             {
                 continue;
             }
@@ -792,7 +792,7 @@ public sealed partial class MainWindow : Window
                 continue;
             }
 
-            int depth = DepthIn(control, form.Surface);
+            int depth = DepthIn(control, form.Card);
             double area = rectangle.Width * rectangle.Height;
 
             // Deeper wins, and area only settles a tie. A panel that fills its parent has the same
