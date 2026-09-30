@@ -4,6 +4,11 @@ Date: 2026-08-07
 Reviewer: built `samples/FormsDesigner` against `ArxisStudio.DesignEditor` and `ArxisStudio.Markup`
 Status: findings, and every one of them acted on except two that belong to a repository this one does not own
 
+> The sample this review was written against has moved since. It is `samples/UiDesigner.Demo` in
+> ArxisStudio.Surface now, and this repository carries no designer
+> ([ADR 0024](adr/0024-the-designer-sample-lives-with-the-designer.md)). The review is left as it
+> was written, under the name the sample had.
+
 ## The question
 
 FormsDesigner exists to answer one: *can the public API of the three libraries be used to build a

@@ -559,8 +559,9 @@ public sealed class ProjectAssemblyContextTests : IDisposable
     /// This is what makes the runtime XAML compiler's emitted code bind assembly references inside
     /// the generation that is loading, rather than in whichever context the process compiled for
     /// first. The reset half of the scope — Avalonia's own static state — is not asserted here,
-    /// because reaching it would mean running a real XAML compile; the studio's end-to-end check is
-    /// what covers that path.
+    /// because reaching it would mean running a real XAML compile; the form designer's end-to-end
+    /// check (<c>--verify</c> of <c>UiDesigner.Demo</c>, in ArxisStudio.Surface) is what covers that
+    /// path.
     /// </remarks>
     [Fact]
     public void EnterLoadScope_PutsContextualReflectionOnThisGeneration()

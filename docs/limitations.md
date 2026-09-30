@@ -398,7 +398,9 @@ do is let go on the host's behalf, and the list of what a host must release firs
 
 A host that misses one of these sees an honest "no" and a fallback, never a wrong preview.
 
-That last item is the one nobody predicts, and the sample carries the worked example. A person who
+That last item is the one nobody predicts, and the form designer built on these libraries carries
+the worked example (`samples/UiDesigner.Demo` in ArxisStudio.Surface —
+[ADR 0024](adr/0024-the-designer-sample-lives-with-the-designer.md)). A person who
 *clicked* a form before editing its code got a restart; a script that opened the same forms and
 changed the same file got a swap. A heap dump of the failing moment named exactly one root:
 `AvaloniaEdit.RoutedCommand._inputElement`, a process-wide static in a text-editor library, holding
@@ -413,7 +415,8 @@ closing forms moves focus and routes commands, so a static cleared before the te
 put straight back by it — measured, in that order, both ways.
 
 Since the `ArxisStudio.DesignEditor` update of 2026-08-22 the fallback is no longer the rare answer.
-Measured on the `--reclaim` harness, whose third case is the studio's own generation with two forms
+Measured on that designer's `--reclaim` harness, whose third case is the studio's own generation
+with two forms
 open: two runs in three answered "still held" with the sample untouched, one in three with it
 updated — the same binary each time, no gesture involved, nothing the designer does differently.
 The root was not chased: the walk gives up on a graph that size, and the tool that names one is a
@@ -498,7 +501,8 @@ way — but a file whose contents disagree with its name resolves under the name
 
 ### A preview follows the project's theme variant, not the project's theme
 
-A preview's theme variant is the project's, not the tool's: the sample reads `RequestedThemeVariant`
+A preview's theme variant is the project's, not the tool's: the form designer reads
+`RequestedThemeVariant`
 from the project's own `App.axaml` — "Default" and no declaration resolve to the operating system's
 variant, the way the running application would — and hands it to each form's surface, which also
 paints an undecided window with the themed background that variant selects. The tool switching its
@@ -529,12 +533,13 @@ Not limitations of the implementation so much as scope boundaries, listed so nob
 - **Benchmarks.** Nothing here has been measured for speed, and the correctness-first choices say so
   where they were made.
 
-There are two samples. `samples/FormsDesigner` is a visual form designer over all three families at
-once — `ArxisStudio.DesignEditor` for the surface, `ArxisStudio.Markup` for the document, this one
-for the project — and it needs both sibling repositories checked out beside this one. Its own README
-lists what it does not do; the one worth repeating here is that a form whose `x:Class` names a type
-the project has not compiled cannot be shown at all, which is a fact about loading a document rather
-than about this designer.
+There is one sample here and one next door. The visual form designer over all three families —
+`ArxisStudio.Surface` for the canvas, `ArxisStudio.Markup` for the document, this one for the
+project — is `samples/UiDesigner.Demo` in ArxisStudio.Surface, and no longer in this repository
+([ADR 0024](adr/0024-the-designer-sample-lives-with-the-designer.md)). Its own README lists what it
+does not do; the one worth repeating here is that a form whose `x:Class` names a type the project
+has not compiled cannot be shown at all, which is a fact about loading a document rather than about
+that designer.
 
 ### A bare `using:` finds the projects, not the packages
 
@@ -548,7 +553,7 @@ for its own reasons. Write `clr-namespace:Ns;assembly=ThePackage` for it, which 
 always worked. Searching the packages too would mean loading every restored assembly before anything
 asked for one, into the default context where they stay for the life of the process.
 
-`samples/ProjectSystem.Ide` is the other, and it is the one that earned its place twice over: it
+`samples/ProjectSystem.Ide` is the one that lives here, and it earned its place twice over: it
 uses every package at once and found a real defect in the adapter within minutes of first running —
 the resource map accepted only `AvaloniaResource`, so it saw none of the `.axaml` documents in a
 real Avalonia project. No unit test had noticed, because every fixture used the item type the code

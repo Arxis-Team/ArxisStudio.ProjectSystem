@@ -2,7 +2,9 @@
 
 Date: 2026-08-11
 
-Status: Accepted. Amends [0021](0021-a-run-holds-one-generation-of-a-projects-types.md)
+Status: Accepted. Amends [0021](0021-a-run-holds-one-generation-of-a-projects-types.md). Amended by
+[0024](0024-the-designer-sample-lives-with-the-designer.md): the harness below lives in
+ArxisStudio.Surface's `UiDesigner.Demo` now.
 
 ## Context
 
