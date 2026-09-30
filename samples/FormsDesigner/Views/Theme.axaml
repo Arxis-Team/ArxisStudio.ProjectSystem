@@ -29,6 +29,11 @@
       <SolidColorBrush x:Key="Yel" Color="#D6AE58" />
       <SolidColorBrush x:Key="Org" Color="#E08855" />
       <SolidColorBrush x:Key="Pur" Color="#9A7CF7" />
+
+      <!-- The editor's grid, under the keys its theme reads: the canvas, and two steps up from it. -->
+      <SolidColorBrush x:Key="Surface.Grid.BackgroundBrush" Color="#191A1D" />
+      <SolidColorBrush x:Key="Surface.Grid.LineBrush" Color="#26292E" />
+      <SolidColorBrush x:Key="Surface.Grid.MajorLineBrush" Color="#33353A" />
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Light">
@@ -52,17 +57,21 @@
       <SolidColorBrush x:Key="Yel" Color="#9E6C00" />
       <SolidColorBrush x:Key="Org" Color="#BD5B15" />
       <SolidColorBrush x:Key="Pur" Color="#6F4FD9" />
+
+      <!-- The same two steps, down from a light canvas: the values of Bg4 and Brd2. -->
+      <SolidColorBrush x:Key="Surface.Grid.BackgroundBrush" Color="#EDEEF1" />
+      <SolidColorBrush x:Key="Surface.Grid.LineBrush" Color="#DFE1E5" />
+      <SolidColorBrush x:Key="Surface.Grid.MajorLineBrush" Color="#C9CCD6" />
     </ResourceDictionary>
 
   </ResourceDictionary.ThemeDictionaries>
 
   <!--
-    The editor's own palette, keyed the way UiDesignerView's theme expects, so the canvas and the
-    grid belong to the same design as everything around them rather than to the library's defaults.
+    The editor's own metrics, keyed the way UiDesignerView's theme expects, so the grid belongs to
+    the same design as everything around it rather than to the library's defaults. Its colours are
+    in the variants above and not here: an entry of the dictionary itself is found before its theme
+    dictionaries are asked, so a brush declared flat would be the dark one on a light desk too.
   -->
-  <SolidColorBrush x:Key="Surface.Grid.BackgroundBrush" Color="#191A1D" />
-  <SolidColorBrush x:Key="Surface.Grid.LineBrush" Color="#26292E" />
-  <SolidColorBrush x:Key="Surface.Grid.MajorLineBrush" Color="#33353A" />
   <x:Double x:Key="Surface.Grid.CellSize">20</x:Double>
   <x:Int32 x:Key="Surface.Grid.MajorInterval">5</x:Int32>
 

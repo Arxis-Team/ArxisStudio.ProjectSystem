@@ -9,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using ArxisStudio.Markup.Xaml;
 using ArxisStudio.Markup.Xaml.Loader;
@@ -2265,6 +2267,28 @@ internal static class StudioCheck
 
         Say($"opened {form.Name}, root {form.Root?.GetType().Name ?? "none"}");
 
+        // 2a. The canvas is the design's, in both variants. The grid belongs to the editor's library
+        //     and reads the library's keys; the design answers those keys with its own colours, and
+        //     which of the two answers is found is decided by the order the dictionaries are merged
+        //     in. Nothing reports the wrong one: the library's dark is three shades from the design's.
+        int unmatched = failures;
+
+        foreach (ThemeVariant variant in new[] { ThemeVariant.Dark, ThemeVariant.Light })
+        {
+            Color? canvas = BrushColor("Canvas", variant);
+            Color? grid = BrushColor("Surface.Grid.BackgroundBrush", variant);
+
+            if (canvas is null || grid != canvas)
+            {
+                Fail(ref failures, $"the {variant} canvas grid is {grid}, and the design's canvas is {canvas}");
+            }
+        }
+
+        if (failures == unmatched)
+        {
+            Say("the canvas grid is the design's colour in both variants");
+        }
+
         // 3. Laid out: three controls from the toolbox, dropped into the form's panel.
         //
         // Into the panel rather than onto the root: a Window holds one child, which is what the
@@ -2889,6 +2913,14 @@ internal static class StudioCheck
 
     private static string Summary(DesignerViewModel designer) =>
         string.Join(", ", designer.Hierarchy.Select(row => row.Name));
+
+    /// <summary>The colour a brush key has in a variant, asked of the application the way a control asks.</summary>
+    private static Color? BrushColor(string key, ThemeVariant variant) =>
+        Application.Current is { } application
+        && application.TryGetResource(key, variant, out object? found)
+        && found is ISolidColorBrush brush
+            ? brush.Color
+            : null;
 
     private static int Fail(ref int failures, string what)
     {

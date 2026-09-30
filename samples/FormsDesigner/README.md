@@ -344,6 +344,11 @@ designer its template — and the form designer's one entry point merges all thr
 Without it the control has no template and draws nothing — no grid, no forms, no handles — while
 every log line still says the document loaded, because it did.
 
+And the design's `Views/Theme.axaml` is merged *after* it. Merged dictionaries are searched from the
+last to the first, so the later one wins where both declare a key — the canvas grid's colours, here.
+The other order compiles, runs, and draws the library's defaults; `--verify` asks for the grid's
+colour in both variants, because nothing else would say.
+
 **A window is drawn, not hosted.** A `Window` cannot be a child of anything — Avalonia gives one a
 `TopLevelHost` parent the moment it is constructed, and putting it in a `ContentControl` throws
 *during layout*, off the stack of everything that could report it, so the canvas simply stayed empty.

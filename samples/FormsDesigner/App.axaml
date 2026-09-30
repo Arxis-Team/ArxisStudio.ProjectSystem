@@ -26,10 +26,6 @@
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
 
-        <!-- The design's own tokens, and they come first so the editor's theme below can be
-             overridden by them where the two describe the same thing. -->
-        <ResourceInclude Source="avares://FormsDesigner/Views/Theme.axaml" />
-
         <!--
           The editor's own theme, and without it there is no editor. ArxisStudio.Surface.UiDesigner ships its
           template, its grid, its selection adorners and its resources in one dictionary that an
@@ -39,10 +35,20 @@
         -->
         <ResourceInclude Source="avares://ArxisStudio.Surface.UiDesigner/Themes/UiDesignerTheme.axaml" />
 
+        <!--
+          The design's own tokens, and they come last, because merged dictionaries are searched from
+          the last to the first: where the two describe the same thing — the canvas grid — the one
+          merged later is the one found. For as long as this stood above the editor's theme the
+          design's grid colours were declared and never drawn, and the canvas was the library's
+          default, three shades off, which no log line reports.
+        -->
+        <ResourceInclude Source="avares://FormsDesigner/Views/Theme.axaml" />
+
       </ResourceDictionary.MergedDictionaries>
 
       <!-- Forms are outlined at rest: on a dark canvas there is otherwise nothing to say where one
-           form ends and the next begins. -->
+           form ends and the next begins. Declared here rather than merged, and an entry of the
+           dictionary itself is found before anything it merges. -->
       <x:Double x:Key="UiDesignerItem.OutlineOpacity">0.75</x:Double>
 
     </ResourceDictionary>
