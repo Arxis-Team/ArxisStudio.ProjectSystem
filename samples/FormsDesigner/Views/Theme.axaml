@@ -66,13 +66,6 @@
   <x:Double x:Key="Surface.Grid.CellSize">20</x:Double>
   <x:Int32 x:Key="Surface.Grid.MajorInterval">5</x:Int32>
 
-  <!--
-    The title bar the form's card draws for a window. Its colours are left to the library, which
-    picks them by the form's own theme rather than this tool's — a light application's window wears
-    a light bar here. Only the corner is this design's: the card under it is rounded by ten.
-  -->
-  <CornerRadius x:Key="UiDesigner.Form.TitleBar.CornerRadius">10,10,0,0</CornerRadius>
-
   <FontFamily x:Key="UiFont">Inter,Segoe UI,system-ui,sans-serif</FontFamily>
   <FontFamily x:Key="MonoFont">JetBrains Mono,Cascadia Code,Consolas,monospace</FontFamily>
 

@@ -362,6 +362,11 @@ share, and draws the window's title bar itself, above its own bounds and in the 
 `FormsDesignerView` — one override — hands it to the editor as the form's container. What is left
 here is the caption above the form and the message when something went wrong.
 
+The window has one corner radius, the card's: the title bar takes its top corners and the form
+under it the bottom ones, so the two meet in a straight line. There is no second number for the
+bar to disagree with — for a moment there was, and the form's rounded top left a wedge of canvas
+under the bar's straight edge.
+
 Two things the move taught, both now written where they happened. The card's size is the form's,
 so it arrives from the root one side at a time — and a preview that wrote both sides back on either
 change overwrote the side that had not arrived. And the designer's own card colour is the
