@@ -485,13 +485,16 @@ which file it came from is a question only a project model can answer.
 
 ### No root-instance factory is supplied
 
-A generated `x:Class` partial usually calls `InitializeComponent()` from its constructor, so
-constructing one and then populating it loads the document twice. Markup's own default says as much
-and offers `IXamlRootInstanceFactory` for a caller that knows better.
+A generated `x:Class` partial calls `InitializeComponent()` from its constructor, and constructing
+one and then populating it used to load the document twice — a form with `<Window.Resources>` failed
+outright on the second `Add` of the same key. That is now answered where it arises, in Markup: the
+session lends the constructor's own load its document, so the root is populated once (Markup's
+ADR 0015). It holds with this adapter's live population too, which registers the same document for
+the same type: the session borrows the hook for the root's construction and gives it back.
 
-This adapter does not implement one, because it knows no better: whether a constructor initialises
-itself is a fact about code neither library has seen, and a factory here would be guessing on the
-host's behalf. A host that controls the generated types supplies one.
+So this adapter still supplies no `IXamlRootInstanceFactory`, and now has no reason to: the default
+constructs the class, and Markup takes care of what the constructor loads. A host whose types load
+markup some other way than through the compiled hook supplies one.
 
 ### Assemblies are matched by file name
 
