@@ -25,7 +25,7 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// </remarks>
 public sealed class ProjectResourceResolver : IXamlResourceResolver
 {
-    private readonly ProjectResourceMap _map;
+    private readonly Func<ProjectResourceMap> _map;
 
     /// <summary>Creates a resolver over a map.</summary>
     /// <param name="map">Which file each URI names.</param>
@@ -34,11 +34,26 @@ public sealed class ProjectResourceResolver : IXamlResourceResolver
     {
         ArgumentNullException.ThrowIfNull(map);
 
+        _map = () => map;
+    }
+
+    /// <summary>Creates a resolver over whatever map is current when it is asked.</summary>
+    /// <remarks>
+    /// For a host whose projects gain files while documents are open: a style sheet added in the
+    /// IDE is in the next snapshot's map, and every environment built over this resolver sees it
+    /// without being built again.
+    /// </remarks>
+    /// <param name="map">The current map, asked on every resolution.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="map"/> is <see langword="null"/>.</exception>
+    public ProjectResourceResolver(Func<ProjectResourceMap> map)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+
         _map = map;
     }
 
-    /// <summary>Gets how many resources this resolver can answer for.</summary>
-    public int Count => _map.Count;
+    /// <summary>Gets how many resources this resolver can answer for now.</summary>
+    public int Count => _map().Count;
 
     /// <summary>Builds a resolver over every project in a snapshot.</summary>
     /// <param name="snapshot">The snapshot to read.</param>
@@ -55,7 +70,7 @@ public sealed class ProjectResourceResolver : IXamlResourceResolver
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!_map.TryGetFile(resourceUri, baseUri, out CanonicalPath file) || !File.Exists(file.Value))
+        if (!_map().TryGetFile(resourceUri, baseUri, out CanonicalPath file) || !File.Exists(file.Value))
         {
             // Not knowing a URI is an ordinary answer. The composite behind this one goes on to ask
             // the assemblies, which is the right place for a resource of a package's own.

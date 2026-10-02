@@ -164,7 +164,7 @@ public sealed class ProjectMarkupSourceProviderTests : IDisposable
     [Fact]
     public async Task NullArguments_Throw()
     {
-        Assert.Throws<ArgumentNullException>(() => new ProjectMarkupSourceProvider(null!));
+        Assert.Throws<ArgumentNullException>(() => new ProjectMarkupSourceProvider((ProjectResourceMap)null!));
         Assert.Throws<ArgumentNullException>(() => ProjectMarkupSourceProvider.Create(null!));
 
         ProjectMarkupSourceProvider provider = Provider(Write("Views/Main.axaml", "<UserControl />"));

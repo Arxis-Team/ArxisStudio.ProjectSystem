@@ -141,15 +141,20 @@ public sealed partial class ProjectAssemblyContext
     /// ten rounds of yielding, on the same project in the same process.
     /// </para>
     /// <para>
-    /// Both halves of the test matter. Without a running application there is nothing draining
-    /// the dispatcher's queue, so waiting on it would wait for ever — which is what a unit test
-    /// calling this from a plain thread found, and why an application has to be there before the
-    /// dispatcher is asked for anything.
+    /// From any thread. A host that reclaims off the user interface thread — a design host's swap
+    /// runs on a thread pool thread between dispatcher turns — still has a user interface whose
+    /// frame holds the controls, and a yield on its own thread waits for nothing of it: the turn is
+    /// asked of the dispatcher and awaited from wherever this runs.
+    /// </para>
+    /// <para>
+    /// Without a running application there is nothing draining the dispatcher's queue, so waiting on
+    /// it would wait for ever — which is what a unit test calling this from a plain thread found, and
+    /// why an application has to be there before the dispatcher is asked for anything.
     /// </para>
     /// </remarks>
     private static async ValueTask LetTheFrameFinishAsync()
     {
-        if (Application.Current is not null && Dispatcher.UIThread.CheckAccess())
+        if (Application.Current is not null)
         {
             await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
 

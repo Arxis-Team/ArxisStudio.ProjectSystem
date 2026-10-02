@@ -30,7 +30,7 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// </remarks>
 public sealed class ProjectMarkupSourceProvider : IMarkupSourceProvider
 {
-    private readonly ProjectResourceMap _map;
+    private readonly Func<ProjectResourceMap> _map;
     private readonly Encoding? _defaultEncoding;
 
     /// <summary>Creates a provider over a map.</summary>
@@ -41,6 +41,21 @@ public sealed class ProjectMarkupSourceProvider : IMarkupSourceProvider
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is <see langword="null"/>.</exception>
     public ProjectMarkupSourceProvider(ProjectResourceMap map, Encoding? defaultEncoding = null)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+
+        _map = () => map;
+        _defaultEncoding = defaultEncoding;
+    }
+
+    /// <summary>Creates a provider over whatever map is current when it is asked.</summary>
+    /// <param name="map">The current map, asked on every request.</param>
+    /// <param name="defaultEncoding">
+    /// The encoding to assume for a file with no byte-order mark, or <see langword="null"/> for
+    /// UTF-8.
+    /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="map"/> is <see langword="null"/>.</exception>
+    public ProjectMarkupSourceProvider(Func<ProjectResourceMap> map, Encoding? defaultEncoding = null)
     {
         ArgumentNullException.ThrowIfNull(map);
 
@@ -62,7 +77,7 @@ public sealed class ProjectMarkupSourceProvider : IMarkupSourceProvider
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!_map.TryGetFile(uri, null, out CanonicalPath file) || !File.Exists(file.Value))
+        if (!_map().TryGetFile(uri, null, out CanonicalPath file) || !File.Exists(file.Value))
         {
             return new ValueTask<MarkupSource?>((MarkupSource?)null);
         }

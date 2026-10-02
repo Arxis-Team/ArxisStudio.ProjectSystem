@@ -818,6 +818,27 @@ else
 }
 ```
 
+**A designer showing forms of several projects keeps one generation for all of them** — a design
+set ([ADR 0027](../adr/0027-a-design-set-is-one-generation.md)). A library two projects reference is
+then one assembly, and a form of either sees one type. Each project's documents get an environment of
+their own, searching what that project's build sees, over a resource map the host keeps current:
+
+```csharp
+using ProjectAssemblyContext generation =
+    ProjectAssemblyContext.Create(snapshot, [app.Identity, controls.Identity]);   // everything loaded now
+
+// Two files of one name, or a project named like an assembly the host has: said, not thrown.
+foreach (ProjectDiagnostic diagnostic in generation.Diagnostics) { /* APS5001, APS5002 */ }
+
+var members = new XamlMemberResolver();   // one per generation
+XamlLoadEnvironment environment = ProjectXamlEnvironment.Create(
+    generation, app.Identity, () => currentMap, members: members);
+XamlLoadOptions options = ProjectXamlEnvironment.CreateOptions(generation, app.Identity);
+```
+
+Create the generation when no build is running: it reads every output before it returns, so it is
+one build of each.
+
 What does not need the restart is markup, including the markup of a placed control.
 `ProjectXamlPopulation` pairs a project's documents with the generation's types by `x:Class` and
 keeps new instances populated from the document as it is now —

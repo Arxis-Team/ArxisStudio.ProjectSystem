@@ -2,8 +2,9 @@
 
 Date: 2026-08-11
 
-Status: Accepted, amended by [0022](0022-an-embedded-controls-markup-follows-the-live-document.md)
-and [0023](0023-a-generation-is-reclaimed-before-its-successor-is-born.md)
+Status: Accepted, amended by [0022](0022-an-embedded-controls-markup-follows-the-live-document.md),
+[0023](0023-a-generation-is-reclaimed-before-its-successor-is-born.md) and
+[0027](0027-a-design-set-is-one-generation.md): one generation is of a design set, not of a project
 
 ## Context
 

@@ -523,6 +523,16 @@ records the measurements and the decision: one generation at a time, and
 `ProjectAssemblyContext.IsCurrentOnDisk()` exists to make a build's effect on the types detectable.
 Since [ADR 0023](adr/0023-a-generation-is-reclaimed-before-its-successor-is-born.md) a generation
 can be replaced within a run — but only after it has been proven gone, which is the entry above.
+Since [ADR 0027](adr/0027-a-design-set-is-one-generation.md) one generation is of a design set, all
+of it at once, so replacing it replaces every form's types together.
+
+### A project named like the host is not shown
+
+One copy of an assembly name per process is what keeps one `Button` type in it, so the host's own
+copy answers for a name it has. A project of the design set building an assembly of such a name —
+named like the designer, like a library the designer references — has its build not loaded, and
+`APS5002` says so. Only a separate process could show it. Two projects of the set building one name,
+or two versions of one package across it, load the first and say `APS5001`.
 
 ### Live population changes constructions, not instances
 

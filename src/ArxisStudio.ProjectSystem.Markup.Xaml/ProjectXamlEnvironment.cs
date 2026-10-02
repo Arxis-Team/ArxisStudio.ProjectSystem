@@ -145,6 +145,124 @@ public static class ProjectXamlEnvironment
     }
 
     /// <summary>
+    /// Builds an environment for loading the documents of one project of a design set.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Types are searched in the project's own closure</b> — its output and what it references
+    /// (<see cref="ProjectAssemblyContext.AssembliesOf"/>), as its build sees them — not in the whole
+    /// generation: a form of a library does not see the application that references it, and a bare
+    /// <c>using:</c> naming a namespace two projects of the set share means the one the project builds
+    /// against.
+    /// </para>
+    /// <para>
+    /// <b>Resources are asked of the current map</b>, so a style sheet the IDE added to a project
+    /// since the environment was built is found without building it again. Pass the host's current
+    /// map — usually built from the workspace's current snapshot, and replaced when that is.
+    /// </para>
+    /// <para>
+    /// <b>One member resolver per generation</b>, passed to every environment of it, so that what
+    /// one form's inspector learnt of a type is not learnt again for the next. It holds the
+    /// generation's types, and goes with them.
+    /// </para>
+    /// <para>
+    /// As with <see cref="Create(ProjectAssemblyContext, ProjectResourceMap?, IMarkupSourceProvider?)"/>,
+    /// let go of the environment before asking the context to go.
+    /// </para>
+    /// </remarks>
+    /// <param name="context">The generation.</param>
+    /// <param name="project">The project whose documents will load in it.</param>
+    /// <param name="resources">
+    /// The current map of which file each <c>avares</c> URI names, asked on every resolution, or
+    /// <see langword="null"/> to resolve them only out of built assemblies.
+    /// </param>
+    /// <param name="sourceProvider">
+    /// Where documents are read from beyond the project's own, or <see langword="null"/> for files
+    /// on disk.
+    /// </param>
+    /// <param name="members">
+    /// The generation's member resolver, or <see langword="null"/> for one of this environment's own.
+    /// </param>
+    /// <returns>The environment.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ObjectDisposedException">The context has been unloaded.</exception>
+    public static XamlLoadEnvironment Create(
+        ProjectAssemblyContext context,
+        ProjectIdentity project,
+        Func<ProjectResourceMap>? resources = null,
+        IMarkupSourceProvider? sourceProvider = null,
+        XamlMemberResolver? members = null)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        var assemblyResolver = new CompositeAssemblyResolver(
+            new ProjectAssemblyResolver(context),
+            LoadedAssemblyResolver.Instance);
+
+        var resourceResolvers = new List<IXamlResourceResolver>(3);
+
+        if (resources is not null)
+        {
+            resourceResolvers.Add(new ProjectResourceResolver(resources));
+        }
+
+        resourceResolvers.Add(new AvaloniaResourceResolver(assemblyResolver));
+        resourceResolvers.Add(FileResourceResolver.Instance);
+
+        IMarkupSourceProvider sources = sourceProvider ?? new FileMarkupSourceProvider();
+
+        if (resources is not null)
+        {
+            sources = new CompositeMarkupSourceProvider(new ProjectMarkupSourceProvider(resources), sources);
+        }
+
+        return new XamlLoadEnvironment
+        {
+            SourceProvider = sources,
+            AssemblyResolver = assemblyResolver,
+            TypeResolver = new XamlTypeResolver(assemblyResolver, [.. context.AssembliesOf(project)]),
+            ResourceResolver = new CompositeResourceResolver(resourceResolvers),
+            CompilationScope = context,
+            MemberResolver = members ?? new XamlMemberResolver(),
+        };
+    }
+
+    /// <summary>
+    /// Builds the options a project's documents load with in a generation.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="XamlLoadOptions.LocalAssembly"/> is the project's own output as the generation
+    /// loaded it — where a document's class and its private handlers live. Bindings compile by default
+    /// only when asked: a designer loads forgivingly, because a path that does not resolve yet is a
+    /// person still typing in the other editor, not a form that should fail to show.
+    /// </remarks>
+    /// <param name="context">The generation.</param>
+    /// <param name="project">The project the document belongs to.</param>
+    /// <param name="mode">How to load; design mode, for a designer.</param>
+    /// <param name="useCompiledBindingsByDefault">Whether a binding with no markup of its own compiles.</param>
+    /// <param name="rootAccess">What holds the root while the session writes to it, if anything does.</param>
+    /// <returns>The options.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ObjectDisposedException">The context has been unloaded.</exception>
+    public static XamlLoadOptions CreateOptions(
+        ProjectAssemblyContext context,
+        ProjectIdentity project,
+        XamlLoadMode mode = XamlLoadMode.Design,
+        bool useCompiledBindingsByDefault = false,
+        IXamlRootAccess? rootAccess = null)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return new XamlLoadOptions
+        {
+            Mode = mode,
+            LocalAssembly = context.ResolveProjectAssembly(project),
+            UseCompiledBindingsByDefault = useCompiledBindingsByDefault,
+            RootAccess = rootAccess,
+        };
+    }
+
+    /// <summary>
     /// The project's own assemblies, as assemblies, for the type resolver to search.
     /// </summary>
     /// <remarks>

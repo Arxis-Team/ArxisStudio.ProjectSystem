@@ -227,6 +227,7 @@ What is recorded so far:
 | [0024](docs/adr/0024-the-designer-sample-lives-with-the-designer.md) | No designer lives here: the form designer sample is `UiDesigner.Demo` in ArxisStudio.Surface, and its harnesses went with it |
 | [0025](docs/adr/0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md) | A change carries its kind, the coalescer nets each path over a batch, and the snapshot classifies — a saved file is not a new one |
 | [0026](docs/adr/0026-a-design-build-writes-beside-the-ides-never-over-it.md) | A design build sets `OutputPath` and `IntermediateOutputPath` and leaves the bases, so it never writes over the IDE's build and shares its restore |
+| [0027](docs/adr/0027-a-design-set-is-one-generation.md) | One generation for a design set, loaded at once; an environment per project searches its own closure, with a live resource map |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

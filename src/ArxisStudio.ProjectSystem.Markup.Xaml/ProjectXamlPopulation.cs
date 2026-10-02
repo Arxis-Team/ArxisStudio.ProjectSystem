@@ -80,9 +80,8 @@ public sealed class ProjectXamlPopulation : IDisposable
     /// </summary>
     /// <param name="context">The generation whose types the documents will stand in for.</param>
     /// <param name="environment">
-    /// The environment the project's documents load in — the same one
-    /// <see cref="ProjectXamlEnvironment.Create"/> built over <paramref name="context"/>, so that
-    /// population resolves includes and enters the compilation scope exactly as the sessions do.
+    /// An environment <c>ProjectXamlEnvironment.Create</c> built over <paramref name="context"/>, so
+    /// that population resolves includes and enters the compilation scope exactly as the sessions do.
     /// </param>
     /// <returns>The registry. The caller disposes it before disposing the context.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> or <paramref name="environment"/> is <see langword="null"/>.</exception>

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading;
@@ -32,6 +33,20 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// support would be the thing it prevented.
 /// </para>
 /// <para>
+/// <b>One generation for a design set, not one per project.</b> A designer shows forms of several
+/// projects at once — an application and the control library it references — and a library two
+/// projects share is one assembly in the process, loaded once
+/// (<see cref="Create(SolutionSnapshot, IEnumerable{ProjectIdentity}, string?)"/>). What each
+/// project's documents may see is that project's own closure (<see cref="AssembliesOf"/>), and what
+/// the set could not load as the projects asked is said in <see cref="Diagnostics"/>.
+/// </para>
+/// <para>
+/// <b>Everything is loaded at once, when the generation is created.</b> Loading an assembly when a
+/// document first names it let a build that ran in between put two builds into one generation —
+/// the library from before it and the application from after. Created when no build is running, a
+/// generation is one build of everything.
+/// </para>
+/// <para>
 /// Nothing here decides <em>when</em> to unload. That is the host's, because only the host knows
 /// whether anything is still looking at the old objects.
 /// </para>
@@ -54,26 +69,30 @@ public sealed partial class ProjectAssemblyContext
     private readonly Dictionary<string, CanonicalPath> _stable;
     private readonly Dictionary<string, Assembly?> _resolved = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, FileStamp> _stamps;
+    private readonly Dictionary<ProjectIdentity, ImmutableArray<string>> _closures;
+    private readonly Dictionary<ProjectIdentity, string> _outputs;
     private readonly Lock _gate = new();
 
     private int _disposed;
 
     private ProjectAssemblyContext(
         string name,
-        ProjectIdentity project,
+        ImmutableArray<ProjectIdentity> projects,
         WorkspaceVersion version,
         ImmutableArray<RuntimeAssemblyReference> assemblies,
-        Dictionary<string, CanonicalPath> rebuildable,
-        Dictionary<string, CanonicalPath> stable)
+        DesignSet set)
     {
         Name = name;
-        Project = project;
+        Projects = projects;
         Version = version;
         Assemblies = assemblies;
+        Diagnostics = set.Diagnostics;
 
-        _rebuildable = rebuildable;
-        _stable = stable;
-        _stamps = Stamp(rebuildable);
+        _rebuildable = set.Rebuildable;
+        _stable = set.Stable;
+        _closures = set.Closures;
+        _outputs = set.Outputs;
+        _stamps = Stamp(set.Rebuildable);
 
         var context = new AssemblyLoadContext(name, isCollectible: true);
 
@@ -87,8 +106,18 @@ public sealed partial class ProjectAssemblyContext
     /// <summary>Gets the name this context was created with, which shows up in diagnostics.</summary>
     public string Name { get; }
 
-    /// <summary>Gets the project these assemblies belong to.</summary>
-    public ProjectIdentity Project { get; }
+    /// <summary>Gets the project these assemblies belong to — for a design set, the first of <see cref="Projects"/>.</summary>
+    public ProjectIdentity Project => Projects[0];
+
+    /// <summary>Gets the projects whose documents this generation's types serve, in the order given.</summary>
+    public ImmutableArray<ProjectIdentity> Projects { get; }
+
+    /// <summary>
+    /// Gets what the generation could not load as the projects asked: two assemblies of one name
+    /// (<see cref="ProjectDesignDiagnosticCodes.AssemblyNameConflict"/>), and a project's build of an
+    /// assembly the host process already has (<see cref="ProjectDesignDiagnosticCodes.ShadowedByHost"/>).
+    /// </summary>
+    public ImmutableArray<ProjectDiagnostic> Diagnostics { get; }
 
     /// <summary>
     /// Gets the workspace version this context was built from.
@@ -102,7 +131,7 @@ public sealed partial class ProjectAssemblyContext
     /// </remarks>
     public WorkspaceVersion Version { get; }
 
-    /// <summary>Gets what the project needs, in the order a resolver should consult it.</summary>
+    /// <summary>Gets what the projects need, each file once, in the order a resolver should consult it.</summary>
     public ImmutableArray<RuntimeAssemblyReference> Assemblies { get; }
 
     /// <summary>Gets a value indicating whether this context has been unloaded.</summary>
@@ -118,43 +147,223 @@ public sealed partial class ProjectAssemblyContext
     /// snapshot's version — which is what makes two generations of the same project tell apart in a
     /// debugger.
     /// </param>
-    /// <returns>The context.</returns>
+    /// <returns>The context, every assembly of it loaded.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
     public static ProjectAssemblyContext Create(
         SolutionSnapshot snapshot, ProjectIdentity project, string? name = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        ImmutableArray<RuntimeAssemblyReference> assemblies = snapshot.GetRuntimeAssemblies(project);
+        return Create(snapshot, [project], name ?? Describe(snapshot, project));
+    }
 
-        var rebuildable = new Dictionary<string, CanonicalPath>(StringComparer.OrdinalIgnoreCase);
-        var stable = new Dictionary<string, CanonicalPath>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Creates one generation for a design set: every project whose documents a designer shows, and
+    /// what they reference.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The union of what each project needs at run time, each assembly once: a library two projects
+    /// reference is one assembly, and a form of either sees the same <c>Type</c>. Two different files
+    /// of one name cannot both be loaded; the first in the set's order is, and
+    /// <see cref="Diagnostics"/> says so. A project's own build of an assembly the host process
+    /// already has is not loaded either — the process's copy answers for the name — and that is said
+    /// too.
+    /// </para>
+    /// <para>
+    /// Every assembly the projects build is loaded before this returns, so the generation is one
+    /// build of everything; create it when no build is running.
+    /// </para>
+    /// </remarks>
+    /// <param name="snapshot">The snapshot to read.</param>
+    /// <param name="projects">The projects, in the order their assemblies should win.</param>
+    /// <param name="name">
+    /// A name for the context, or <see langword="null"/> to derive one from the projects and the
+    /// snapshot's version.
+    /// </param>
+    /// <returns>The context, every assembly of it loaded.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> or <paramref name="projects"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="projects"/> names no project.</exception>
+    public static ProjectAssemblyContext Create(
+        SolutionSnapshot snapshot, IEnumerable<ProjectIdentity> projects, string? name = null)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(projects);
 
-        foreach (RuntimeAssemblyReference assembly in assemblies)
+        ImmutableArray<ProjectIdentity> set = [.. projects.Where(static project => !project.IsEmpty).Distinct()];
+
+        if (set.IsEmpty)
         {
-            // Keyed by file name, which is the assembly's simple name for anything a build
-            // produces: an output path is its directory plus its assembly name plus an extension,
-            // and a package lays its files out the same way. A file whose contents disagree with
-            // its name resolves under the name on disk, which is the only name anybody could ask
-            // for without opening it first.
-            string simpleName = Path.GetFileNameWithoutExtension(assembly.Path.Value);
-
-            if (simpleName.Length == 0)
-            {
-                continue;
-            }
-
-            // First one wins, which is why the snapshot returns them in priority order.
-            Dictionary<string, CanonicalPath> destination =
-                assembly.Origin == RuntimeAssemblyOrigin.Package ? stable : rebuildable;
-
-            destination.TryAdd(simpleName, assembly.Path);
+            throw new ArgumentException("A generation is of at least one project.", nameof(projects));
         }
 
-        string label = name ?? Describe(snapshot, project);
+        (ImmutableArray<RuntimeAssemblyReference> assemblies, DesignSet design) = Gather(snapshot, set);
 
-        return new ProjectAssemblyContext(
-            label, project, snapshot.Version, assemblies, rebuildable, stable);
+        var context = new ProjectAssemblyContext(
+            name ?? Describe(snapshot, set), set, snapshot.Version, assemblies, design);
+
+        context.LoadEverything();
+
+        return context;
+    }
+
+    /// <summary>What a generation is made of, worked out from the snapshot before anything loads.</summary>
+    private sealed record DesignSet(
+        Dictionary<string, CanonicalPath> Rebuildable,
+        Dictionary<string, CanonicalPath> Stable,
+        Dictionary<ProjectIdentity, ImmutableArray<string>> Closures,
+        Dictionary<ProjectIdentity, string> Outputs,
+        ImmutableArray<ProjectDiagnostic> Diagnostics);
+
+    private static (ImmutableArray<RuntimeAssemblyReference> Assemblies, DesignSet Set) Gather(
+        SolutionSnapshot snapshot, ImmutableArray<ProjectIdentity> set)
+    {
+        var rebuildable = new Dictionary<string, CanonicalPath>(StringComparer.OrdinalIgnoreCase);
+        var stable = new Dictionary<string, CanonicalPath>(StringComparer.OrdinalIgnoreCase);
+        var closures = new Dictionary<ProjectIdentity, ImmutableArray<string>>();
+        var outputs = new Dictionary<ProjectIdentity, string>();
+        var diagnostics = ImmutableArray.CreateBuilder<ProjectDiagnostic>();
+        var conflicting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var paths = new HashSet<CanonicalPath>();
+        ImmutableArray<RuntimeAssemblyReference>.Builder assemblies = ImmutableArray.CreateBuilder<RuntimeAssemblyReference>();
+
+        // The set first, in its order, which is the order assemblies win in; then every project they
+        // reference, whose assemblies are already in, so that each has a closure of its own.
+        var projects = new List<ProjectIdentity>(set);
+
+        for (int next = 0; next < projects.Count; next++)
+        {
+            ProjectIdentity project = projects[next];
+            var closure = new List<string>();
+
+            foreach (RuntimeAssemblyReference assembly in snapshot.GetRuntimeAssemblies(project))
+            {
+                // Keyed by file name, which is the assembly's simple name for anything a build
+                // produces: an output path is its directory plus its assembly name plus an extension,
+                // and a package lays its files out the same way. A file whose contents disagree with
+                // its name resolves under the name on disk, which is the only name anybody could ask
+                // for without opening it first.
+                string simpleName = Path.GetFileNameWithoutExtension(assembly.Path.Value);
+
+                if (simpleName.Length == 0)
+                {
+                    continue;
+                }
+
+                if (paths.Add(assembly.Path))
+                {
+                    assemblies.Add(assembly);
+                }
+
+                // First one wins, which is why the snapshot returns them in priority order and the
+                // set is walked in the order it was given.
+                Dictionary<string, CanonicalPath> destination =
+                    assembly.Origin == RuntimeAssemblyOrigin.Package ? stable : rebuildable;
+
+                if (!destination.TryAdd(simpleName, assembly.Path)
+                    && destination[simpleName] != assembly.Path
+                    && conflicting.Add(simpleName))
+                {
+                    diagnostics.Add(ProjectDiagnostic.ForProject(
+                        ProjectDesignDiagnosticCodes.AssemblyNameConflict,
+                        $"'{simpleName}' is both '{destination[simpleName]}' and '{assembly.Path}'. One name is one "
+                            + "assembly in a generation, so the first is loaded, and a type only the second has is not found.",
+                        ProjectDiagnosticSeverity.Warning,
+                        project));
+                }
+
+                if (assembly.Origin is RuntimeAssemblyOrigin.Project or RuntimeAssemblyOrigin.ProjectReference
+                    && !closure.Contains(simpleName, StringComparer.OrdinalIgnoreCase))
+                {
+                    closure.Add(simpleName);
+
+                    if (assembly.Origin == RuntimeAssemblyOrigin.Project)
+                    {
+                        outputs.TryAdd(project, simpleName);
+                    }
+                    else if (!assembly.Project.IsEmpty && !projects.Contains(assembly.Project))
+                    {
+                        projects.Add(assembly.Project);
+                    }
+                }
+            }
+
+            closures[project] = [.. closure];
+        }
+
+        // The process's copy wins for a name it has, and one Button type in the process is why. A
+        // project building such a name is not what the designer can show, and is told so.
+        foreach (Assembly loaded in AssemblyLoadContext.Default.Assemblies)
+        {
+            if (loaded.GetName().Name is { Length: > 0 } simpleName
+                && rebuildable.TryGetValue(simpleName, out CanonicalPath shadowed))
+            {
+                diagnostics.Add(ProjectDiagnostic.ForFile(
+                    ProjectDesignDiagnosticCodes.ShadowedByHost,
+                    $"'{simpleName}' is an assembly this process already has, and its copy answers for the name: "
+                        + $"the build at '{shadowed}' is not what the designer shows.",
+                    ProjectDiagnosticSeverity.Warning,
+                    shadowed));
+            }
+        }
+
+        return (assemblies.ToImmutable(), new DesignSet(rebuildable, stable, closures, outputs, diagnostics.ToImmutable()));
+    }
+
+    /// <summary>
+    /// The assemblies one project's documents may name: its own output and what it references,
+    /// loaded by this generation.
+    /// </summary>
+    /// <remarks>
+    /// What a type resolver for that project's documents searches. A form of a library does not see
+    /// the application that references it, as its build does not.
+    /// </remarks>
+    /// <param name="project">One of <see cref="Projects"/>, or a project they reference.</param>
+    /// <returns>The assemblies, the project's own first; empty for a project this generation is not of.</returns>
+    /// <exception cref="ObjectDisposedException">This context has been unloaded.</exception>
+    public ImmutableArray<Assembly> AssembliesOf(ProjectIdentity project)
+    {
+        ObjectDisposedException.ThrowIf(IsUnloaded, this);
+
+        if (!_closures.TryGetValue(project, out ImmutableArray<string> names))
+        {
+            return [];
+        }
+
+        ImmutableArray<Assembly>.Builder assemblies = ImmutableArray.CreateBuilder<Assembly>(names.Length);
+
+        foreach (string name in names)
+        {
+            if (Resolve(new AssemblyName(name)) is { } assembly && !assemblies.Contains(assembly))
+            {
+                assemblies.Add(assembly);
+            }
+        }
+
+        return assemblies.ToImmutable();
+    }
+
+    /// <summary>
+    /// The assembly a project builds, as this generation loaded it — the one its documents'
+    /// <c>x:Class</c> and private handlers live in.
+    /// </summary>
+    /// <param name="project">One of <see cref="Projects"/>.</param>
+    /// <returns>The assembly, or <see langword="null"/> when the project's output was not there to load.</returns>
+    /// <exception cref="ObjectDisposedException">This context has been unloaded.</exception>
+    public Assembly? ResolveProjectAssembly(ProjectIdentity project)
+    {
+        ObjectDisposedException.ThrowIf(IsUnloaded, this);
+
+        return _outputs.TryGetValue(project, out string? name) ? Resolve(new AssemblyName(name)) : null;
+    }
+
+    /// <summary>Loads every assembly the projects build, so the generation is one build of each.</summary>
+    private void LoadEverything()
+    {
+        foreach (string name in _rebuildable.Keys)
+        {
+            Resolve(new AssemblyName(name));
+        }
     }
 
     /// <summary>
@@ -316,7 +525,7 @@ public sealed partial class ProjectAssemblyContext
     /// </para>
     /// <para>
     /// This is also the context's <see cref="ArxisStudio.Markup.Xaml.Loader.IXamlCompilationScope"/>
-    /// implementation: <see cref="ProjectXamlEnvironment.Create"/> hands the context to the
+    /// implementation: every <c>ProjectXamlEnvironment.Create</c> hands the context to the
     /// environment, and the session then enters this around every compilation on its own. Nothing
     /// needs to call it by hand.
     /// </para>
@@ -460,6 +669,11 @@ public sealed partial class ProjectAssemblyContext
         snapshot.TryGetProject(project, out ProjectSnapshot? found)
             ? $"{found.Name} @{snapshot.Version}"
             : $"{project} @{snapshot.Version}";
+
+    private static string Describe(SolutionSnapshot snapshot, ImmutableArray<ProjectIdentity> set) =>
+        string.Join('+', set.Select(project =>
+            snapshot.TryGetProject(project, out ProjectSnapshot? found) ? found.Name : project.ToString()))
+            + $" @{snapshot.Version}";
 
     private Assembly? Load(string simpleName)
     {
