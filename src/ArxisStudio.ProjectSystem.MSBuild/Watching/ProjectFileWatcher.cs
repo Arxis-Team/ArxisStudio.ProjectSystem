@@ -60,7 +60,7 @@ public sealed class ProjectFileWatcher : IDisposable
     /// <summary>Creates a watcher.</summary>
     /// <param name="onChanged">
     /// Called with each changed path, on an operating-system thread, possibly several at once and
-    /// possibly for files nothing cares about. <see cref="FileChangeCoalescer.Add"/> is the intended
+    /// possibly for files nothing cares about. <see cref="FileChangeCoalescer.Add(CanonicalPath)"/> is the intended
     /// destination and is safe to call from anywhere. An exception it throws is swallowed, because
     /// the alternative on that thread is ending the process.
     /// </param>

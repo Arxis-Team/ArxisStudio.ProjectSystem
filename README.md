@@ -57,9 +57,19 @@ out whether the batch matters:
 WorkspaceInvalidation invalidation = snapshot.Invalidate(changedPaths);
 ```
 
+A host that shows files asks more of a batch than that, and gives the change its kind to ask it: an
+editor's atomic save — a temporary file, two renames, a deletion — nets to one change of the saved
+file, and the snapshot says which documents to read again, which projects may include different
+files, which files moved, and whether changes were lost, leaving out what a build writes.
+
+```csharp
+WorkspaceChangeSet changes = snapshot.Classify(batch);   // batch: FileChange[], netted per path
+```
+
 Nothing refreshes on its own — you call `RefreshAsync`, with your own token and your own error
 handling. [ADR 0016](docs/adr/0016-watching-belongs-with-the-provider.md) says why that is the
-deliberate answer.
+deliberate answer, and [ADR 0025](docs/adr/0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md)
+why a change carries its kind.
 
 And `ArxisStudio.ProjectSystem.NuGet` changes what a project references — install, update, uninstall
 — written straight into the project XML, keeping its comments, its blank lines and its indentation.

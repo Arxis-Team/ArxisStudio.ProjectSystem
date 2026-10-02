@@ -1,7 +1,7 @@
 # 16. Watching belongs with the provider, and the workspace does not do it
 
 Date: 2026-08-05
-Status: Accepted
+Status: Accepted, amended by [0025](0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md)
 
 ## Context
 
@@ -30,6 +30,13 @@ for a failure to go.
 Each piece is separately useful and separately testable, and three of the four are pure. A host that
 already observes files — an IDE almost always does — uses its own and skips the second piece
 entirely, which is why the coalescer takes bare paths rather than a watcher's event type.
+
+> Amended by [ADR 0025](0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md). The
+> composition stands, and so does the rule that nothing refreshes on its own. What changed is what
+> travels through it: a change carries its kind (`FileChange`, still a core type rather than a
+> watcher's), the coalescer nets each path over the batch, and `SolutionSnapshot.Classify` answers
+> what a host that shows files needs beside `Invalidate` — documents to read again, projects whose
+> files may differ, files that moved, changes that were lost. Bare paths still go in, as changes.
 
 **The watcher lives in `ArxisStudio.ProjectSystem.MSBuild`,** not in a package of its own. The
 mechanism is provider-neutral, but doing it correctly is not: knowing that a missing `obj` must be

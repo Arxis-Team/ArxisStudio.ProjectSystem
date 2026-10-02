@@ -345,10 +345,77 @@ It therefore reports files nothing cares about, deliberately — filtering is `I
 
 **A host that already observes files should use its own** and skip the watcher: feed paths straight
 to `coalescer.Add`. That is the expected case for an IDE, not a fallback, which is why the coalescer
-takes bare paths rather than any watcher's event type.
+takes core types — a path, or a `FileChange` that says what happened to it — rather than any
+watcher's event type.
 
 Project identities survive a refresh, so anything you remember about a project — an expanded node,
 an open editor, a cached analysis — stays valid across one.
+
+## Telling a saved file from a new one
+
+`Invalidate` answers one question — which evaluations are stale — and a host that shows files has
+four more: which open documents to read again, which projects may include different files now,
+which documents moved, and whether changes were lost. Bare paths cannot answer them, so a change can
+carry its kind ([ADR 0025](../adr/0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md)):
+
+```csharp
+using var coalescer = FileChangeCoalescer.ForChanges(batch =>
+{
+    WorkspaceChangeSet changes = workspace.CurrentSnapshot!.Classify(batch);
+
+    if (changes.IsEmpty)
+    {
+        return;                                   // a build writing its output, an editor's state
+    }
+
+    foreach (ProjectItemChange edited in changes.ItemsEdited)
+    {
+        // edited.Item.FullPath was saved: read the open document again
+    }
+
+    foreach (FileRename rename in changes.Renames)
+    {
+        // whatever had rename.OldPath open follows rename.NewPath
+    }
+
+    // changes.ProjectsToEvaluate: the stale projects, then those whose files may differ.
+    // changes.RequiresRescan: changes were lost — look at everything again.
+});
+
+// From whatever observes the files: FileSystemWatcher, an IDE's own events.
+coalescer.Add(new FileChange(path, FileChangeKind.Created));
+coalescer.Add(FileChange.Renamed(oldPath, newPath));
+coalescer.Add(FileChange.Overflow);
+```
+
+**The coalescer nets each path over the batch**, because only its first and last state matter: a
+file created and deleted inside a batch never happened, one deleted and created again was replaced.
+That is what makes an editor's atomic save — the text to a temporary file, the original renamed
+aside, the temporary renamed over it, the original deleted, which is how JetBrains Rider saves —
+arrive as one `Changed` of the saved file instead of five events that each look like the project
+gaining or losing a file. Renames in a chain are one rename; a lost change comes first.
+
+**`Classify` asks every change each question on its own**, because one file can be several things —
+a `Directory.Build.props` beside a project is an import its evaluation read and an item its globs
+took:
+
+| Answer | When |
+| --- | --- |
+| `RequiresRescan` | changes were lost — `FileChangeKind.Overflow` |
+| `Invalidation` | an evaluation input changed, appeared, went away or was renamed — `Invalidate`'s answer for those inputs |
+| `ItemsEdited` | the contents of a file a project declares changed; that alone makes nothing stale |
+| `MembershipChanged` | a path appeared, went away or was renamed where a project's globs reach, or a declared file did wherever it is; only an evaluation can say what the globs take now |
+| `Renames` | a declared file moved — with the directory it was in, too |
+
+Where globs reach is inside the project's directory, outside its `BuildDirectories` — where a build
+writes, `bin` and `obj` unless the project moved them — and outside directories below it whose names
+start with a dot. A path may be a directory: a watcher reports a folder renamed or deleted as one
+change, and the snapshot alone knows what was below it, so that is what the change stands for — its
+inputs are stale, its declared files are their projects' to lose, and a folder renamed moves every
+declared file in it.
+
+`TryGetItem` is the lookup behind it — the item a file is, and the project that declares it — on an
+index built once per snapshot, so asking it for every save of every file costs a dictionary lookup.
 
 ## Changing what a project references
 

@@ -50,6 +50,7 @@ public sealed class ProjectSnapshot
         ImmutableArray<ProjectItem> items,
         ImmutableArray<OutputArtifact> outputs,
         ImmutableArray<CanonicalPath> evaluationInputs,
+        ImmutableArray<CanonicalPath> buildDirectories,
         ImmutableArray<ProjectDiagnostic> diagnostics,
         ProjectMetadata properties)
     {
@@ -79,6 +80,7 @@ public sealed class ProjectSnapshot
         Items = items;
         Outputs = outputs;
         EvaluationInputs = evaluationInputs;
+        BuildDirectories = buildDirectories;
         Diagnostics = diagnostics;
         Properties = properties;
     }
@@ -204,6 +206,29 @@ public sealed class ProjectSnapshot
     /// </para>
     /// </remarks>
     public ImmutableArray<CanonicalPath> EvaluationInputs { get; }
+
+    /// <summary>
+    /// Gets the directories a build of this project writes into — where it puts its output and where
+    /// it keeps its intermediate files.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nothing in them is the project's source: a file appearing there is the build working, not the
+    /// project changing. <see cref="SolutionSnapshot.Classify"/> reads them so that a build does not
+    /// look like a project gaining a thousand files, and so would anybody who has to tell the two
+    /// apart.
+    /// </para>
+    /// <para>
+    /// The roots, not the configuration's own folders: the MSBuild provider names the base output and
+    /// intermediate directories, <c>bin</c> and <c>obj</c> unless the project moved them, because
+    /// another configuration's build and another tool's build write under them too — and this
+    /// configuration's folders only where they lie outside both. Never the project's own directory or
+    /// one above it, which would make every source file a build file. Empty when the provider did not
+    /// say, which makes no file a build file — the safe answer for a classifier, which then evaluates
+    /// more than it needs to rather than less.
+    /// </para>
+    /// </remarks>
+    public ImmutableArray<CanonicalPath> BuildDirectories { get; }
 
     /// <summary>Gets the diagnostics raised about this project.</summary>
     public ImmutableArray<ProjectDiagnostic> Diagnostics { get; }

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using Xunit;
 using static ArxisStudio.ProjectSystem.MSBuild.Tests.TestEvaluation;
@@ -159,6 +160,76 @@ public sealed class MSBuildProjectTranslatorTests
             snapshot.Properties.ContainsKey("AvaloniaNameGeneratorIsEnabled"),
             "A property nobody asked for stays curated away.");
         Assert.Equal("Exe", snapshot.Properties["OutputType"]);
+    }
+
+    [Fact]
+    public void BuildDirectories_AreTheBaseOutputAndIntermediatePaths()
+    {
+        char separator = Path.DirectorySeparatorChar;
+
+        ProjectSnapshot snapshot = Translate(Project(properties: Meta(
+            ("BaseOutputPath", $"bin{separator}"),
+            ("BaseIntermediateOutputPath", $"obj{separator}"),
+            ("OutputPath", $"bin{separator}Debug{separator}"))));
+
+        Assert.Equal(
+            [CanonicalPath.Create(Native("src", "App", "bin")), CanonicalPath.Create(Native("src", "App", "obj"))],
+            snapshot.BuildDirectories);
+    }
+
+    [Fact]
+    public void BuildDirectories_MovedOutOfTheProject_AreWhereTheyWereMoved()
+    {
+        // An artifacts layout, or a Directory.Build.props that sends every project's output to one
+        // folder: the base paths say where, and nothing about bin or obj is assumed.
+        ProjectSnapshot snapshot = Translate(Project(properties: Meta(
+            ("BaseOutputPath", Native("artifacts", "bin", "App") + Path.DirectorySeparatorChar),
+            ("BaseIntermediateOutputPath", Native("artifacts", "obj", "App") + Path.DirectorySeparatorChar))));
+
+        Assert.Equal(
+            [CanonicalPath.Create(Native("artifacts", "bin", "App")), CanonicalPath.Create(Native("artifacts", "obj", "App"))],
+            snapshot.BuildDirectories);
+    }
+
+    [Fact]
+    public void BuildDirectories_IncludeThisConfigurationsFoldersOnlyOutsideTheBases()
+    {
+        char separator = Path.DirectorySeparatorChar;
+
+        ProjectSnapshot snapshot = Translate(Project(properties: Meta(
+            ("BaseOutputPath", $"bin{separator}"),
+            ("BaseIntermediateOutputPath", $"obj{separator}"),
+            ("OutputPath", $"out{separator}"),
+            ("IntermediateOutputPath", $"obj{separator}Debug{separator}"))));
+
+        Assert.Equal(
+            [
+                CanonicalPath.Create(Native("src", "App", "bin")),
+                CanonicalPath.Create(Native("src", "App", "obj")),
+                CanonicalPath.Create(Native("src", "App", "out")),
+            ],
+            snapshot.BuildDirectories);
+    }
+
+    [Theory]
+    [InlineData(".")]
+    [InlineData("..")]
+    public void BuildDirectories_NeverHoldTheProjectsOwnSource(string outputPath)
+    {
+        // A project building into its own directory: every source file would be a build file.
+        ProjectSnapshot snapshot = Translate(Project(properties: Meta(
+            ("BaseOutputPath", outputPath), ("OutputPath", outputPath))));
+
+        Assert.Empty(snapshot.BuildDirectories);
+    }
+
+    [Fact]
+    public void BuildDirectories_OfAProjectThatSaysNothing_AreEmpty()
+    {
+        ProjectSnapshot snapshot = Translate(Project());
+
+        Assert.False(snapshot.BuildDirectories.IsDefault);
+        Assert.Empty(snapshot.BuildDirectories);
     }
 
     [Fact]

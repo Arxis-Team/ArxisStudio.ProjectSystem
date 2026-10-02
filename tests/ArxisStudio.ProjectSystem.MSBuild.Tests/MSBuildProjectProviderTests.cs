@@ -501,6 +501,19 @@ public sealed class MSBuildProjectProviderTests
     }
 
     [Fact]
+    public async Task BuildDirectories_AreTheBasePathsTheSdkChose()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("Basic"), TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal(
+            [project.ProjectDirectory.Combine("bin"), project.ProjectDirectory.Combine("obj")],
+            project.BuildDirectories);
+    }
+
+    [Fact]
     public async Task ACancelledLoad_Throws()
     {
         using var cancellation = new CancellationTokenSource();

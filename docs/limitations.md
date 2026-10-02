@@ -261,11 +261,13 @@ When the operating system's buffer overflows — a branch switch will do it — 
 unknowable. Every watched path is then reported as changed, which is the only answer that cannot
 silently miss one, and the result is that everything looks stale at once.
 
-### File observation is per-path, not per-change-kind
+### `ProjectFileWatcher` reports paths, not kinds
 
-The watcher reports paths. Whether a file was created, edited, renamed or deleted is not passed on,
-because nothing here needs it: any of them makes a project stale in exactly the same way. A host
-that wants to distinguish them uses its own file observation, which it probably already has.
+It watches evaluation inputs, and for those the kind does not matter: a project file or an import
+created, edited, renamed or deleted makes a project stale in exactly the same way. Kinds are what a
+host that shows files needs — a saved document against a new one, a moved one — and that host feeds
+`FileChange`s from its own observation to `FileChangeCoalescer.ForChanges` and asks
+`SolutionSnapshot.Classify` ([ADR 0025](adr/0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md)).
 
 ### A file appearing under a glob changes nothing a project names
 
@@ -275,10 +277,38 @@ creating, deleting or renaming a `.cs` or `.axaml` file under a project makes `I
 `None` — even though the project's `Items` no longer match the disk.
 
 The reasoning that source code does not change what a project *says* holds for editing a file, not
-for adding or removing one. A host that shows items, or builds anything from them, watches the
-project directories for names appearing and disappearing, and refreshes on its own account. Folding
-glob roots into the evaluation inputs would need a new concept on the snapshot and a provider change,
-and would still leave the host filtering `bin` and `obj` out of a recursive watch.
+for adding or removing one. `Classify` is the answer for a host that shows items: given changes with
+their kinds, it names the projects whose files may differ (`MembershipChanged`) and leaves `bin`,
+`obj` and dot-directories out, from the `BuildDirectories` the snapshot carries.
+
+### Membership is a question, not an answer
+
+`MembershipChanged` says which projects to evaluate again, not which items they gained or lost.
+Whether a glob takes a file depends on its includes, excludes, `Remove` items and conditions, which
+only an evaluation knows; reimplementing them in the core would be a second, subtly different
+MSBuild. A file appearing in a project's directory therefore costs that project an evaluation even
+when no glob takes it.
+
+### A directory is what the snapshot had below it
+
+A watcher reports a folder renamed, deleted or moved in as one change, and the core cannot ask the
+file system what the path was. `Classify` treats every path that appears, goes away or is renamed as
+standing for whatever the snapshot knows at or below it. A folder moved in from outside therefore
+says nothing about its contents beyond "this project may include different files", which the
+evaluation then answers; a folder renamed moves only the declared files the snapshot had in it.
+
+### Build directories are the bases
+
+`BuildDirectories` names where builds write under — `BaseOutputPath` and
+`BaseIntermediateOutputPath`, so every configuration's output and a tool's own build below them are
+left out. A project whose output path for some other configuration lies outside both bases, and still
+inside its directory, makes its builds of that configuration look like files appearing.
+
+### A linked file is edited once
+
+When two projects declare the same file, an edit to it is one `ItemsEdited` entry, as the first
+declaring project's item: a document is read again once. Its deletion changes the membership of every
+project that declares it.
 
 ## Package management
 

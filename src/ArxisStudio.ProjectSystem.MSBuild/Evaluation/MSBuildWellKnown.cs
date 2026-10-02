@@ -54,6 +54,10 @@ internal static class MSBuildWellKnown
         "GenerateDependencyFile", "GenerateRuntimeConfigurationFiles",
         "BaseIntermediateOutputPath", "IntermediateOutputPath", "ProjectAssetsFile",
 
+        // The root a build writes its output under, which with the base intermediate path is what
+        // ProjectSnapshot.BuildDirectories names.
+        "BaseOutputPath",
+
         // Not surfaced for their own sake: these name the toolchain's directories, which is how an
         // import that nobody edits is told apart from one that matters.
         "NetCoreRoot", "NuGetPackageRoot",

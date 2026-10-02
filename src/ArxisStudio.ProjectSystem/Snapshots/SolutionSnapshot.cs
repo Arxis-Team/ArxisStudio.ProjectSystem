@@ -28,7 +28,7 @@ namespace ArxisStudio.ProjectSystem;
 /// why walking a whole solution to answer <c>Equals</c> would be a trap rather than a feature.
 /// </para>
 /// </remarks>
-public sealed class SolutionSnapshot
+public sealed partial class SolutionSnapshot
 {
     private readonly FrozenDictionary<ProjectIdentity, ProjectSnapshot> _byIdentity;
     private readonly FrozenDictionary<CanonicalPath, ProjectSnapshot> _byPath;
@@ -313,17 +313,11 @@ public sealed class SolutionSnapshot
             return true;
         }
 
-        foreach (ProjectSnapshot candidate in Projects)
+        if (TryGetItem(filePath, out ProjectSnapshot? declaring, out _))
         {
-            foreach (ProjectItem item in candidate.Items)
-            {
-                if (item.FullPath == filePath)
-                {
-                    project = candidate;
+            project = declaring;
 
-                    return true;
-                }
-            }
+            return true;
         }
 
         int deepest = -1;

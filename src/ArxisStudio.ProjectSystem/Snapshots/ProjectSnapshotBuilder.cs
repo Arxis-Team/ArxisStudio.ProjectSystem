@@ -96,6 +96,12 @@ public sealed class ProjectSnapshotBuilder
     /// </remarks>
     public IList<CanonicalPath> EvaluationInputs { get; } = [];
 
+    /// <summary>
+    /// Gets the directories a build of this project writes into — see <see cref="ProjectSnapshot.BuildDirectories"/>.
+    /// </summary>
+    /// <remarks>Duplicates and empty paths are dropped on the way in.</remarks>
+    public IList<CanonicalPath> BuildDirectories { get; } = [];
+
     /// <summary>Gets the diagnostics raised about this project.</summary>
     public IList<ProjectDiagnostic> Diagnostics { get; } = [];
 
@@ -161,6 +167,7 @@ public sealed class ProjectSnapshotBuilder
             [.. Items],
             [.. Outputs],
             Inputs(),
+            [.. BuildDirectories.Where(static path => !path.IsEmpty).Distinct()],
             [.. Diagnostics],
             ProjectMetadata.Create(Properties));
     }

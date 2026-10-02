@@ -76,6 +76,21 @@ public sealed class SnapshotTests
     }
 
     [Fact]
+    public void BuildDirectories_AreDistinctAndNeverEmptyPaths()
+    {
+        ProjectSnapshotBuilder builder = Builder();
+        CanonicalPath bin = TestPaths.At("src", "App", "bin");
+        CanonicalPath obj = TestPaths.At("src", "App", "obj");
+
+        builder.BuildDirectories.Add(bin);
+        builder.BuildDirectories.Add(CanonicalPath.None);
+        builder.BuildDirectories.Add(obj);
+        builder.BuildDirectories.Add(bin);
+
+        Assert.Equal([bin, obj], builder.ToSnapshot().BuildDirectories);
+    }
+
+    [Fact]
     public void TwoSnapshotsFromOneBuilder_ShareNothingMutable()
     {
         ProjectSnapshotBuilder builder = Builder();

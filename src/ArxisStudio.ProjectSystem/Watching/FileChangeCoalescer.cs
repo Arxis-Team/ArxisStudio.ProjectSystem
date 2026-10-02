@@ -16,10 +16,21 @@ namespace ArxisStudio.ProjectSystem;
 /// re-evaluate a solution repeatedly to reach the state it would have reached once.
 /// </para>
 /// <para>
-/// So changes accumulate into a distinct set and are delivered when either the changes have stopped
-/// for <see cref="FileChangeCoalescingOptions.QuietPeriod"/> or
-/// <see cref="FileChangeCoalescingOptions.MaximumDelay"/> has passed since the first of them —
-/// whichever comes first.
+/// So changes accumulate and are delivered when either the changes have stopped for
+/// <see cref="FileChangeCoalescingOptions.QuietPeriod"/> or <see cref="FileChangeCoalescingOptions.MaximumDelay"/>
+/// has passed since the first of them — whichever comes first.
+/// </para>
+/// <para>
+/// <b>A batch says what is true at its end, path by path</b>
+/// (<see href="../../docs/adr/0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md">ADR 0025</see>).
+/// A file created and deleted inside it never happened; a file deleted and created again was
+/// replaced, which is a change; a file renamed into a path that had just been renamed away is the
+/// same file with new contents. That last is how JetBrains Rider and every atomic writer save — the
+/// text to a temporary file, the original renamed aside, the temporary renamed over it, the
+/// original deleted — and it arrives as one <see cref="FileChangeKind.Changed"/> instead of five
+/// events that each look like the project gaining or losing a file. A rename whose two ends are
+/// still a disappearance and an appearance at the end of the batch stays a rename, and renames in a
+/// chain are one rename from the first path to the last.
 /// </para>
 /// <para>
 /// <b>Time comes from a <see cref="TimeProvider"/></b>, which is the whole reason this is testable.
@@ -29,13 +40,15 @@ namespace ArxisStudio.ProjectSystem;
 /// </para>
 /// <para>
 /// <b>This coalesces; it does not decide anything.</b> What a batch means is
-/// <see cref="SolutionSnapshot.Invalidate"/>'s question, and keeping the two apart is what lets both
-/// be tested without the other.
+/// <see cref="SolutionSnapshot.Classify"/>'s question — or <see cref="SolutionSnapshot.Invalidate"/>'s, for a
+/// host that only re-evaluates — and keeping the two apart is what lets both be tested without the
+/// other.
 /// </para>
 /// </remarks>
 public sealed class FileChangeCoalescer : IDisposable
 {
-    private readonly Action<ImmutableArray<CanonicalPath>> _onBatch;
+    private readonly Action<ImmutableArray<CanonicalPath>>? _onPaths;
+    private readonly Action<ImmutableArray<FileChange>>? _onChanges;
     private readonly FileChangeCoalescingOptions _options;
     private readonly TimeProvider _time;
     private readonly ITimer _timer;
@@ -46,17 +59,27 @@ public sealed class FileChangeCoalescer : IDisposable
     // thread, which Lock permits, instead of waiting for itself.
     private readonly Lock _delivery = new();
 
-    private readonly HashSet<CanonicalPath> _seen = [];
-    private readonly List<CanonicalPath> _pending = [];
+    /// <summary>What each path amounts to so far in this batch.</summary>
+    private readonly Dictionary<CanonicalPath, FileChangeKind> _net = [];
 
+    /// <summary>Every path the batch has heard of, in the order it first heard of it.</summary>
+    private readonly List<CanonicalPath> _order = [];
+    private readonly HashSet<CanonicalPath> _ordered = [];
+
+    /// <summary>The renames of this batch, from where a file first was to where it last went.</summary>
+    private readonly List<(CanonicalPath Old, CanonicalPath New)> _renames = [];
+
+    private bool _overflow;
+    private bool _open;
     private long _firstChangeAt;
     private bool _disposed;
 
-    /// <summary>Creates a coalescer.</summary>
+    /// <summary>Creates a coalescer that delivers the paths that changed.</summary>
     /// <param name="onBatch">
     /// Called with each batch — on a timer thread, or on the thread that called <see cref="Flush"/> —
     /// never with an empty batch and never for two batches at once: a delivery that finds one in
-    /// progress waits for it. An exception it throws is swallowed — see the remarks on
+    /// progress waits for it. A rename delivers both of its paths; a lost change cannot be said as a
+    /// path and is left out. An exception it throws is swallowed — see the remarks on
     /// <see cref="Flush"/>.
     /// </param>
     /// <param name="options">How long to wait, or <see langword="null"/> for the defaults.</param>
@@ -66,10 +89,23 @@ public sealed class FileChangeCoalescer : IDisposable
         Action<ImmutableArray<CanonicalPath>> onBatch,
         FileChangeCoalescingOptions? options = null,
         TimeProvider? timeProvider = null)
+        : this(options, timeProvider)
     {
         ArgumentNullException.ThrowIfNull(onBatch);
 
-        _onBatch = onBatch;
+        _onPaths = onBatch;
+    }
+
+    private FileChangeCoalescer(Action<ImmutableArray<FileChange>> onChanges, FileChangeCoalescingOptions? options, TimeProvider? timeProvider)
+        : this(options, timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(onChanges);
+
+        _onChanges = onChanges;
+    }
+
+    private FileChangeCoalescer(FileChangeCoalescingOptions? options, TimeProvider? timeProvider)
+    {
         _options = options ?? FileChangeCoalescingOptions.Default;
         _time = timeProvider ?? TimeProvider.System;
 
@@ -79,16 +115,52 @@ public sealed class FileChangeCoalescer : IDisposable
             Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
+    /// <summary>Creates a coalescer that delivers what happened to each file.</summary>
+    /// <remarks>
+    /// A factory rather than a second constructor: a constructor taking a delegate of a different
+    /// type would make every call that passes a lambda or <see langword="null"/> ambiguous between the two.
+    /// </remarks>
+    /// <param name="onChanges">
+    /// Called with each batch, under the same rules as the path batches of the constructor: never
+    /// empty, never two at once, exceptions swallowed. A lost change comes first, as
+    /// <see cref="FileChange.Overflow"/>.
+    /// </param>
+    /// <param name="options">How long to wait, or <see langword="null"/> for the defaults.</param>
+    /// <param name="timeProvider">The clock, or <see langword="null"/> for the system one.</param>
+    /// <returns>The coalescer.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="onChanges"/> is <see langword="null"/>.</exception>
+    public static FileChangeCoalescer ForChanges(
+        Action<ImmutableArray<FileChange>> onChanges,
+        FileChangeCoalescingOptions? options = null,
+        TimeProvider? timeProvider = null) =>
+        new(onChanges, options, timeProvider);
+
+    /// <summary>Records a change to a file, and starts or extends the wait.</summary>
+    /// <remarks>
+    /// The same as <see cref="Add(FileChange)"/> with <see cref="FileChangeKind.Changed"/>: what a
+    /// watcher that reports bare paths knows.
+    /// </remarks>
+    /// <param name="path">The file that changed. An empty path is ignored.</param>
+    public void Add(CanonicalPath path) => Add(new FileChange(path, FileChangeKind.Changed));
+
     /// <summary>Records a change, and starts or extends the wait.</summary>
     /// <remarks>
     /// Safe to call from any thread, which it has to be: a file watcher reports on threads of its
-    /// own choosing and several of them may report at once. An empty path is ignored, and the same
-    /// path arriving repeatedly is recorded once.
+    /// own choosing and several of them may report at once. A rename missing one of its paths is the
+    /// end it has — an arrival or a departure — and a change with no path at all, other than
+    /// <see cref="FileChange.Overflow"/>, is ignored.
     /// </remarks>
-    /// <param name="path">The file that changed.</param>
-    public void Add(CanonicalPath path)
+    /// <param name="change">What happened.</param>
+    public void Add(FileChange change)
     {
-        if (path.IsEmpty)
+        if (change.Kind == FileChangeKind.Renamed && (change.OldPath.IsEmpty || change.Path.IsEmpty))
+        {
+            change = change.OldPath.IsEmpty
+                ? new FileChange(change.Path, FileChangeKind.Created)
+                : new FileChange(change.OldPath, FileChangeKind.Deleted);
+        }
+
+        if (change.Kind != FileChangeKind.Overflow && change.Path.IsEmpty)
         {
             return;
         }
@@ -100,18 +172,30 @@ public sealed class FileChangeCoalescer : IDisposable
                 return;
             }
 
-            if (_seen.Add(path))
+            switch (change.Kind)
             {
-                _pending.Add(path);
+                case FileChangeKind.Overflow:
+                    _overflow = true;
+                    break;
 
-                // The ceiling counts from the first change of the batch. A repeat of a path already
-                // pending is not a first change however recently it arrived, and restarting the
-                // count on one let a single busy file postpone its own batch for as long as it kept
-                // changing.
-                if (_pending.Count == 1)
-                {
-                    _firstChangeAt = _time.GetTimestamp();
-                }
+                case FileChangeKind.Renamed:
+                    Apply(change.OldPath, FileChangeKind.Deleted);
+                    Apply(change.Path, FileChangeKind.Created);
+                    Chain(change.OldPath, change.Path);
+                    break;
+
+                default:
+                    Apply(change.Path, change.Kind);
+                    break;
+            }
+
+            // The ceiling counts from the first change of the batch. A repeat of a path already
+            // pending is not a first change however recently it arrived, and restarting the count
+            // on one let a single busy file postpone its own batch for as long as it kept changing.
+            if (!_open)
+            {
+                _open = true;
+                _firstChangeAt = _time.GetTimestamp();
             }
 
             _timer.Change(NextDelay(), Timeout.InfiniteTimeSpan);
@@ -152,11 +236,150 @@ public sealed class FileChangeCoalescer : IDisposable
             }
 
             _disposed = true;
-            _pending.Clear();
-            _seen.Clear();
+            Reset();
         }
 
         _timer.Dispose();
+    }
+
+    /// <summary>
+    /// Folds one event into what its path amounts to so far.
+    /// </summary>
+    /// <remarks>
+    /// Only the first and the last state matter to anybody reading the batch: a path that did not
+    /// exist before and does not exist after was never there; one that existed before and exists
+    /// after changed, whatever happened between.
+    /// </remarks>
+    private void Apply(CanonicalPath path, FileChangeKind kind)
+    {
+        if (_ordered.Add(path))
+        {
+            _order.Add(path);
+        }
+
+        if (!_net.TryGetValue(path, out FileChangeKind current))
+        {
+            _net[path] = kind;
+            return;
+        }
+
+        FileChangeKind? next = (current, kind) switch
+        {
+            // Appeared in this batch: still new, or never there at all.
+            (FileChangeKind.Created, FileChangeKind.Deleted) => null,
+            (FileChangeKind.Created, _) => FileChangeKind.Created,
+
+            // Gone in this batch and back: replaced, which is a change to the file that was there.
+            (FileChangeKind.Deleted, FileChangeKind.Deleted) => FileChangeKind.Deleted,
+            (FileChangeKind.Deleted, _) => FileChangeKind.Changed,
+
+            // Was there before the batch.
+            (FileChangeKind.Changed, FileChangeKind.Deleted) => FileChangeKind.Deleted,
+            _ => FileChangeKind.Changed,
+        };
+
+        if (next is { } kept)
+        {
+            _net[path] = kept;
+        }
+        else
+        {
+            _net.Remove(path);
+        }
+    }
+
+    /// <summary>
+    /// Records a rename, joining it to one that brought the file to its old path in this batch.
+    /// </summary>
+    private void Chain(CanonicalPath oldPath, CanonicalPath newPath)
+    {
+        for (int i = 0; i < _renames.Count; i++)
+        {
+            if (_renames[i].New == oldPath)
+            {
+                _renames[i] = (_renames[i].Old, newPath);
+                return;
+            }
+        }
+
+        _renames.Add((oldPath, newPath));
+    }
+
+    /// <summary>
+    /// What the batch amounts to: a lost change first, then each path in the order it was first
+    /// heard of, a rename at the place of its old path.
+    /// </summary>
+    private ImmutableArray<FileChange> Changes()
+    {
+        ImmutableArray<FileChange>.Builder changes = ImmutableArray.CreateBuilder<FileChange>();
+
+        if (_overflow)
+        {
+            changes.Add(FileChange.Overflow);
+        }
+
+        // A rename stays one only where its ends are still an absence and an arrival: a file renamed
+        // away and another written in its place is a change to that path, not a move.
+        var moved = new Dictionary<CanonicalPath, CanonicalPath>();
+        var arrived = new HashSet<CanonicalPath>();
+
+        foreach ((CanonicalPath oldPath, CanonicalPath newPath) in _renames)
+        {
+            if (_net.GetValueOrDefault(oldPath, FileChangeKind.Changed) == FileChangeKind.Deleted
+                && _net.TryGetValue(newPath, out FileChangeKind landed)
+                && landed == FileChangeKind.Created
+                && !arrived.Contains(newPath))
+            {
+                moved[oldPath] = newPath;
+                arrived.Add(newPath);
+            }
+        }
+
+        foreach (CanonicalPath path in _order)
+        {
+            if (moved.TryGetValue(path, out CanonicalPath to))
+            {
+                changes.Add(FileChange.Renamed(path, to));
+            }
+            else if (!arrived.Contains(path) && _net.TryGetValue(path, out FileChangeKind kind))
+            {
+                changes.Add(new FileChange(path, kind));
+            }
+        }
+
+        return changes.ToImmutable();
+    }
+
+    /// <summary>The paths a batch of changes names, each once — what a path batch delivers.</summary>
+    private static ImmutableArray<CanonicalPath> Paths(ImmutableArray<FileChange> changes)
+    {
+        var seen = new HashSet<CanonicalPath>();
+        ImmutableArray<CanonicalPath>.Builder paths = ImmutableArray.CreateBuilder<CanonicalPath>();
+
+        foreach (FileChange change in changes)
+        {
+            if (change.Kind == FileChangeKind.Renamed && seen.Add(change.OldPath))
+            {
+                paths.Add(change.OldPath);
+            }
+
+            if (!change.Path.IsEmpty && seen.Add(change.Path))
+            {
+                paths.Add(change.Path);
+            }
+        }
+
+        return paths.ToImmutable();
+    }
+
+    private void Reset()
+    {
+        _net.Clear();
+        _order.Clear();
+        _ordered.Clear();
+        _renames.Clear();
+        _overflow = false;
+        _open = false;
     }
 
     /// <summary>
@@ -181,19 +404,18 @@ public sealed class FileChangeCoalescer : IDisposable
         // inside this one and never the other way round, so the two cannot wait on each other.
         lock (_delivery)
         {
-            ImmutableArray<CanonicalPath> batch;
+            ImmutableArray<FileChange> changes;
 
             lock (_sync)
             {
-                if (_disposed || _pending.Count == 0)
+                if (_disposed || !_open)
                 {
                     return;
                 }
 
-                batch = [.. _pending];
+                changes = Changes();
 
-                _pending.Clear();
-                _seen.Clear();
+                Reset();
 
                 // Nothing is pending now, so no wake-up is wanted. Without this a Flush would leave
                 // the timer armed to fire on an empty batch.
@@ -204,7 +426,17 @@ public sealed class FileChangeCoalescer : IDisposable
             // the gate: this is arbitrary code, and it is entitled to call back in.
             try
             {
-                _onBatch(batch);
+                if (_onChanges is not null)
+                {
+                    if (!changes.IsEmpty)
+                    {
+                        _onChanges(changes);
+                    }
+                }
+                else if (Paths(changes) is { IsEmpty: false } paths)
+                {
+                    _onPaths!(paths);
+                }
             }
 #pragma warning disable CA1031 // A batch handler throwing on a timer thread would take the process
             catch (Exception)      // down. Isolated, exactly as a snapshot subscriber is -- ADR 0007.

@@ -93,6 +93,11 @@ internal static class MSBuildProjectTranslator
             }
         }
 
+        foreach (CanonicalPath built in BuildDirectories(project, directory))
+        {
+            builder.BuildDirectories.Add(built);
+        }
+
         foreach (EvaluatedItem item in project.Items)
         {
             Translate(item, builder, directory, workspace, knownProjects);
@@ -254,6 +259,54 @@ internal static class MSBuildProjectTranslator
         }
 
         return Property(project, "TargetFramework") is { } single ? [single] : [];
+    }
+
+    /// <summary>
+    /// The roots a build writes under, for <see cref="ProjectSnapshot.BuildDirectories"/>: the base
+    /// output and intermediate directories, and this configuration's own where they lie outside both.
+    /// </summary>
+    /// <remarks>
+    /// The bases first, because another configuration's build, and a tool's build with an output path
+    /// of its own beneath them, write there too. A property that is not set names nothing rather than a
+    /// guess, and a value that is not a usable path is skipped — the snapshot then says less, which a
+    /// classifier answers by evaluating more.
+    /// </remarks>
+    private static List<CanonicalPath> BuildDirectories(EvaluatedProject project, CanonicalPath directory)
+    {
+        var named = new List<CanonicalPath>();
+
+        foreach (string name in (string[])["BaseOutputPath", "BaseIntermediateOutputPath", "OutputPath", "IntermediateOutputPath"])
+        {
+            if (Property(project, name) is not { Length: > 0 } value)
+            {
+                continue;
+            }
+
+            CanonicalPath resolved;
+
+            try
+            {
+                resolved = CanonicalPath.Create(directory, value);
+            }
+            catch (ArgumentException)
+            {
+                continue;
+            }
+
+            // An output path of "." or "..\" is a project building into its own source — old project
+            // files do it. Naming that as a build directory would make every source file a build file.
+            if (directory.StartsWith(resolved))
+            {
+                continue;
+            }
+
+            if (!named.Exists(root => resolved.StartsWith(root)))
+            {
+                named.Add(resolved);
+            }
+        }
+
+        return named;
     }
 
     /// <summary>
