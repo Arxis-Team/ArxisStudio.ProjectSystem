@@ -89,7 +89,10 @@ writes under. The MSBuild provider names `BaseOutputPath` and `BaseIntermediateO
 project evaluated them — `bin` and `obj` unless the project moved them — because another
 configuration's build and another tool's build write below them too; this configuration's own
 `OutputPath` and `IntermediateOutputPath` are named only where they lie outside both. Empty means no
-file is a build file, which a classifier answers by evaluating more, not less.
+file is a build file, which a classifier answers by evaluating more, not less. What an evaluation
+itself names inside them — the provider reports `IntermediateAssembly` and `_OutputPathItem` like any
+other item — is the build's, not a declared file: every build rewrites it, and that is not a document
+changing or a project losing a file.
 
 ## Consequences
 

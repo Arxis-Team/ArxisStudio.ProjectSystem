@@ -30,6 +30,13 @@ public sealed partial class SolutionSnapshot
     /// When two projects declare the same file — which linked files make possible — the first in
     /// snapshot order is the answer, as it is for <see cref="TryGetProjectForFile"/>.
     /// </para>
+    /// <para>
+    /// What a build writes is not found, though an evaluation names some of it — the MSBuild provider
+    /// reports <c>IntermediateAssembly</c> under <c>obj</c> and <c>_OutputPathItem</c> under <c>bin</c>
+    /// like any other item. An item inside its project's <see cref="ProjectSnapshot.BuildDirectories"/>
+    /// is the build's, not the project's source, and the next build rewriting it is not a document
+    /// changing.
+    /// </para>
     /// </remarks>
     /// <param name="path">The file.</param>
     /// <param name="project">The project that declares it, when one does.</param>
@@ -264,12 +271,9 @@ public sealed partial class SolutionSnapshot
             return false;
         }
 
-        foreach (CanonicalPath directory in project.BuildDirectories)
+        if (IsBuildOutput(project, path))
         {
-            if (path.StartsWith(directory))
-            {
-                return false;
-            }
+            return false;
         }
 
         string below = path.Value[project.ProjectDirectory.Value.Length..]
@@ -289,6 +293,20 @@ public sealed partial class SolutionSnapshot
         }
 
         return true;
+    }
+
+    /// <summary>Whether a path is where a build of the project writes.</summary>
+    private static bool IsBuildOutput(ProjectSnapshot project, CanonicalPath path)
+    {
+        foreach (CanonicalPath directory in project.BuildDirectories)
+        {
+            if (path.StartsWith(directory))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -344,7 +362,7 @@ public sealed partial class SolutionSnapshot
 
             foreach (ProjectItem item in project.Items)
             {
-                if (item.FullPath.IsEmpty)
+                if (item.FullPath.IsEmpty || IsBuildOutput(project, item.FullPath))
                 {
                     continue;
                 }

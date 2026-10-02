@@ -28,6 +28,10 @@ public sealed class ClassifyTests
     // Beside the app's project file: an import its evaluation reads and a None item its globs take.
     private static CanonicalPath Beside => TestPaths.At("src", "App", "Directory.Build.props");
 
+    // Where a build of the app writes, as the evaluation names it.
+    private static CanonicalPath IntermediateAssembly => TestPaths.At("src", "App", "obj", "Debug", "net10.0", "App.dll");
+    private static CanonicalPath OutputFolder => TestPaths.At("src", "App", "bin", "Debug", "net10.0");
+
     [Fact]
     public void Classify_AnAtomicSaveOfAForm_IsOneEditedItemAndNothingToEvaluate()
     {
@@ -90,6 +94,24 @@ public sealed class ClassifyTests
 
         Assert.True(changes.IsEmpty, $"A build writing '{written}' is not the project changing: {changes}.");
         Assert.Same(WorkspaceChangeSet.None, changes);
+    }
+
+    [Fact]
+    public void Classify_ABuildRewritingWhatTheEvaluationNamed_IsNothing()
+    {
+        // The MSBuild provider reports IntermediateAssembly and _OutputPathItem as items: what a build
+        // writes, named by the evaluation that plans it, and rewritten by every build.
+        SolutionSnapshot solution = Solution(withBuildItems: true);
+
+        WorkspaceChangeSet changes = solution.Classify(
+        [
+            new FileChange(IntermediateAssembly, FileChangeKind.Changed),
+            new FileChange(IntermediateAssembly, FileChangeKind.Created),
+            new FileChange(OutputFolder, FileChangeKind.Deleted),
+        ]);
+
+        Assert.True(changes.IsEmpty, changes.ToString());
+        Assert.False(solution.TryGetItem(IntermediateAssembly, out _, out _));
     }
 
     [Fact]
@@ -424,7 +446,7 @@ public sealed class ClassifyTests
 
     private static ProjectIdentity Identity(CanonicalPath projectFile) => ProjectIdentity.Create(Workspace, projectFile);
 
-    private static SolutionSnapshot Solution(CanonicalPath entryPoint = default)
+    private static SolutionSnapshot Solution(CanonicalPath entryPoint = default, bool withBuildItems = false)
     {
         var solution = new SolutionSnapshotBuilder
         {
@@ -444,6 +466,12 @@ public sealed class ClassifyTests
         app.Items.Add(Item("None", Beside));
         app.EvaluationInputs.Add(Assets);
         app.EvaluationInputs.Add(Beside);
+
+        if (withBuildItems)
+        {
+            app.Items.Add(Item("IntermediateAssembly", IntermediateAssembly));
+            app.Items.Add(Item("_OutputPathItem", OutputFolder));
+        }
         solution.Projects.Add(app.ToSnapshot());
 
         ProjectSnapshotBuilder library = Project(TestPaths.Project("Library"), "Library");
