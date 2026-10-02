@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace ArxisStudio.ProjectSystem.MSBuild;
 
@@ -70,6 +71,16 @@ internal static class MSBuildWellKnown
         "DocumentationFile", "AssemblyVersion", "FileVersion", "Version",
         "MSBuildProjectName", "MSBuildProjectDirectory", "MSBuildProjectExtension",
     }.ToFrozenSet(System.StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The properties a load surfaces: <see cref="SurfacedProperties"/> and whatever the caller asked
+    /// for besides (<see cref="WorkspaceLoadOptions.AdditionalProperties"/>).
+    /// </summary>
+    internal static FrozenSet<string> Surfaced(WorkspaceLoadOptions options) =>
+        options.AdditionalProperties.IsDefaultOrEmpty
+            ? SurfacedProperties
+            : SurfacedProperties.Concat(options.AdditionalProperties.Where(static name => !string.IsNullOrWhiteSpace(name)))
+                .ToFrozenSet(System.StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// The files MSBuild finds by walking up from a project, and the property naming the one it

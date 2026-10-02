@@ -50,6 +50,7 @@ internal static class MSBuildProjectEvaluator
     /// <param name="projectPath">The project file.</param>
     /// <param name="globalProperties">Properties to evaluate with.</param>
     /// <param name="includeItems">Whether items other than references are wanted.</param>
+    /// <param name="surfaced">The properties to copy out of the evaluation.</param>
     /// <param name="evaluated">The evaluation, owned by this library rather than by MSBuild.</param>
     /// <param name="error">Why the evaluation failed, when it did.</param>
     /// <returns><see langword="true"/> when the project evaluated.</returns>
@@ -58,6 +59,7 @@ internal static class MSBuildProjectEvaluator
         CanonicalPath projectPath,
         IReadOnlyDictionary<string, string> globalProperties,
         bool includeItems,
+        IReadOnlySet<string> surfaced,
         out EvaluatedProject? evaluated,
         out string? error)
     {
@@ -98,7 +100,7 @@ internal static class MSBuildProjectEvaluator
             evaluated = new EvaluatedProject
             {
                 FullPath = projectPath,
-                Properties = Properties(project),
+                Properties = Properties(project, surfaced),
                 Items = Items(project, projectPath, includeItems),
                 Imports = Imports(project),
                 Messages = listener.Messages.ToImmutable(),
@@ -164,7 +166,7 @@ internal static class MSBuildProjectEvaluator
         }
     }
 
-    private static ProjectMetadata Properties(Project project)
+    private static ProjectMetadata Properties(Project project, IReadOnlySet<string> surfaced)
     {
         var properties = new List<KeyValuePair<string, string>>();
 
@@ -172,7 +174,7 @@ internal static class MSBuildProjectEvaluator
         {
             // Only what the snapshot will surface. Copying a thousand properties out of MSBuild to
             // throw all but thirty away is work with a cost and no reader.
-            if (MSBuildWellKnown.SurfacedProperties.Contains(property.Name))
+            if (surfaced.Contains(property.Name))
             {
                 properties.Add(new KeyValuePair<string, string>(property.Name, property.EvaluatedValue));
             }

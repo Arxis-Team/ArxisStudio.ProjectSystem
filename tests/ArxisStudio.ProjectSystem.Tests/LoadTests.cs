@@ -45,8 +45,43 @@ public sealed class LoadTests
 
         Assert.Same(WorkspaceLoadOptions.Default, request.Options);
         Assert.True(request.Options.IncludeItems);
+        Assert.Empty(request.Options.AdditionalProperties);
         Assert.Same(ProjectMetadata.Empty, request.GlobalProperties);
         Assert.Null(request.Configuration);
+    }
+
+    [Fact]
+    public void Options_WithTheSameAdditionalPropertiesBuiltSeparately_AreEqual()
+    {
+        // A request compares by value — a host asks "is this the load I already ran?" — and two
+        // arrays holding the same names are not the same array.
+        var first = new WorkspaceLoadOptions { AdditionalProperties = ["IsTestProject", "AvaloniaUseCompiledBindingsByDefault"] };
+        var second = new WorkspaceLoadOptions { AdditionalProperties = ["istestproject", "AvaloniaUseCompiledBindingsByDefault"] };
+
+        Assert.Equal(first, second);
+        Assert.Equal(first.GetHashCode(), second.GetHashCode());
+        Assert.Equal(Request() with { Options = first }, Request() with { Options = second });
+    }
+
+    [Fact]
+    public void Options_WithDifferentAdditionalProperties_AreNotEqual()
+    {
+        Assert.NotEqual(
+            new WorkspaceLoadOptions { AdditionalProperties = ["IsTestProject"] },
+            WorkspaceLoadOptions.Default);
+
+        Assert.NotEqual(
+            new WorkspaceLoadOptions { AdditionalProperties = ["IsTestProject"] },
+            new WorkspaceLoadOptions { AdditionalProperties = ["IsTestProject"], IncludeItems = false });
+    }
+
+    [Fact]
+    public void Options_GivenADefaultArray_StoreAnEmptyOne()
+    {
+        var options = new WorkspaceLoadOptions { AdditionalProperties = default };
+
+        Assert.False(options.AdditionalProperties.IsDefault);
+        Assert.Equal(WorkspaceLoadOptions.Default, options);
     }
 
     [Fact]

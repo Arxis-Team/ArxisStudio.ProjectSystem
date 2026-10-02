@@ -485,6 +485,22 @@ public sealed class MSBuildProjectProviderTests
     }
 
     [Fact]
+    public async Task AdditionalProperties_AreSurfacedFromTheSameEvaluation()
+    {
+        // A property the SDK sets on every project and the provider does not surface on its own.
+        WorkspaceLoadResult result = await new MSBuildProjectProvider().LoadAsync(
+            Request("Basic") with
+            {
+                Options = new WorkspaceLoadOptions { AdditionalProperties = ["UsingMicrosoftNETSdk"] },
+            },
+            TestContext.Current.CancellationToken);
+
+        ProjectSnapshot project = Assert.Single(Succeeded(result).Projects);
+
+        Assert.Equal("true", project.Properties["UsingMicrosoftNETSdk"], ignoreCase: true);
+    }
+
+    [Fact]
     public async Task ACancelledLoad_Throws()
     {
         using var cancellation = new CancellationTokenSource();

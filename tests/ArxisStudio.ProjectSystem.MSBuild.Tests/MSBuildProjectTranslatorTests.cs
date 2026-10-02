@@ -141,6 +141,27 @@ public sealed class MSBuildProjectTranslatorTests
     }
 
     [Fact]
+    public void Properties_IncludeWhatTheCallerAskedForBesides()
+    {
+        var options = new WorkspaceLoadOptions { AdditionalProperties = ["avaloniausecompiledbindingsbydefault"] };
+
+        ProjectSnapshot snapshot = MSBuildProjectTranslator.Translate(
+            Project(properties: Meta(
+                ("AvaloniaUseCompiledBindingsByDefault", "true"),
+                ("AvaloniaNameGeneratorIsEnabled", "true"),
+                ("OutputType", "Exe"))),
+            Workspace,
+            "MSBuild",
+            surfaced: MSBuildWellKnown.Surfaced(options));
+
+        Assert.Equal("true", snapshot.Properties["AvaloniaUseCompiledBindingsByDefault"]);
+        Assert.False(
+            snapshot.Properties.ContainsKey("AvaloniaNameGeneratorIsEnabled"),
+            "A property nobody asked for stays curated away.");
+        Assert.Equal("Exe", snapshot.Properties["OutputType"]);
+    }
+
+    [Fact]
     public void AProjectReference_BecomesATypedReference()
     {
         CanonicalPath core = CanonicalPath.Create(Native("src", "Core", "Core.csproj"));

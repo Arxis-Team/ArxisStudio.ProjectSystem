@@ -125,6 +125,30 @@ foreach (ProjectDiagnostic diagnostic in result.Diagnostics)
 
 Nothing was evaluated, and no build engine was loaded.
 
+## A property the provider does not surface
+
+`ProjectSnapshot.Properties` is curated: a full MSBuild evaluation holds about a thousand properties,
+and the MSBuild provider copies the few dozen a tool commonly needs. A consumer whose question is a
+property nobody else asks names it on the request and gets the answer from the evaluation the
+workspace runs anyway — not from a second evaluation, and not from reading the project file by hand:
+
+```csharp
+WorkspaceLoadResult result = await workspace.LoadAsync(new WorkspaceLoadRequest
+{
+    Workspace = workspace.Identity,
+    EntryPointPath = solutionPath,
+    Options = new WorkspaceLoadOptions { AdditionalProperties = ["AvaloniaUseCompiledBindingsByDefault"] },
+});
+
+bool compiled = string.Equals(
+    project.Properties.GetValueOrDefault("AvaloniaUseCompiledBindingsByDefault"), "true",
+    StringComparison.OrdinalIgnoreCase);
+```
+
+Names compare case-insensitively, as MSBuild's do, and a property the project does not set is
+absent. Two requests that name the same properties are equal, however their arrays were built, so a
+host can still ask whether a load is the one it already ran.
+
 ## Paths
 
 Every path in the model is a `CanonicalPath`: absolute, normalised, and compared by one documented

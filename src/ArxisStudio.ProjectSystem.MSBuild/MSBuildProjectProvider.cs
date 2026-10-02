@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
@@ -181,9 +182,10 @@ public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
 
         Dictionary<string, string> globalProperties = GlobalProperties(request);
         bool includeItems = request.Options.IncludeItems;
+        FrozenSet<string> surfaced = MSBuildWellKnown.Surfaced(request.Options);
 
         (EvaluatedProject? evaluated, string? error) =
-            await RunAsync(path, globalProperties, includeItems, cancellationToken).ConfigureAwait(false);
+            await RunAsync(path, globalProperties, includeItems, surfaced, cancellationToken).ConfigureAwait(false);
 
         if (evaluated is null)
         {
@@ -193,7 +195,7 @@ public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
                 path));
         }
 
-        ProjectSnapshot snapshot = Translate(evaluated, request, knownProjects);
+        ProjectSnapshot snapshot = Translate(evaluated, request, knownProjects, surfaced);
 
         if (ChooseTargetFramework(snapshot, request) is not { } framework)
         {
@@ -208,14 +210,14 @@ public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
         globalProperties["TargetFramework"] = framework;
 
         (EvaluatedProject? inner, string? innerError) =
-            await RunAsync(path, globalProperties, includeItems, cancellationToken).ConfigureAwait(false);
+            await RunAsync(path, globalProperties, includeItems, surfaced, cancellationToken).ConfigureAwait(false);
 
         return inner is null
             ? (null, Diagnostic(
                 MSBuildDiagnosticCodes.EvaluationFailed,
                 $"'{path}' could not be evaluated for '{framework}': {innerError}",
                 path))
-            : (Translate(inner, request, knownProjects), null);
+            : (Translate(inner, request, knownProjects, surfaced), null);
     }
 
     /// <summary>
@@ -228,7 +230,8 @@ public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
     private ProjectSnapshot Translate(
         EvaluatedProject evaluated,
         WorkspaceLoadRequest request,
-        IReadOnlySet<CanonicalPath>? knownProjects)
+        IReadOnlySet<CanonicalPath>? knownProjects,
+        IReadOnlySet<string> surfaced)
     {
         var diagnostics = new List<ProjectDiagnostic>();
         ImmutableArray<ResolvedPackage> resolved = [];
@@ -266,7 +269,14 @@ public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
         }
 
         return MSBuildProjectTranslator.Translate(
-            evaluated, request.Workspace, Name, knownProjects, resolved, diagnostics, Ceiling(request));
+            evaluated,
+            request.Workspace,
+            Name,
+            knownProjects,
+            resolved,
+            diagnostics,
+            Ceiling(request),
+            surfaced);
     }
 
     /// <summary>
@@ -324,13 +334,14 @@ public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
         CanonicalPath path,
         Dictionary<string, string> globalProperties,
         bool includeItems,
+        IReadOnlySet<string> surfaced,
         CancellationToken cancellationToken)
     {
         var properties = new Dictionary<string, string>(globalProperties, StringComparer.OrdinalIgnoreCase);
 
         (EvaluatedProject? evaluated, string? error) = await Task.Run(
             () => MSBuildProjectEvaluator.TryEvaluate(
-                path, properties, includeItems, out EvaluatedProject? result, out string? failure)
+                path, properties, includeItems, surfaced, out EvaluatedProject? result, out string? failure)
                 ? (result, (string?)null)
                 : (null, failure),
             cancellationToken).ConfigureAwait(false);

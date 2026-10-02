@@ -47,6 +47,10 @@ internal static class MSBuildProjectTranslator
     /// <c>WalkedImportCandidates</c>. Absent means the project's own directory and no further, which
     /// is the safe answer rather than the complete one.
     /// </param>
+    /// <param name="surfaced">
+    /// The properties this load surfaces — the provider's own and what the caller asked for besides
+    /// (<see cref="WorkspaceLoadOptions.AdditionalProperties"/>). Absent means the provider's own.
+    /// </param>
     /// <returns>The snapshot.</returns>
     internal static ProjectSnapshot Translate(
         EvaluatedProject project,
@@ -55,7 +59,8 @@ internal static class MSBuildProjectTranslator
         IReadOnlySet<CanonicalPath>? knownProjects = null,
         ImmutableArray<ResolvedPackage> resolvedPackages = default,
         IReadOnlyList<ProjectDiagnostic>? diagnostics = null,
-        CanonicalPath ceiling = default)
+        CanonicalPath ceiling = default,
+        IReadOnlySet<string>? surfaced = null)
     {
         CanonicalPath directory = project.FullPath.Directory;
 
@@ -78,9 +83,11 @@ internal static class MSBuildProjectTranslator
         AddRange(builder.Configurations, List(project, "Configurations"));
         AddRange(builder.Platforms, List(project, "Platforms"));
 
+        surfaced ??= MSBuildWellKnown.SurfacedProperties;
+
         foreach (KeyValuePair<string, string> property in project.Properties)
         {
-            if (MSBuildWellKnown.SurfacedProperties.Contains(property.Key))
+            if (surfaced.Contains(property.Key))
             {
                 builder.Properties[property.Key] = property.Value;
             }
