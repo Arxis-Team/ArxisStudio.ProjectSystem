@@ -431,6 +431,13 @@ behind it. `TryReclaimAsync` now goes on asking for at least two seconds, with a
 a pause between collections, and the same case answers "provably dead" in about 0.2 s
 ([ADR 0023](adr/0023-a-generation-is-reclaimed-before-its-successor-is-born.md), amendment).
 
+The same day the next one surfaced, named by the harness's walk rather than a dump: design data. A
+form whose `Design.DataContext` is the project's view model runs reflection bindings against it, and
+Avalonia's binding plugins remember the view model's type for the life of the process. The reclaim
+forgets those entries now too ([ADR 0023](adr/0023-a-generation-is-reclaimed-before-its-successor-is-born.md),
+second amendment) — a cache inside Avalonia, read and cleared by shape, which is exactly what can stop
+working on an Avalonia update and turn back into "still held".
+
 Clearing it turned the reliable failure into a reliable swap, and did not turn the swap into a
 promise. A second click-and-edit round in the same process was seen to answer "still held" once and
 to swap the next time, on the same project with the same steps — so the fallback is not a leftover

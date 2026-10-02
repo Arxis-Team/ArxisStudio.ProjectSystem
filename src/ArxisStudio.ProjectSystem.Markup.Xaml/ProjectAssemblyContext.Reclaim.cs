@@ -202,6 +202,7 @@ public sealed partial class ProjectAssemblyContext
         }
 
         AvaloniaRegistry.Forget(dying);
+        AvaloniaBindingPlugins.Forget(dying);
 
         foreach (Assembly assembly in dying)
         {
@@ -426,6 +427,120 @@ public sealed partial class ProjectAssemblyContext
                     return;
             }
         }
+    }
+
+    /// <summary>
+    /// What Avalonia's binding plugins remember about the types they were asked about, cleared of a
+    /// generation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A reflection binding asks every property-accessor plugin whether it can read a name on its
+    /// source's type, and the method accessor remembers each answer — a method, or none — in a
+    /// dictionary keyed by the type and the name, for the life of the process. A form whose design
+    /// data is an instance of the project's view model leaves that view model's type as a key there
+    /// as soon as one of its bindings has run, and the whole generation with it: UiDesigner.Demo's
+    /// <c>--reclaim</c> named the path once its scaffolded window wrote <c>Design.DataContext</c> — a
+    /// designer's ordinary state, not an exotic one.
+    /// </para>
+    /// <para>
+    /// Internal to Avalonia, so best effort and shape-checked, like the rest of this file: every
+    /// static collection of the plugins type is walked, every dictionary a plugin holds is looked
+    /// at, and an entry goes only when its key is a type of the generation or a tuple holding one.
+    /// A shape this does not recognise is left alone, and costs a reclaim that answers "no".
+    /// </para>
+    /// </remarks>
+    private static class AvaloniaBindingPlugins
+    {
+        private static readonly Type? Plugins = Type.GetType(
+            "Avalonia.Data.Core.Plugins.BindingPlugins, Avalonia.Base",
+            throwOnError: false);
+
+        internal static void Forget(List<Assembly> dying)
+        {
+            if (dying.Count == 0 || Plugins is null)
+            {
+                return;
+            }
+
+            var suspects = new HashSet<Assembly>(dying);
+
+            try
+            {
+                foreach (FieldInfo field in Plugins.GetFields(
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    if (field.GetValue(null) is not IEnumerable plugins || plugins is string)
+                    {
+                        continue;
+                    }
+
+                    foreach (object? plugin in plugins)
+                    {
+                        if (plugin is not null)
+                        {
+                            Purge(plugin, suspects);
+                        }
+                    }
+                }
+            }
+            catch (Exception exception) when (IsReflection(exception))
+            {
+            }
+        }
+
+        /// <summary>Removes a plugin's remembered answers about the generation's types.</summary>
+        private static void Purge(object plugin, HashSet<Assembly> suspects)
+        {
+            foreach (FieldInfo field in plugin.GetType()
+                .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                if (field.GetValue(plugin) is not IDictionary cache)
+                {
+                    continue;
+                }
+
+                var stale = new List<object>();
+
+                try
+                {
+                    foreach (DictionaryEntry entry in cache)
+                    {
+                        if (Names(entry.Key, suspects))
+                        {
+                            stale.Add(entry.Key);
+                        }
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // Written to while being read: what is missed is a generation that stays, and
+                    // the answer says so.
+                    continue;
+                }
+
+                foreach (object key in stale)
+                {
+                    cache.Remove(key);
+                }
+            }
+        }
+
+        /// <summary>Whether a remembered key names a type of the generation.</summary>
+        private static bool Names(object? key, HashSet<Assembly> suspects) =>
+            key switch
+            {
+                Type type => Belongs(type, suspects),
+                ITuple tuple => Enumerable.Range(0, tuple.Length)
+                    .Any(index => tuple[index] is Type type && Belongs(type, suspects)),
+                _ => false,
+            };
+
+        /// <summary>Whether a type is the generation's, or is built from one of its types.</summary>
+        private static bool Belongs(Type type, HashSet<Assembly> suspects) =>
+            suspects.Contains(type.Assembly)
+            || (type.HasElementType && type.GetElementType() is { } element && Belongs(element, suspects))
+            || (type.IsGenericType && type.GetGenericArguments().Any(argument => Belongs(argument, suspects)));
     }
 
     /// <summary>

@@ -122,3 +122,21 @@ case that had failed now answers in about 0.2 s — and only one that something 
 full two seconds before the restart. The "two runs in three answered still held" recorded in
 `docs/limitations.md` for the 2026-08-22 designer had this shape: the same binary, no gesture,
 nothing the designer did differently.
+
+## Amendment, 2026-10-02: what a binding has read is forgotten too
+
+The designer sample's scaffolded window began writing `Design.DataContext` — what Avalonia's own
+template writes, and what makes a form of bindings show anything in a designer — and case 3 of its
+`--reclaim` answered "still held" at once, with the holder named: the method accessor among
+Avalonia's binding plugins. A reflection binding asks every property-accessor plugin whether it can
+read a name on its source's type, and the method accessor remembers each answer, found or not, in a
+dictionary keyed by the type and the name, for the life of the process. A view model of the project
+used as design data therefore keeps its generation the moment one of its bindings has run.
+
+The reclaim now takes those entries out, after the property registry and before the converter
+cache: every static collection of `BindingPlugins` is walked, every dictionary a plugin holds is
+looked at, and an entry goes only when its key is a type of the generation — or a tuple holding one,
+or a type built from one. Shape-checked and best effort, in the posture of the rest of the reclaim:
+a shape that is not recognised is left alone and costs a "no". The adapter's test makes the plugins
+read a type of a generation, checks that they remember it, and reclaims the generation; without the
+sweep it answers "a binding plugin kept the generation". Case 3 now answers in about 0.3 s.

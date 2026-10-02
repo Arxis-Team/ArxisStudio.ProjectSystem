@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
@@ -304,6 +305,29 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         Assert.False(loaded.IsAlive);
     }
 
+    /// <summary>
+    /// A generation whose type a reflection binding has read is still reclaimed: Avalonia's binding
+    /// plugins remember the type, and the reclaim takes it out of them.
+    /// </summary>
+    /// <remarks>
+    /// What design data does in a designer: a form whose <c>Design.DataContext</c> is the project's
+    /// view model runs its bindings against it, and the method accessor remembers the view model's
+    /// type, keyed with the member's name, for the life of the process. UiDesigner.Demo's
+    /// <c>--reclaim</c> found it holding a generation once its scaffolded window wrote design data.
+    /// </remarks>
+    [Fact]
+    public async Task TryReclaim_AGenerationABindingHasRead_IsStillReclaimed()
+    {
+        (ProjectAssemblyContext context, WeakReference loaded) =
+            BoundGeneration(CopyRealAssembly("Bound.dll"), "Bound");
+
+        Assert.True(
+            await context.TryReclaimAsync(TestContext.Current.CancellationToken),
+            "a binding plugin kept the generation");
+
+        Assert.False(loaded.IsAlive);
+    }
+
     /// <summary>Disposal first means there is nothing left to clean up after, and it says so.</summary>
     [Fact]
     public async Task TryReclaim_AfterDisposal_AnswersFalse()
@@ -352,6 +376,84 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         context = Context(output);
 
         return new StrongBox<Assembly?>(context.Resolve(new AssemblyName(name)) ?? throw new InvalidOperationException(name));
+    }
+
+    /// <summary>
+    /// Loads a generation and lets Avalonia's binding plugins read one of its types, the way a
+    /// binding reads its source, handing back only what may survive the measurement.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private (ProjectAssemblyContext Context, WeakReference Loaded) BoundGeneration(
+        CanonicalPath output, string name)
+    {
+        ProjectAssemblyContext context = Context(output);
+        Assembly loaded = context.Resolve(new AssemblyName(name)) ?? throw new InvalidOperationException(name);
+
+        // The copy's own diagnostic record: a class with public properties, as a view model is. Made
+        // without its constructor, which is not what this is about.
+        Type source = loaded.GetType(typeof(ProjectDiagnostic).FullName!, throwOnError: true)!;
+
+        Assert.True(
+            BindingPluginsRemember(RuntimeHelpers.GetUninitializedObject(source)),
+            "no binding plugin remembered the type, so the test would prove nothing");
+
+        return (context, new WeakReference(loaded));
+    }
+
+    /// <summary>
+    /// Asks every property-accessor plugin about members of a source, as a binding does, and says
+    /// whether one of them now remembers the source's type.
+    /// </summary>
+    private static bool BindingPluginsRemember(object source)
+    {
+        Type plugins = Type.GetType("Avalonia.Data.Core.Plugins.BindingPlugins, Avalonia.Base", throwOnError: true)!;
+        var remembered = false;
+
+        foreach (FieldInfo field in plugins.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
+        {
+            if (field.GetValue(null) is not System.Collections.IEnumerable list || list is string)
+            {
+                continue;
+            }
+
+            foreach (object? plugin in list)
+            {
+                if (plugin?.GetType().GetMethod("Match", [typeof(object), typeof(string)]) is not { } match)
+                {
+                    continue;
+                }
+
+                match.Invoke(plugin, [source, nameof(ProjectDiagnostic.Message)]);
+                match.Invoke(plugin, [source, "NoSuchMember"]);
+
+                remembered |= Remembers(plugin, source.GetType());
+            }
+        }
+
+        return remembered;
+    }
+
+    /// <summary>Whether a plugin holds the type as, or in, a key of one of its dictionaries.</summary>
+    private static bool Remembers(object plugin, Type type)
+    {
+        foreach (FieldInfo field in plugin.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+        {
+            if (field.GetValue(plugin) is not System.Collections.IDictionary cache)
+            {
+                continue;
+            }
+
+            foreach (object key in cache.Keys)
+            {
+                if (key == (object)type
+                    || (key is ITuple tuple && Enumerable.Range(0, tuple.Length).Any(index => tuple[index] == (object)type)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The same, keeping the assembly, which is what a host that leaks looks like.</summary>
