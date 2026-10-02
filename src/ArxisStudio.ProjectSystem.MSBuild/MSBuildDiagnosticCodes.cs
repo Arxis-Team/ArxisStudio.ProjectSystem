@@ -67,4 +67,15 @@ public static class MSBuildDiagnosticCodes
     /// handle on its own — a stale entry in a recent-projects list is not a broken project.
     /// </remarks>
     public const string ProjectFileNotFound = "APS2003";
+
+    /// <summary>
+    /// <c>APS2006</c> — a project opened on its own references a project the load does not include.
+    /// </summary>
+    /// <remarks>
+    /// Opening a project evaluates that project and no other, so what its project references build is
+    /// nowhere in the snapshot: <see cref="SolutionSnapshot.GetRuntimeAssemblies"/> leaves it out, and a
+    /// designer cannot load a control from it. A warning, because a build is unaffected — MSBuild builds
+    /// references itself — and the answer is to open a solution that lists both.
+    /// </remarks>
+    public const string ProjectReferenceNotLoaded = "APS2006";
 }

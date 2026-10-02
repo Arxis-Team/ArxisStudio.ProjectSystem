@@ -183,7 +183,9 @@ by a path of its own devising is not predicted.
 `ProjectReferenceInfo.Project` is resolved only when the target is one of the projects being loaded.
 A reference pointing outside the solution keeps its `ProjectFilePath` and gets
 `ProjectIdentity.None`, because an identity for a project nobody opened would be a handle to
-nothing.
+nothing. Opening a single project is the common way to get there, and the load says so: `APS2006`
+names each reference it did not load, because what those projects build is then missing from
+`GetRuntimeAssemblies` — the answer is to open a solution that lists both.
 
 ## Restore, build, rebuild and clean
 

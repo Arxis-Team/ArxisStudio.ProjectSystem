@@ -102,6 +102,22 @@ public sealed partial class MSBuildProjectProvider : IProjectSystemProvider
 
         solution.Projects.Add(project);
 
+        // One project opened is one project loaded, and what its references build is then nowhere in
+        // the snapshot. Said here, where it is known, rather than found out by a host whose types do
+        // not resolve.
+        foreach (ProjectReferenceInfo reference in project.ProjectReferences)
+        {
+            if (reference.Project.IsEmpty && reference.ReferenceOutputAssembly != false)
+            {
+                solution.Diagnostics.Add(Diagnostic(
+                    MSBuildDiagnosticCodes.ProjectReferenceNotLoaded,
+                    $"'{project.Name}' references '{reference.ProjectFilePath.FileName}', which opening one project " +
+                    "does not load: nothing it builds is available at run time. Open a solution that lists both.",
+                    request.EntryPointPath,
+                    ProjectDiagnosticSeverity.Warning));
+            }
+        }
+
         return WorkspaceLoadResult.Success(solution.ToSnapshot());
     }
 

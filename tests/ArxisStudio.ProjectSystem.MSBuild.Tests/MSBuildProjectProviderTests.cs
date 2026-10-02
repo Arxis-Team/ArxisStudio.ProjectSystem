@@ -514,6 +514,33 @@ public sealed class MSBuildProjectProviderTests
     }
 
     [Fact]
+    public async Task AProjectOpenedOnItsOwn_NamesTheReferencesItDoesNotLoad()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider()
+            .LoadAsync(Request("WithReferences"), TestContext.Current.CancellationToken);
+
+        ProjectDiagnostic diagnostic = Assert.Single(
+            result.Diagnostics, static d => d.Code == MSBuildDiagnosticCodes.ProjectReferenceNotLoaded);
+
+        Assert.Equal(ProjectDiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains("Basic.csproj", diagnostic.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ASolutionListingTheReference_SaysNothingAboutIt()
+    {
+        WorkspaceLoadResult result = await new MSBuildProjectProvider().LoadAsync(
+            new WorkspaceLoadRequest
+            {
+                Workspace = WorkspaceIdentity.New(),
+                EntryPointPath = CanonicalPath.Create(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Solution", "Suite.sln")),
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(result.Diagnostics, static d => d.Code == MSBuildDiagnosticCodes.ProjectReferenceNotLoaded);
+    }
+
+    [Fact]
     public async Task ACancelledLoad_Throws()
     {
         using var cancellation = new CancellationTokenSource();
