@@ -105,3 +105,20 @@ Recorded as the direction to take if the reclaim's failure modes ever become com
   the process anyway.
 - The measurement stays: `--reclaim` is a permanent harness step, run against the scaffolded ladder
   or against a real solution, and it is what the next Avalonia upgrade should be tested with.
+
+## Amendment, 2026-10-02: the bound is a time as well as a count
+
+"A bounded number of collections" was ten, run back to back, and that bound measured the collector
+rather than the process. A frame the renderer has not finished drawing still holds the controls it
+was drawing: the renderer finishes it on its own thread and hands back on the user interface thread,
+and ten collections each followed at once by one dispatcher turn left it time for neither. Measured
+on UiDesigner.Demo's `--reclaim` with the pointer over the designer: ten rounds answered "still
+held", and a probe that went on asking found the generation gone 0.2–0.7 s later once the user
+interface had its turns — never when it was only given time without them.
+
+So `TryReclaimAsync` now asks for at least ten rounds **and** at least two seconds, with a dispatcher
+turn and a 50 ms pause after each. A generation that goes, goes in the first rounds as before — the
+case that had failed now answers in about 0.2 s — and only one that something really holds costs the
+full two seconds before the restart. The "two runs in three answered still held" recorded in
+`docs/limitations.md` for the 2026-08-22 designer had this shape: the same binary, no gesture,
+nothing the designer did differently.

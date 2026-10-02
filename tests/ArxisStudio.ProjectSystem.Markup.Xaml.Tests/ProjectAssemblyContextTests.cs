@@ -273,6 +273,23 @@ public sealed class ProjectAssemblyContextTests : IDisposable
     }
 
     /// <summary>
+    /// A generation something lets go of a moment after it is asked about is waited for — the way a
+    /// frame the renderer has not finished lets go of the controls it was drawing.
+    /// </summary>
+    [Fact]
+    public async Task TryReclaim_AGenerationReleasedShortlyAfterwards_IsWaitedFor()
+    {
+        StrongBox<Assembly?> holder = Hold(CopyRealAssembly("Late.dll"), "Late", out ProjectAssemblyContext context);
+
+        // Let go well after ten collections back to back would have answered.
+        using var release = new Timer(
+            static state => ((StrongBox<Assembly?>)state!).Value = null, holder, 600, Timeout.Infinite);
+
+        Assert.True(await context.TryReclaimAsync(TestContext.Current.CancellationToken));
+        Assert.Null(holder.Value);
+    }
+
+    /// <summary>
     /// A generation whose types never registered anything is the ordinary case for everything
     /// that is not a control, and the cleanup must be a no-op rather than a failure.
     /// </summary>
@@ -323,6 +340,18 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         Assert.NotNull(loaded);
 
         return (context, new WeakReference(loaded));
+    }
+
+    /// <summary>Loads a generation and hands its assembly to a box, the only thing holding it.</summary>
+    /// <remarks>
+    /// Not inlined, so no frame of the caller's is still holding the assembly when it asks.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private StrongBox<Assembly?> Hold(CanonicalPath output, string name, out ProjectAssemblyContext context)
+    {
+        context = Context(output);
+
+        return new StrongBox<Assembly?>(context.Resolve(new AssemblyName(name)) ?? throw new InvalidOperationException(name));
     }
 
     /// <summary>The same, keeping the assembly, which is what a host that leaks looks like.</summary>

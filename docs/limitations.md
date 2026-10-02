@@ -423,6 +423,14 @@ The root was not chased: the walk gives up on a graph that size, and the tool th
 heap dump, which is what `--probe` is for. What this says is that a code edit now restarts the
 studio more often than it swaps, and that the cause is in the editor rather than in the host.
 
+The cause turned out to be neither, and was found on 2026-10-02: a frame the renderer had not
+finished drawing, with the pointer over the designer, still held the controls it was drawing, and
+the reclaim's ten collections ran back to back without giving it the time to finish. The walk could
+not see it — the holder was a renderer job waiting in the dispatcher's queue and the render thread
+behind it. `TryReclaimAsync` now goes on asking for at least two seconds, with a dispatcher turn and
+a pause between collections, and the same case answers "provably dead" in about 0.2 s
+([ADR 0023](adr/0023-a-generation-is-reclaimed-before-its-successor-is-born.md), amendment).
+
 Clearing it turned the reliable failure into a reliable swap, and did not turn the swap into a
 promise. A second click-and-edit round in the same process was seen to answer "still held" once and
 to swap the next time, on the same project with the same steps — so the fallback is not a leftover

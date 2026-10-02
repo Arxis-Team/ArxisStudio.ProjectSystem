@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -22,8 +23,22 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// </remarks>
 public sealed partial class ProjectAssemblyContext
 {
-    /// <summary>How many times to ask the collector before answering that it will not happen.</summary>
+    /// <summary>How many times, at least, to ask the collector before answering that it will not happen.</summary>
     private const int ReclaimRounds = 10;
+
+    /// <summary>How long, at least, to go on asking before that answer.</summary>
+    /// <remarks>
+    /// Rounds alone ran back to back, and a generation could be let go of a moment after the last of
+    /// them: on UiDesigner.Demo's <c>--reclaim</c>, with the pointer over the designer, a frame the
+    /// renderer had not finished drawing still held the controls it was drawing, and the same
+    /// generation that ten rounds called held was gone 0.2–0.7 s later once the user interface had
+    /// its turns. Measured with a probe that kept asking; this is the time the probe needed, with a
+    /// margin.
+    /// </remarks>
+    private static readonly TimeSpan ReclaimPatience = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long a round leaves the process to itself after its turn of the dispatcher.</summary>
+    private static readonly TimeSpan RoundPause = TimeSpan.FromMilliseconds(50);
 
     private int _reclaiming;
     private int _reclaimed;
@@ -79,8 +94,9 @@ public sealed partial class ProjectAssemblyContext
         }
 
         WeakReference[] traces = ForgetGeneration();
+        long started = Stopwatch.GetTimestamp();
 
-        for (var round = 0; round < ReclaimRounds; round++)
+        for (var round = 1; ; round++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -95,10 +111,19 @@ public sealed partial class ProjectAssemblyContext
                 return true;
             }
 
-            await LetTheFrameFinishAsync().ConfigureAwait(false);
-        }
+            if (round >= ReclaimRounds && Stopwatch.GetElapsedTime(started) >= ReclaimPatience)
+            {
+                return false;
+            }
 
-        return false;
+            await LetTheFrameFinishAsync().ConfigureAwait(false);
+
+            // And a pause in which nothing here runs. The renderer finishes the frame it was drawing on
+            // its own thread and hands back what it drew on the user interface thread; a collection
+            // that follows the dispatcher turn at once leaves it time for neither, and the controls the
+            // frame holds read as a generation something holds.
+            await Task.Delay(RoundPause, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
