@@ -224,6 +224,30 @@ public sealed class MSBuildProjectTranslatorTests
     }
 
     [Fact]
+    public void RestoreOutputs_AreTheAssetsFileAndTheImportsRestoreGenerates()
+    {
+        CanonicalPath assets = CanonicalPath.Create(Native("src", "App", "obj", "project.assets.json"));
+        CanonicalPath props = CanonicalPath.Create(Native("src", "App", "obj", "App.csproj.nuget.g.props"));
+        CanonicalPath targets = CanonicalPath.Create(Native("src", "App", "obj", "App.csproj.nuget.g.targets"));
+        CanonicalPath shared = CanonicalPath.Create(Native("src", "Directory.Build.props"));
+
+        ProjectSnapshot snapshot = Translate(Project(
+            properties: Meta(("ProjectAssetsFile", assets.Value)),
+            imports: [props, shared, targets]));
+
+        // An edited import is something restore has to see; restore's own output is restore having run.
+        Assert.Equal([props, targets, assets], snapshot.RestoreOutputs);
+        Assert.Contains(shared, snapshot.EvaluationInputs);
+        Assert.All(snapshot.RestoreOutputs, output => Assert.Contains(output, snapshot.EvaluationInputs));
+    }
+
+    [Fact]
+    public void RestoreOutputs_OfAProjectWithoutRestore_AreEmpty()
+    {
+        Assert.Empty(Translate(Project()).RestoreOutputs);
+    }
+
+    [Fact]
     public void BuildDirectories_OfAProjectThatSaysNothing_AreEmpty()
     {
         ProjectSnapshot snapshot = Translate(Project());

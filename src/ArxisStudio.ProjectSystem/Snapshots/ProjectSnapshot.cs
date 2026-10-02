@@ -51,6 +51,7 @@ public sealed class ProjectSnapshot
         ImmutableArray<OutputArtifact> outputs,
         ImmutableArray<CanonicalPath> evaluationInputs,
         ImmutableArray<CanonicalPath> buildDirectories,
+        ImmutableArray<CanonicalPath> restoreOutputs,
         ImmutableArray<ProjectDiagnostic> diagnostics,
         ProjectMetadata properties)
     {
@@ -81,6 +82,7 @@ public sealed class ProjectSnapshot
         Outputs = outputs;
         EvaluationInputs = evaluationInputs;
         BuildDirectories = buildDirectories;
+        RestoreOutputs = restoreOutputs;
         Diagnostics = diagnostics;
         Properties = properties;
     }
@@ -229,6 +231,23 @@ public sealed class ProjectSnapshot
     /// </para>
     /// </remarks>
     public ImmutableArray<CanonicalPath> BuildDirectories { get; }
+
+    /// <summary>
+    /// Gets the evaluation inputs a restore writes: its assets file, and the imports it generates.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What tells a host whether a restore has to run before a build. A project with no restore output
+    /// on disk has never been restored; an evaluation input that changed and is not among these —
+    /// the project file, an import somebody edits — may have changed what there is to restore. One of
+    /// these changing is a restore having run, and restoring again for it would never stop.
+    /// </para>
+    /// <para>
+    /// A subset of <see cref="EvaluationInputs"/>, and like them they may name files that are not there
+    /// yet. Empty when the provider has no restore, or did not say.
+    /// </para>
+    /// </remarks>
+    public ImmutableArray<CanonicalPath> RestoreOutputs { get; }
 
     /// <summary>Gets the diagnostics raised about this project.</summary>
     public ImmutableArray<ProjectDiagnostic> Diagnostics { get; }

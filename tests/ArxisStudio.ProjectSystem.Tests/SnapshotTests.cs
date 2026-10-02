@@ -91,6 +91,19 @@ public sealed class SnapshotTests
     }
 
     [Fact]
+    public void RestoreOutputs_AreDistinctAndNeverEmptyPaths()
+    {
+        ProjectSnapshotBuilder builder = Builder();
+        CanonicalPath assets = TestPaths.At("src", "App", "obj", "project.assets.json");
+
+        builder.RestoreOutputs.Add(assets);
+        builder.RestoreOutputs.Add(CanonicalPath.None);
+        builder.RestoreOutputs.Add(assets);
+
+        Assert.Equal([assets], builder.ToSnapshot().RestoreOutputs);
+    }
+
+    [Fact]
     public void TwoSnapshotsFromOneBuilder_ShareNothingMutable()
     {
         ProjectSnapshotBuilder builder = Builder();

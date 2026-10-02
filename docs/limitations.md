@@ -123,7 +123,9 @@ project stays in the snapshot carrying its diagnostic and the rest of the soluti
 project that produced it. A consumer that changed a `PackageReference` and has not restored will get
 the previous resolution without being told. Detecting staleness is its own problem — it needs
 timestamps or hashes over the inputs — and it belongs with the freshness work rather than smuggled
-into the reader.
+into the reader. What there is instead is `RestoreOutputs`: a host that hears the changes can tell an
+input restore reads from one restore wrote, and restore when the first changed — by what it heard,
+not by comparing anything on disk.
 
 ### Resolved packages are the active framework's only
 
@@ -217,6 +219,21 @@ Cancellation reaches MSBuild, which abandons its submissions, but a target that 
 already run. Files written before the cancellation stay written. `OperationCanceledException` means
 "this was stopped", not "nothing happened" — a caller wanting a known state after cancelling should
 clean.
+
+### A design build targets one framework
+
+`MSBuildDesignOutput` sets `OutputPath` as a global property, and the SDK appends the framework to
+the output path by changing that property — which a global property does not allow. Every framework
+of a multi-targeted project would build into the one `bin/ArxisStudio/`, so a design build names one
+(`TargetFramework` on the request). See [ADR 0026](adr/0026-a-design-build-writes-beside-the-ides-never-over-it.md).
+
+### A design build does not follow moved bases
+
+A global property cannot name another property, so the design folders are `bin/ArxisStudio/` and
+`obj/ArxisStudio/` of the project directory even when the project moved its bases — an artifacts
+layout, a `Directory.Build.props` that sends every output to one place. The design output still
+does not land in the IDE's, and `BuildDirectories` names it as a folder outside the bases; it just
+is not where the rest of that repository's output is.
 
 ### Nothing checks whether build output is stale
 

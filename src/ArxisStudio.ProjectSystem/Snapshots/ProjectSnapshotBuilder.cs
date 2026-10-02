@@ -102,6 +102,12 @@ public sealed class ProjectSnapshotBuilder
     /// <remarks>Duplicates and empty paths are dropped on the way in.</remarks>
     public IList<CanonicalPath> BuildDirectories { get; } = [];
 
+    /// <summary>
+    /// Gets the evaluation inputs a restore writes — see <see cref="ProjectSnapshot.RestoreOutputs"/>.
+    /// </summary>
+    /// <remarks>Duplicates and empty paths are dropped on the way in.</remarks>
+    public IList<CanonicalPath> RestoreOutputs { get; } = [];
+
     /// <summary>Gets the diagnostics raised about this project.</summary>
     public IList<ProjectDiagnostic> Diagnostics { get; } = [];
 
@@ -168,6 +174,7 @@ public sealed class ProjectSnapshotBuilder
             [.. Outputs],
             Inputs(),
             [.. BuildDirectories.Where(static path => !path.IsEmpty).Distinct()],
+            [.. RestoreOutputs.Where(static path => !path.IsEmpty).Distinct()],
             [.. Diagnostics],
             ProjectMetadata.Create(Properties));
     }

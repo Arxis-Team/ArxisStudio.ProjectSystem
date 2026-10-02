@@ -623,6 +623,52 @@ Cancellation reaches the engine, which abandons its submissions. It always surfa
 `OperationCanceledException`, never as a failed result — but a target that had already run has
 already run, so files written before the cancellation stay written.
 
+### Building beside an IDE
+
+A tool that builds the projects an IDE has open — a designer — must not build into the IDE's
+folders: the application the IDE started locks the output (`MSB3027`), and two builds started
+together write one intermediate folder. `MSBuildDesignOutput.GlobalProperties` sends the output and
+the intermediate files to `bin/ArxisStudio/` and `obj/ArxisStudio/` of each project, and leaves the
+base paths — and with them the SDK's default excludes and the shared restore — alone
+([ADR 0026](../adr/0026-a-design-build-writes-beside-the-ides-never-over-it.md)). Pass it to the
+loads as well as to the operations, so that the snapshot's `Outputs` name what the build writes:
+
+```csharp
+var load = new WorkspaceLoadRequest
+{
+    Workspace = workspace.Identity,
+    EntryPointPath = solution,
+    GlobalProperties = MSBuildDesignOutput.GlobalProperties,
+};
+
+var build = new ProjectOperationRequest
+{
+    Kind = ProjectOperationKind.Build,
+    Workspace = workspace.Identity,
+    EntryPointPath = solution,
+    GlobalProperties = MSBuildDesignOutput.GlobalProperties,
+    Projects = [app.Identity],
+};
+```
+
+A global output path does not get the framework folder the SDK appends otherwise, so a design build
+of a multi-targeted project names one framework (`TargetFramework` on both requests).
+
+Whether a restore has to run first is the host's to decide, from what the snapshot says: there is no
+restore output on disk yet, or an evaluation input changed that is not one of `RestoreOutputs` — the
+assets file and the imports restore generates. Restore's own output changing is a restore having
+run; restoring again for it would never stop.
+
+```csharp
+bool neverRestored = !project.RestoreOutputs.IsEmpty
+    && !project.RestoreOutputs.Any(output => File.Exists(output.Value));
+
+bool inputsMoved = changes.Invalidation.Causes.Any(cause =>
+    project.EvaluationInputs.Contains(cause) && !project.RestoreOutputs.Contains(cause));
+```
+
+A project whose provider names no restore output — one without restore at all — is never restored.
+
 ## Results and diagnostics
 
 `WorkspaceLoadResult.Status` is computed from whether there is a snapshot and whether anything

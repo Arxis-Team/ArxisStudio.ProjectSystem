@@ -111,6 +111,11 @@ internal static class MSBuildProjectTranslator
         foreach (CanonicalPath input in EvaluationInputs(project, ceiling))
         {
             builder.EvaluationInputs.Add(input);
+
+            if (IsRestoreOutput(project, input))
+            {
+                builder.RestoreOutputs.Add(input);
+            }
         }
 
         if (!resolvedPackages.IsDefault)
@@ -429,6 +434,28 @@ internal static class MSBuildProjectTranslator
         {
             yield return candidate;
         }
+    }
+
+    /// <summary>
+    /// Whether a restore writes this input: the assets file, or an import NuGet generates beside it.
+    /// </summary>
+    /// <remarks>
+    /// NuGet names the generated imports after the project file — <c>App.csproj.nuget.g.props</c> and
+    /// <c>.targets</c> — in the project extensions folder, the base intermediate folder unless the
+    /// project moved it. The names are NuGet's convention rather than a guess: restore writes exactly
+    /// these, and a project imports them only because restore wrote them.
+    /// </remarks>
+    private static bool IsRestoreOutput(EvaluatedProject project, CanonicalPath input)
+    {
+        if (CanonicalPath.TryCreate(Property(project, "ProjectAssetsFile"), out CanonicalPath assets) && input == assets)
+        {
+            return true;
+        }
+
+        string file = project.FullPath.FileName;
+
+        return string.Equals(input.FileName, file + ".nuget.g.props", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(input.FileName, file + ".nuget.g.targets", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

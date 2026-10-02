@@ -226,6 +226,7 @@ What is recorded so far:
 | [0023](docs/adr/0023-a-generation-is-reclaimed-before-its-successor-is-born.md) | A generation is reclaimed and proven gone before its successor is created; restart is the fallback |
 | [0024](docs/adr/0024-the-designer-sample-lives-with-the-designer.md) | No designer lives here: the form designer sample is `UiDesigner.Demo` in ArxisStudio.Surface, and its harnesses went with it |
 | [0025](docs/adr/0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md) | A change carries its kind, the coalescer nets each path over a batch, and the snapshot classifies — a saved file is not a new one |
+| [0026](docs/adr/0026-a-design-build-writes-beside-the-ides-never-over-it.md) | A design build sets `OutputPath` and `IntermediateOutputPath` and leaves the bases, so it never writes over the IDE's build and shares its restore |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.
