@@ -126,9 +126,12 @@ public sealed class ProjectXamlPopulationTests : IDisposable
     [Fact]
     public async Task NullArguments_Throw()
     {
-        Assert.Throws<ArgumentNullException>(() => ProjectXamlPopulation.Create(null!, null!));
+        Assert.Throws<ArgumentNullException>(() => ProjectXamlPopulation.Create(null!, (XamlLoadEnvironment)null!));
+        Assert.Throws<ArgumentNullException>(() => ProjectXamlPopulation.Create(null!, (Func<ProjectIdentity, XamlLoadEnvironment>)null!));
 
         (ProjectXamlPopulation population, ProjectAssemblyContext context) = Population();
+
+        Assert.Throws<ArgumentNullException>(() => ProjectXamlPopulation.Create(context, (Func<ProjectIdentity, XamlLoadEnvironment>)null!));
 
         using (context)
         using (population)

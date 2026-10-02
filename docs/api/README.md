@@ -865,6 +865,110 @@ Supply the text. Markup measures a span as an offset; the project model measures
 columns; neither converts without it, and without it the translation drops the position rather than
 inventing one.
 
+## A designer beside an IDE
+
+Everything above is a primitive, and the order they are used in is where a designer goes wrong
+silently — a participant still holding a root, a window nobody closed, an open landing between two
+generations, and the reclaim honestly answers "held". `ProjectDesignHost` is that order, once
+([ADR 0028](../adr/0028-the-design-host-replaces-a-generation-in-order.md)):
+
+```csharp
+var options = new ProjectDesignHostOptions
+{
+    BuildProperties = MSBuildDesignOutput.GlobalProperties,   // builds never write over the IDE's
+    ExternalEditDescription = "Изменено вне дизайнера",       // a history step, in the designer's language
+    ReleaseHostState = ClearFocusAsync,                       // the designer's own state, let go last
+};
+
+await workspace.LoadAsync(options.CreateLoadRequest(workspace, solutionPath), token);
+
+await using var host = new ProjectDesignHost(workspace, options);
+await host.StartAsync(token);       // builds what is older than its sources, then one generation
+
+// The host does not watch: the owner composes watching (ADR 0016) and feeds it batches.
+using FileChangeCoalescer coalescer = FileChangeCoalescer.ForChanges(batch => host.NotifyChanged(batch));
+using var watcher = new ProjectSourceWatcher(coalescer.Add);
+
+watcher.Watch(workspace.CurrentSnapshot!);   // and again on every snapshot the workspace publishes
+```
+
+The load must carry the build properties — the host refuses a snapshot that names the IDE's outputs,
+because a generation of those would never see a design build — and `CreateLoadRequest` adds them with
+the evaluated properties the host reads (`IsTestProject`, which keeps test projects out of the design
+set).
+
+**Documents** are opened through the host, which gives each a history of its own, its `avares` URI and
+its project's environment, and attaches it to the live generation — or, during a swap, waits for the
+successor:
+
+```csharp
+XamlLiveDocument form = await host.OpenDocumentAsync(file, new ProjectDesignDocumentOptions { RootAccess = card }, token);
+
+host.SetVisibleDocuments([form]);          // a swap attaches these; the rest on EnsureLiveAsync
+await host.EnsureLiveAsync(other, token);  // a tab is shown
+await host.SaveAsync(form, token);         // in the encoding it was read in; the watcher's echo is no conflict
+await host.CloseDocumentAsync(form, token);
+```
+
+What the other editor does arrives as events, on the user interface thread: a saved form is a step
+of its history (`ExternalEditDescription`) and is shown at once; over unsaved edits it is
+`ExternalConflict` and nothing changes until the person picks (`AcceptExternalTextAsync` with
+`TakeTheirs` or `KeepMine`); a renamed form follows its file (`DocumentMoved`); a deleted one stays
+open and says so (`DocumentDeleted`). A saved control is shown in every form that places it, open or
+not.
+
+**Saved code is built** once the code has been quiet for `BuildDelay`, of the top projects of what
+changed, restoring first when a restore is due (`BuildCompleted`). A build that rewrote what the
+generation was loaded from makes it stale, and so does a change to what the design set is made of.
+
+**A swap waits only for the designer.** Whatever a swap would cut defers it:
+
+```csharp
+using (host.Gate.Defer("dragging on the canvas"))
+{
+    // the gesture; the swap runs the moment the last deferral is disposed
+}
+```
+
+and whatever holds anything of a generation — roots on a canvas, a selection, an inspector's members
+— registers as a participant, lets go when asked and takes up the successor:
+
+```csharp
+sealed class CanvasParticipant(DesignCanvas canvas, ProjectDesignHost host) : IProjectDesignParticipant
+{
+    private IDisposable? _frozen;
+
+    public ValueTask ReleaseAsync(CancellationToken token)
+    {
+        _frozen = canvas.Freeze();     // the person sees the last frame, not an empty canvas
+        canvas.TakeRootsOff();         // and nothing on it holds the generation
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask RestoreAsync(CancellationToken token)
+    {
+        canvas.ShowRootsOf(host.Documents);
+        _frozen?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}
+
+using IDisposable registration = host.Register(new CanvasParticipant(canvas, host));
+```
+
+`SwapCompleted` reports the phases — release, teardown, reclaim, rebuild — once the host is out of the
+swap. **When the generation would not go**, there is no successor: `RestartRequired` with
+`GenerationStillHeld`, the documents detached with their text and unsaved edits, the participants
+holding the frame they froze. A package the generation loaded that moved to another file is
+`PackagesChanged`. Either way only a new process shows the types as they are now; the designer hands
+its session over and reopens each document with `ProjectDesignDocumentOptions.Text` and `SavedText`,
+then `ReloadAsync`, which turns a file that moved on in the meantime into a conflict rather than an
+overwrite.
+
+One host per project per process: a second one over the same assemblies waits for the first one's
+generation to go, and requires a restart when it does not
+([ADR 0029](../adr/0029-a-held-generation-may-be-asked-again.md)).
+
 ## Further reading
 
 - [Known limitations](../limitations.md) — the honest list; read it before promising anything.

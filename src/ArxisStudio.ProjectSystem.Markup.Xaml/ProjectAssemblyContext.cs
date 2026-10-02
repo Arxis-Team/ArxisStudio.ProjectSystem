@@ -71,6 +71,7 @@ public sealed partial class ProjectAssemblyContext
     private readonly Dictionary<string, FileStamp> _stamps;
     private readonly Dictionary<ProjectIdentity, ImmutableArray<string>> _closures;
     private readonly Dictionary<ProjectIdentity, string> _outputs;
+    private readonly Dictionary<string, CanonicalPath> _packagesLoaded = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _gate = new();
 
     private int _disposed;
@@ -355,6 +356,26 @@ public sealed partial class ProjectAssemblyContext
         ObjectDisposedException.ThrowIf(IsUnloaded, this);
 
         return _outputs.TryGetValue(project, out string? name) ? Resolve(new AssemblyName(name)) : null;
+    }
+
+    /// <summary>
+    /// The packages this generation loaded into the default context, by name, and the files they came
+    /// from.
+    /// </summary>
+    /// <remarks>
+    /// Those stay for the life of the process whatever becomes of the generation, so a successor
+    /// whose snapshot names another file for one of them — another version — cannot load it, and the
+    /// host answers that with a restart.
+    /// </remarks>
+    internal IReadOnlyDictionary<string, CanonicalPath> PackagesLoaded
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return new Dictionary<string, CanonicalPath>(_packagesLoaded, StringComparer.OrdinalIgnoreCase);
+            }
+        }
     }
 
     /// <summary>Loads every assembly the projects build, so the generation is one build of each.</summary>
@@ -698,7 +719,11 @@ public sealed partial class ProjectAssemblyContext
         {
             try
             {
-                return Assembly.LoadFrom(stable.Value);
+                Assembly package = Assembly.LoadFrom(stable.Value);
+
+                _packagesLoaded[simpleName] = stable;
+
+                return package;
             }
             catch (Exception exception) when (IsUnloadable(exception))
             {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 
 namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 
@@ -194,6 +195,44 @@ public sealed class ProjectResourceMap
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The <c>avares</c> URI a project's file is embedded under — what a document of it is opened
+    /// with, so that what it includes by relative URI is found.
+    /// </summary>
+    /// <remarks>
+    /// The same rule as the map itself: the producing assembly is the authority, and the path is the
+    /// item's <c>Link</c> when it has one, and otherwise the file's path in the project. A file no
+    /// project declares yet — one just written — is given its path in the project whose directory
+    /// holds it. Segments are escaped, because a file name is not a URI and a <c>#</c> in one would cut
+    /// the path short.
+    /// </remarks>
+    /// <param name="snapshot">The snapshot to read.</param>
+    /// <param name="file">The file.</param>
+    /// <returns>The URI, or <see langword="null"/> when no project holds the file.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
+    public static Uri? UriOf(SolutionSnapshot snapshot, CanonicalPath file)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        if (!snapshot.TryGetProjectForFile(file, out ProjectSnapshot? project))
+        {
+            return null;
+        }
+
+        string? path = snapshot.TryGetItem(file, out ProjectSnapshot? declaring, out ProjectItem? item) && declaring == project
+            ? ResourcePath(project, item)
+            : file.StartsWith(project.ProjectDirectory) ? Normalise(file.Value[project.ProjectDirectory.Value.Length..]) : null;
+
+        if (path is not { Length: > 0 })
+        {
+            return null;
+        }
+
+        string escaped = string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
+
+        return new Uri($"{Scheme}://{AssemblyNameOf(project)}/{escaped}");
     }
 
     /// <summary>The name of the assembly a project produces, which is what an avares host is.</summary>

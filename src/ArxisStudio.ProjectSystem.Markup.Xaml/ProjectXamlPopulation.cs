@@ -32,6 +32,11 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// type's business.
 /// </para>
 /// <para>
+/// Over a design set (ADR 0027) a document is prepared in the environment of the project that builds
+/// its class, as that project's own documents load: a control of a library sees the library's
+/// closure, not the application that places it.
+/// </para>
+/// <para>
 /// Lifetime follows the generation. The registry holds the generation's types and the documents
 /// the host registered, so it must be disposed <em>before</em> the
 /// <see cref="ProjectAssemblyContext"/> it was created over — an undisposed registry is a
@@ -41,16 +46,23 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 public sealed class ProjectXamlPopulation : IDisposable
 {
     private readonly ProjectAssemblyContext _context;
-    private readonly XamlLivePopulation _population;
-    private readonly Dictionary<string, Type> _classes = new(StringComparer.Ordinal);
+    private readonly Func<ProjectIdentity, XamlLoadEnvironment> _environmentOf;
+    private readonly bool _perProject;
+    private readonly Dictionary<ProjectIdentity, XamlLivePopulation> _populations = [];
+    private readonly Dictionary<string, (Type Type, XamlLivePopulation Population)> _classes = new(StringComparer.Ordinal);
     private readonly Lock _gate = new();
 
+    private EventHandler<XamlLivePopulationFailedEventArgs>? _failed;
     private int _disposed;
 
-    private ProjectXamlPopulation(ProjectAssemblyContext context, XamlLivePopulation population)
+    private ProjectXamlPopulation(
+        ProjectAssemblyContext context,
+        Func<ProjectIdentity, XamlLoadEnvironment> environmentOf,
+        bool perProject)
     {
         _context = context;
-        _population = population;
+        _environmentOf = environmentOf;
+        _perProject = perProject;
     }
 
     /// <summary>
@@ -59,8 +71,21 @@ public sealed class ProjectXamlPopulation : IDisposable
     /// </summary>
     public event EventHandler<XamlLivePopulationFailedEventArgs>? PopulationFailed
     {
-        add => _population.PopulationFailed += value;
-        remove => _population.PopulationFailed -= value;
+        add
+        {
+            lock (_gate)
+            {
+                _failed += value;
+            }
+        }
+
+        remove
+        {
+            lock (_gate)
+            {
+                _failed -= value;
+            }
+        }
     }
 
     /// <summary>Gets how many of the generation's types currently follow a document.</summary>
@@ -70,7 +95,17 @@ public sealed class ProjectXamlPopulation : IDisposable
         {
             lock (_gate)
             {
-                return System.Linq.Enumerable.Count(_classes.Values, _population.Contains);
+                var count = 0;
+
+                foreach ((Type type, XamlLivePopulation population) in _classes.Values)
+                {
+                    if (population.Contains(type))
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
             }
         }
     }
@@ -92,7 +127,30 @@ public sealed class ProjectXamlPopulation : IDisposable
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(environment);
 
-        return new ProjectXamlPopulation(context, new XamlLivePopulation(environment));
+        return new ProjectXamlPopulation(context, _ => environment, perProject: false);
+    }
+
+    /// <summary>
+    /// Creates a registry over a generation of a design set, preparing each document in the
+    /// environment of the project that builds its class.
+    /// </summary>
+    /// <remarks>
+    /// The environments are asked for when a project's first document is registered, and kept for the
+    /// life of the registry. Pass the ones the project's documents load in — the host's own, made once
+    /// per project of the generation — or the two would disagree about which assemblies a name means.
+    /// </remarks>
+    /// <param name="context">The generation whose types the documents will stand in for.</param>
+    /// <param name="environmentOf">The environment a project's documents load in.</param>
+    /// <returns>The registry. The caller disposes it before disposing the context.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> or <paramref name="environmentOf"/> is <see langword="null"/>.</exception>
+    public static ProjectXamlPopulation Create(
+        ProjectAssemblyContext context,
+        Func<ProjectIdentity, XamlLoadEnvironment> environmentOf)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(environmentOf);
+
+        return new ProjectXamlPopulation(context, environmentOf, perProject: true);
     }
 
     /// <summary>
@@ -126,26 +184,36 @@ public sealed class ProjectXamlPopulation : IDisposable
         }
 
         Type? type;
+        XamlLivePopulation? population;
 
         lock (_gate)
         {
-            if (!_classes.TryGetValue(className, out type))
-            {
-                type = FindClass(className);
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
-                if (type is not null)
-                {
-                    _classes.Add(className, type);
-                }
+            if (_classes.TryGetValue(className, out (Type Type, XamlLivePopulation Population) known))
+            {
+                (type, population) = known;
+            }
+            else if (FindClass(className) is ({ } found, ProjectIdentity project))
+            {
+                type = found;
+                population = PopulationOf(project);
+
+                _classes.Add(className, (type, population));
+            }
+            else
+            {
+                type = null;
+                population = null;
             }
         }
 
-        if (type is null)
+        if (type is null || population is null)
         {
             return null;
         }
 
-        return await _population.SetDocumentAsync(type, document, cancellationToken).ConfigureAwait(false);
+        return await population.SetDocumentAsync(type, document, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -166,7 +234,8 @@ public sealed class ProjectXamlPopulation : IDisposable
 
         lock (_gate)
         {
-            return _classes.TryGetValue(className, out Type? type) && _population.Remove(type);
+            return _classes.TryGetValue(className, out (Type Type, XamlLivePopulation Population) known)
+                && known.Population.Remove(known.Type);
         }
     }
 
@@ -178,19 +247,53 @@ public sealed class ProjectXamlPopulation : IDisposable
             return;
         }
 
-        _population.Dispose();
-
         lock (_gate)
         {
+            foreach (XamlLivePopulation population in _populations.Values)
+            {
+                population.PopulationFailed -= OnPopulationFailed;
+                population.Dispose();
+            }
+
+            _populations.Clear();
             _classes.Clear();
+            _failed = null;
         }
     }
 
     private static string? ClassOf(XamlDocument document) =>
         document.Root?.GetDirective(XamlDirectives.Class) is { Length: > 0 } className ? className : null;
 
+    /// <summary>The population a project's documents are prepared in, made on first use. Under the gate.</summary>
+    private XamlLivePopulation PopulationOf(ProjectIdentity project)
+    {
+        ProjectIdentity key = _perProject ? project : default;
+
+        if (!_populations.TryGetValue(key, out XamlLivePopulation? population))
+        {
+            population = new XamlLivePopulation(_environmentOf(key));
+            population.PopulationFailed += OnPopulationFailed;
+
+            _populations.Add(key, population);
+        }
+
+        return population;
+    }
+
+    private void OnPopulationFailed(object? sender, XamlLivePopulationFailedEventArgs e)
+    {
+        EventHandler<XamlLivePopulationFailedEventArgs>? failed;
+
+        lock (_gate)
+        {
+            failed = _failed;
+        }
+
+        failed?.Invoke(this, e);
+    }
+
     /// <summary>
-    /// Finds a class among the generation's rebuildable assemblies.
+    /// Finds a class among the generation's rebuildable assemblies, and the project that builds it.
     /// </summary>
     /// <remarks>
     /// Only the project's output and its project references, which mirrors the type resolver's
@@ -198,7 +301,7 @@ public sealed class ProjectXamlPopulation : IDisposable
     /// what documents place by bare name. A package type is not this registry's to override —
     /// nobody is editing its markup here.
     /// </remarks>
-    private Type? FindClass(string className)
+    private (Type Type, ProjectIdentity Project)? FindClass(string className)
     {
         foreach (RuntimeAssemblyReference reference in _context.Assemblies)
         {
@@ -216,7 +319,7 @@ public sealed class ProjectXamlPopulation : IDisposable
 
             if (assembly.GetType(className, throwOnError: false) is { } type)
             {
-                return type;
+                return (type, reference.Project);
             }
         }
 

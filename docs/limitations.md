@@ -526,6 +526,48 @@ can be replaced within a run — but only after it has been proven gone, which i
 Since [ADR 0027](adr/0027-a-design-set-is-one-generation.md) one generation is of a design set, all
 of it at once, so replacing it replaces every form's types together.
 
+### One design host per project per process
+
+No generation is created beside another of the same assemblies
+([ADR 0029](adr/0029-a-held-generation-may-be-asked-again.md)), so a second
+`ProjectDesignHost` over the projects of a first waits for the first one's generation to go — which it
+does only once that host is disposed — and requires a restart when it does not. A designer showing two
+solutions that build an assembly of one name is in the same position: the names, not the solutions,
+are what collide in the runtime compiler.
+
+### A part of a designer the host does not know of is a restart
+
+The host releases what it made and closes the windows the sessions built; what a designer's own parts
+hold — roots on a canvas, a selection, members an inspector cached — only they can let go of. A part
+that holds anything of a generation and is not registered as an `IProjectDesignParticipant` keeps the
+generation, and the swap answers with `RestartRequired`. So does a user control whose constructor
+subscribes to something the process keeps, and a window whose `OnClosing` refuses: nothing here can
+release what somebody else's code holds.
+
+A generation found held stays in the process until it restarts. It can be asked again
+(`TryReclaimAsync`) once its holder lets go, but the host does not — a designer whose types would not
+go restarts, and a successor beside a generation that might yet stay is what ADR 0021 measured.
+
+### The host follows the files a project declares
+
+Changes are classified against the snapshot (ADR 0025), and a file no project declares is nobody's
+item: an open document excluded from its project's items does not follow saves made elsewhere, and a
+class outside every project's globs builds nothing. A document is a project's markup item, which is
+what a designer opens anyway.
+
+### A design build is of the top projects of what changed
+
+The host builds the projects of the design set that changed or reference one that did, less those
+another affected project builds. A project outside the set — a test project, a tool nothing designed
+references — is not built for the designer however its code changes, and the generation does not load
+it.
+
+### The history of a document does not cross a restart
+
+A restart hands the session over as text: what each document says and what its file held. The undo
+history stays with the process that had it; the next one starts each document's history afresh, with
+its unsaved edits as the difference from the file.
+
 ### A project named like the host is not shown
 
 One copy of an assembly name per process is what keeps one `Button` type in it, so the host's own
@@ -540,9 +582,11 @@ or two versions of one package across it, load the first and say `APS5001`.
 ([ADR 0022](adr/0022-an-embedded-controls-markup-follows-the-live-document.md)), but population
 happens when an instance is constructed. A preview already showing the control keeps its old
 instance until the host rebuilds that preview — which the host must do, because only it knows
-what is on screen. And it is the markup that follows the document: the control's *code* — its
-properties, defaults and handlers — is the generation's until a restart, which is ADR 0021's
-half of the deal.
+what is on screen; `ProjectDesignHost` does it for the documents it opened. And it is the markup
+that follows the document: the control's *code* — its properties, defaults and handlers — is the
+generation's until the next one replaces it, after a design build
+([ADR 0028](adr/0028-the-design-host-replaces-a-generation-in-order.md)), or until a restart when
+the generation will not go.
 
 ### Only `AvaloniaXaml` and `AvaloniaResource` items get an `avares` URI
 

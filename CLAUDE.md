@@ -193,7 +193,8 @@ alive together are the failure ADR 0029 records, and xunit runs classes in paral
 names and weak references of what a generation built, making and dropping every object in a method
 that is not inlined ([ADR 0030](docs/adr/0030-a-reclaim-is-tested-against-real-avalonia.md)). The
 fixtures library is never referenced as an assembly: in the default context it could never be
-reclaimed.
+reclaimed. The design host is tested over `DesignBench`, a provider whose builds a test steers, and
+its build delay over a fake clock.
 
 ## ADRs
 
@@ -236,6 +237,7 @@ What is recorded so far:
 | [0025](docs/adr/0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md) | A change carries its kind, the coalescer nets each path over a batch, and the snapshot classifies — a saved file is not a new one |
 | [0026](docs/adr/0026-a-design-build-writes-beside-the-ides-never-over-it.md) | A design build sets `OutputPath` and `IntermediateOutputPath` and leaves the bases, so it never writes over the IDE's build and shares its restore |
 | [0027](docs/adr/0027-a-design-set-is-one-generation.md) | One generation for a design set, loaded at once; an environment per project searches its own closure, with a live resource map |
+| [0028](docs/adr/0028-the-design-host-replaces-a-generation-in-order.md) | `ProjectDesignHost` in the adapter: classified changes, design builds of the top projects after a quiet moment, a swap in the one order that lets a generation go, held off only by the designer's own deferrals; a generation that stays or a package that moved is a restart, the session handed over as text |
 | [0029](docs/adr/0029-a-held-generation-may-be-asked-again.md) | A generation found held may be asked again, and the cleanup runs again; no generation is born beside another of the same assemblies, whoever retired it |
 | [0030](docs/adr/0030-a-reclaim-is-tested-against-real-avalonia.md) | The adapter's tests run on headless Avalonia, against a fixtures library never loaded into the default context, one generation at a time |
 
