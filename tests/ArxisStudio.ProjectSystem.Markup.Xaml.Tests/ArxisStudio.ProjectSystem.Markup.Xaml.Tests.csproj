@@ -8,4 +8,35 @@
     <ProjectReference Include="../../src/ArxisStudio.ProjectSystem.Markup.Xaml/ArxisStudio.ProjectSystem.Markup.Xaml.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Headless" />
+    <PackageReference Include="Avalonia.Headless.XUnit" />
+  </ItemGroup>
+
+  <!--
+    The fixtures: a project's own controls, built before these tests and never referenced as an
+    assembly. Their output and their documents are copied beside the tests under fixtures/, and a test
+    copies them into a project folder of its own, where a generation loads them into a collectible
+    context as it loads a user's build. In the default context they could never be reclaimed.
+  -->
+  <PropertyGroup>
+    <DesignFixturesProject>../ArxisStudio.ProjectSystem.Markup.Xaml.Fixtures/ArxisStudio.ProjectSystem.Markup.Xaml.Fixtures.csproj</DesignFixturesProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(DesignFixturesProject)" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="CopyDesignFixtures" AfterTargets="Build">
+    <MSBuild Projects="$(DesignFixturesProject)" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="DesignFixtureAssembly" />
+    </MSBuild>
+
+    <ItemGroup>
+      <DesignFixtureDocument Include="../ArxisStudio.ProjectSystem.Markup.Xaml.Fixtures/*.axaml" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(DesignFixtureAssembly);@(DesignFixtureDocument)" DestinationFolder="$(OutDir)fixtures" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

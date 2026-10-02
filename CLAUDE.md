@@ -187,6 +187,14 @@ exact rather than likely.
 Test names are `Method_Scenario_Expectation`; `CA1707` is switched off under `tests/` for exactly
 that reason.
 
+The adapter's tests that make a generation of the fixtures' build are `[AvaloniaFact]` on the
+headless platform, belong to the `FixtureGenerations` collection — two generations of one assembly
+alive together are the failure ADR 0029 records, and xunit runs classes in parallel — and keep only
+names and weak references of what a generation built, making and dropping every object in a method
+that is not inlined ([ADR 0030](docs/adr/0030-a-reclaim-is-tested-against-real-avalonia.md)). The
+fixtures library is never referenced as an assembly: in the default context it could never be
+reclaimed.
+
 ## ADRs
 
 Architectural decisions live in `docs/adr/`, numbered, using the template of the existing files:
@@ -228,6 +236,8 @@ What is recorded so far:
 | [0025](docs/adr/0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md) | A change carries its kind, the coalescer nets each path over a batch, and the snapshot classifies — a saved file is not a new one |
 | [0026](docs/adr/0026-a-design-build-writes-beside-the-ides-never-over-it.md) | A design build sets `OutputPath` and `IntermediateOutputPath` and leaves the bases, so it never writes over the IDE's build and shares its restore |
 | [0027](docs/adr/0027-a-design-set-is-one-generation.md) | One generation for a design set, loaded at once; an environment per project searches its own closure, with a live resource map |
+| [0029](docs/adr/0029-a-held-generation-may-be-asked-again.md) | A generation found held may be asked again, and the cleanup runs again; no generation is born beside another of the same assemblies, whoever retired it |
+| [0030](docs/adr/0030-a-reclaim-is-tested-against-real-avalonia.md) | The adapter's tests run on headless Avalonia, against a fixtures library never loaded into the default context, one generation at a time |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

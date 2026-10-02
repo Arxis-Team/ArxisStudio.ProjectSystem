@@ -44,6 +44,12 @@ public sealed partial class ProjectAssemblyContext
     private int _reclaimed;
 
     /// <summary>
+    /// What the first reclaim forgot, weakly: the generation's assemblies and its context, for a later
+    /// question to look at again. Touched only by the one reclaim running.
+    /// </summary>
+    private WeakReference[]? _traces;
+
+    /// <summary>
     /// Unloads this generation, removes what the process would otherwise keep of it, and says
     /// whether it is provably gone.
     /// </summary>
@@ -74,26 +80,62 @@ public sealed partial class ProjectAssemblyContext
     /// The wait is bounded and never throws for a generation that will not go — the boolean is
     /// the answer. Cancellation is the exception, as everywhere else.
     /// </para>
+    /// <para>
+    /// A generation found held may be asked again, once whatever held it has let go: a window allowed
+    /// to close at last, a subscription dropped. The question is not the same one twice. Letting go
+    /// touches the holder's type — a window closing reads and writes its properties — and Avalonia
+    /// writes that type back into the caches the first answer emptied, so the cleanup runs again over
+    /// whatever of the generation is still there before it is waited for. One found gone stays gone,
+    /// and a caller who asks while another is asking is told <see langword="false"/> — not yet.
+    /// </para>
     /// </remarks>
     /// <param name="cancellationToken">A token to observe between collections.</param>
     /// <returns><see langword="true"/> when the generation is provably gone.</returns>
     /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
     public async ValueTask<bool> TryReclaimAsync(CancellationToken cancellationToken = default)
     {
-        if (Interlocked.Exchange(ref _reclaiming, 1) != 0)
+        if (Volatile.Read(ref _reclaimed) != 0)
         {
-            // A second caller is told what the first found rather than made to repeat it.
-            return Volatile.Read(ref _reclaimed) != 0;
+            return true;
         }
 
-        if (IsUnloaded)
+        if (Interlocked.Exchange(ref _reclaiming, 1) != 0)
         {
-            // Plain disposal ran first, so the assembly list is gone and nothing here can either
-            // clean up after it or prove anything about it.
             return false;
         }
 
-        WeakReference[] traces = ForgetGeneration();
+        try
+        {
+            WeakReference[] traces;
+
+            if (_traces is { } earlier)
+            {
+                traces = earlier;
+
+                ForgetAgain(traces);
+            }
+            else if (IsUnloaded)
+            {
+                // Plain disposal ran first, so the assembly list is gone and nothing here can either
+                // clean up after it or prove anything about it.
+                return false;
+            }
+            else
+            {
+                traces = _traces = ForgetGeneration();
+            }
+
+            return await OutlivedAsync(traces, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            Volatile.Write(ref _reclaiming, 0);
+        }
+    }
+
+    /// <summary>Collects, with the user interface's turns between, until the traces are gone or patience runs out.</summary>
+    private async ValueTask<bool> OutlivedAsync(WeakReference[] traces, CancellationToken cancellationToken)
+    {
         long started = Stopwatch.GetTimestamp();
 
         for (var round = 1; ; round++)
@@ -124,6 +166,105 @@ public sealed partial class ProjectAssemblyContext
             // frame holds read as a generation something holds.
             await Task.Delay(RoundPause, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Removes again what the process wrote back of a generation since it was first forgotten — by a
+    /// holder that touched its own type on the way out.
+    /// </summary>
+    /// <remarks>Not inlined, for <see cref="ForgetGeneration"/>'s reason: the assemblies it names die with its frame.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ForgetAgain(WeakReference[] traces)
+    {
+        List<Assembly> dying = [.. traces.Select(static trace => trace.Target).OfType<Assembly>()];
+
+        foreach (AssemblyLoadContext context in traces.Select(static trace => trace.Target).OfType<AssemblyLoadContext>())
+        {
+            RuntimeXamlCompiler.ResetIfEmittedIn(context);
+        }
+
+        AvaloniaRegistry.Forget(dying);
+        AvaloniaBindingPlugins.Forget(dying);
+
+        foreach (Assembly assembly in dying)
+        {
+            TypeDescriptor.Refresh(assembly);
+        }
+
+        AvaloniaAssets.Forget(dying);
+
+        dying.Clear();
+    }
+
+    /// <summary>
+    /// Waits for every earlier generation that loaded one of these assemblies to leave the process, and
+    /// says whether they all did.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Avalonia's runtime compiler resolves the names a document uses in every assembly the process has
+    /// loaded, by name, whatever context they live in. A predecessor still in the process — unloaded but
+    /// not yet collected, or held — answers for its successor's types, and a document whose
+    /// <c>x:Class</c> is the successor's fails to load with "Unable to substitute T with T". ADR 0023
+    /// proves a generation gone before its own successor is created; this makes the same true of one the
+    /// caller did not retire itself — another host's, or one disposed rather than reclaimed.
+    /// </para>
+    /// <para>
+    /// Costs nothing when no other generation has the names. Otherwise it collects, and gives the user
+    /// interface its turns, for as long as a reclaim would before answering that one is held.
+    /// </para>
+    /// </remarks>
+    /// <param name="names">The simple names of the assemblies about to be loaded.</param>
+    /// <param name="cancellationToken">A token to observe between collections.</param>
+    /// <returns><see langword="true"/> when no other generation holds any of the names.</returns>
+    internal static async ValueTask<bool> WaitForPredecessorsAsync(IReadOnlySet<string> names, CancellationToken cancellationToken)
+    {
+        long started = Stopwatch.GetTimestamp();
+
+        for (var round = 0; ; round++)
+        {
+            if (!AnyPredecessor(names))
+            {
+                return true;
+            }
+
+            if (round >= ReclaimRounds && Stopwatch.GetElapsedTime(started) >= ReclaimPatience)
+            {
+                return false;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            await LetTheFrameFinishAsync().ConfigureAwait(false);
+            await Task.Delay(RoundPause, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Whether the process has an assembly of one of the names in a collectible context.</summary>
+    /// <remarks>
+    /// Asked of the domain's assemblies, not of <see cref="AssemblyLoadContext.All"/>: a context leaves
+    /// that list the moment it starts unloading, while its assemblies stay loaded — and visible to the
+    /// runtime compiler — until it is collected. Not inlined, so that no assembly it looked at outlives
+    /// the look.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool AnyPredecessor(IReadOnlySet<string> names)
+    {
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (assembly.GetName().Name is { } name
+                && names.Contains(name)
+                && AssemblyLoadContext.GetLoadContext(assembly) is { IsCollectible: true })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

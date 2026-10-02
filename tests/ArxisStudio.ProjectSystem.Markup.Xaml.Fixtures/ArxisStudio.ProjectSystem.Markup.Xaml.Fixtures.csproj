@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ArxisStudio.ProjectSystem.Markup.Xaml.Fixtures</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    A project's own controls, for the adapter's tests to design against: compiled XAML with x:Class,
+    a window, and the two ways a control keeps its generation in the process — a subscription to
+    something process-wide, and a window that will not close.
+
+    Never referenced as an assembly. The tests build it, copy its output beside themselves under
+    fixtures/, and from there into a project folder of their own, where a generation loads it into a
+    collectible context exactly as it loads a user's build. Loaded into the default context it could
+    never be reclaimed, and every test that proves a generation gone would prove nothing.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+  </ItemGroup>
+
+</Project>

@@ -339,7 +339,7 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         Assert.False(await context.TryReclaimAsync(TestContext.Current.CancellationToken));
     }
 
-    /// <summary>A second caller is told what the first found rather than made to repeat it.</summary>
+    /// <summary>A generation found gone stays gone: asking again answers the same.</summary>
     [Fact]
     public async Task TryReclaim_Twice_AnswersTheSameThing()
     {
@@ -349,6 +349,22 @@ public sealed class ProjectAssemblyContextTests : IDisposable
         bool first = await context.TryReclaimAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(first, await context.TryReclaimAsync(TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// A generation found held is asked again once its holder let go, and the second answer is the
+    /// truth of the second moment — not the first answer repeated.
+    /// </summary>
+    [Fact]
+    public async Task TryReclaim_AskedAgainOnceTheHolderLetGo_AnswersTrue()
+    {
+        StrongBox<Assembly?> holder = Hold(CopyRealAssembly("Again.dll"), "Again", out ProjectAssemblyContext context);
+
+        Assert.False(await context.TryReclaimAsync(TestContext.Current.CancellationToken));
+
+        holder.Value = null;
+
+        Assert.True(await context.TryReclaimAsync(TestContext.Current.CancellationToken));
     }
 
     /// <summary>

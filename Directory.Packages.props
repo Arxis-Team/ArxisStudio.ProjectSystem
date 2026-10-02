@@ -30,6 +30,16 @@
   </ItemGroup>
 
   <!--
+    Avalonia's headless platform, for the adapter's tests only: it is what lets a test create a
+    window, close it, and prove the generation that made it gone, without a display. The same 12.1.1
+    as Avalonia itself below, which the tests' fixtures reference, and as ArxisStudio.Markup.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="Avalonia.Headless" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.1" />
+  </ItemGroup>
+
+  <!--
     MSBuild, for the provider package only. The core references none of this and an architecture
     test enforces that.
 
@@ -82,8 +92,9 @@
   </ItemGroup>
 
   <!--
-    For the sample IDE under samples/ only. No shipping package references any of this, and the
-    architecture tests check that against both the project files and the compiled assemblies.
+    For the sample IDE under samples/, and the adapter tests' fixtures under tests/. No shipping
+    package references any of this, and the architecture tests check that against both the project
+    files and the compiled assemblies.
 
     Pinned to the same 12.1.1 as ArxisStudio.Markup, deliberately: the adapter hands Markup
     assemblies loaded out of a project, and two Avalonia versions in one process produce two
