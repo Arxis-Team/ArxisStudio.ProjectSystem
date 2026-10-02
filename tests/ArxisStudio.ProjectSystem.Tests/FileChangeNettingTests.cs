@@ -147,6 +147,81 @@ public sealed class FileChangeNettingTests
     }
 
     [Fact]
+    public void ForChanges_ADepartureAndAnArrivalOfOneName_IsAMove()
+    {
+        // How a watcher reports a file moved to another folder, even inside one watch.
+        CanonicalPath from = TestPaths.At("src", "App", "Views", "MainWindow.axaml");
+        CanonicalPath to = TestPaths.At("src", "App", "Pages", "mainwindow.AXAML");
+        (FileChangeCoalescer coalescer, List<ImmutableArray<FileChange>> batches) = Create();
+
+        coalescer.Add(new FileChange(from, FileChangeKind.Deleted));
+        coalescer.Add(new FileChange(to, FileChangeKind.Created));
+        coalescer.Flush();
+
+        Assert.Equal([FileChange.Renamed(from, to)], Assert.Single(batches));
+    }
+
+    [Fact]
+    public void ForChanges_TwoDeparturesOfOneName_AreNotGuessedAt()
+    {
+        CanonicalPath views = TestPaths.At("src", "App", "Views", "Item.axaml");
+        CanonicalPath old = TestPaths.At("src", "App", "Old", "Item.axaml");
+        CanonicalPath pages = TestPaths.At("src", "App", "Pages", "Item.axaml");
+        (FileChangeCoalescer coalescer, List<ImmutableArray<FileChange>> batches) = Create();
+
+        coalescer.Add(new FileChange(views, FileChangeKind.Deleted));
+        coalescer.Add(new FileChange(old, FileChangeKind.Deleted));
+        coalescer.Add(new FileChange(pages, FileChangeKind.Created));
+        coalescer.Flush();
+
+        Assert.Equal(
+            [
+                new FileChange(views, FileChangeKind.Deleted),
+                new FileChange(old, FileChangeKind.Deleted),
+                new FileChange(pages, FileChangeKind.Created),
+            ],
+            Assert.Single(batches));
+    }
+
+    [Fact]
+    public void ForChanges_TwoArrivalsOfOneName_AreNotGuessedAt()
+    {
+        CanonicalPath views = TestPaths.At("src", "App", "Views", "Item.axaml");
+        CanonicalPath pages = TestPaths.At("src", "App", "Pages", "Item.axaml");
+        CanonicalPath shell = TestPaths.At("src", "App", "Shell", "Item.axaml");
+        (FileChangeCoalescer coalescer, List<ImmutableArray<FileChange>> batches) = Create();
+
+        coalescer.Add(new FileChange(views, FileChangeKind.Deleted));
+        coalescer.Add(new FileChange(pages, FileChangeKind.Created));
+        coalescer.Add(new FileChange(shell, FileChangeKind.Created));
+        coalescer.Flush();
+
+        Assert.Equal(
+            [
+                new FileChange(views, FileChangeKind.Deleted),
+                new FileChange(pages, FileChangeKind.Created),
+                new FileChange(shell, FileChangeKind.Created),
+            ],
+            Assert.Single(batches));
+    }
+
+    [Fact]
+    public void ForChanges_ARenamedFileIsNotMovedAgainByANameItShares()
+    {
+        // B.cs arrived by a rename; a B.cs going elsewhere is not where it came from.
+        CanonicalPath elsewhere = TestPaths.At("src", "Other", "B.cs");
+        (FileChangeCoalescer coalescer, List<ImmutableArray<FileChange>> batches) = Create();
+
+        coalescer.Add(FileChange.Renamed(A, B));
+        coalescer.Add(new FileChange(elsewhere, FileChangeKind.Deleted));
+        coalescer.Flush();
+
+        Assert.Equal(
+            [FileChange.Renamed(A, B), new FileChange(elsewhere, FileChangeKind.Deleted)],
+            Assert.Single(batches));
+    }
+
+    [Fact]
     public void ForChanges_AChangeAfterACreation_IsStillACreation()
     {
         (FileChangeCoalescer coalescer, List<ImmutableArray<FileChange>> batches) = Create();

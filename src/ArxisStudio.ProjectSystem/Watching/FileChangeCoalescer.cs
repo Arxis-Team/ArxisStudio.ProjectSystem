@@ -30,7 +30,9 @@ namespace ArxisStudio.ProjectSystem;
 /// original deleted — and it arrives as one <see cref="FileChangeKind.Changed"/> instead of five
 /// events that each look like the project gaining or losing a file. A rename whose two ends are
 /// still a disappearance and an appearance at the end of the batch stays a rename, and renames in a
-/// chain are one rename from the first path to the last.
+/// chain are one rename from the first path to the last. A file moved to another directory arrives
+/// from a watcher as a deletion and a creation; one of each with the same name in a batch is that
+/// move, and two of either are left as they are.
 /// </para>
 /// <para>
 /// <b>Time comes from a <see cref="TimeProvider"/></b>, which is the whole reason this is testable.
@@ -335,6 +337,8 @@ public sealed class FileChangeCoalescer : IDisposable
             }
         }
 
+        PairMoves(moved, arrived);
+
         foreach (CanonicalPath path in _order)
         {
             if (moved.TryGetValue(path, out CanonicalPath to))
@@ -348,6 +352,57 @@ public sealed class FileChangeCoalescer : IDisposable
         }
 
         return changes.ToImmutable();
+    }
+
+    /// <summary>
+    /// Joins a departure and an arrival of the same name into the move they were.
+    /// </summary>
+    /// <remarks>
+    /// A file moved to another directory reaches a watcher as a deletion and a creation, not as a
+    /// rename — Windows reports it so even when one watch covers both directories. Where a batch has
+    /// exactly one path of a name gone and exactly one of that name arrived, that is the move; where
+    /// either side has two, which went where is not known, and nothing is guessed.
+    /// </remarks>
+    private void PairMoves(Dictionary<CanonicalPath, CanonicalPath> moved, HashSet<CanonicalPath> arrived)
+    {
+        var gone = new Dictionary<string, List<CanonicalPath>>(CanonicalPathFormat.Comparer);
+        var came = new Dictionary<string, List<CanonicalPath>>(CanonicalPathFormat.Comparer);
+
+        foreach (CanonicalPath path in _order)
+        {
+            if (moved.ContainsKey(path) || arrived.Contains(path) || !_net.TryGetValue(path, out FileChangeKind kind))
+            {
+                continue;
+            }
+
+            Dictionary<string, List<CanonicalPath>>? side = kind switch
+            {
+                FileChangeKind.Deleted => gone,
+                FileChangeKind.Created => came,
+                _ => null,
+            };
+
+            if (side is null)
+            {
+                continue;
+            }
+
+            if (!side.TryGetValue(path.FileName, out List<CanonicalPath>? named))
+            {
+                side[path.FileName] = named = [];
+            }
+
+            named.Add(path);
+        }
+
+        foreach ((string name, List<CanonicalPath> departures) in gone)
+        {
+            if (departures.Count == 1 && came.TryGetValue(name, out List<CanonicalPath>? arrivals) && arrivals.Count == 1)
+            {
+                moved[departures[0]] = arrivals[0];
+                arrived.Add(arrivals[0]);
+            }
+        }
     }
 
     /// <summary>The paths a batch of changes names, each once — what a path batch delivers.</summary>

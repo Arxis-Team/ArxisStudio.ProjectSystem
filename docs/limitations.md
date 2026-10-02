@@ -265,9 +265,23 @@ silently miss one, and the result is that everything looks stale at once.
 
 It watches evaluation inputs, and for those the kind does not matter: a project file or an import
 created, edited, renamed or deleted makes a project stale in exactly the same way. Kinds are what a
-host that shows files needs — a saved document against a new one, a moved one — and that host feeds
-`FileChange`s from its own observation to `FileChangeCoalescer.ForChanges` and asks
-`SolutionSnapshot.Classify` ([ADR 0025](adr/0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md)).
+host that shows files needs — a saved document against a new one, a moved one — and that host
+watches with `ProjectSourceWatcher`, or feeds `FileChange`s from its own observation, to
+`FileChangeCoalescer.ForChanges`, and asks `SolutionSnapshot.Classify`
+([ADR 0025](adr/0025-file-changes-carry-their-kind-and-the-snapshot-classifies-them.md)).
+
+### A move between folders is matched by name
+
+The operating system reports a file moved to another folder as a deletion and a creation, even inside
+one watch. The coalescer joins one departure and one arrival of the same name in a batch into a move.
+Two files of one name moved at once stay deletions and creations — which went where is not known —
+and a file deleted while another of its name is created elsewhere in the same batch reads as a move.
+
+### `ProjectSourceWatcher` hears every build
+
+Each project's directory is watched with everything below it, so a build's writes into `bin` and
+`obj` are reported and discarded by `Classify`. A burst large enough to overflow the notification
+buffer — a branch switch, a clean rebuild of a large project — costs a rescan.
 
 ### A file appearing under a glob changes nothing a project names
 

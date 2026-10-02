@@ -122,3 +122,24 @@ file is a build file, which a classifier answers by evaluating more, not less.
   was below a path, which is what the question was for.
 - **Netting in `Classify`.** The coalescer has the burst in the order it happened; `Classify` takes a
   batch that is already what it amounts to. Netting twice, in two places, would be two answers.
+
+## Amendment, 2026-10-03: a move is a departure and an arrival of one name, and the MSBuild package watches with kinds
+
+The decision assumed a watcher reports a file moved between folders as a rename when one watch covers
+both. Measured on Windows, it does not: a rename in place is a rename, a move to another folder is a
+deletion and a creation, inside one recursive watch as much as across two. Left alone, a form moved
+in the IDE would close in the designer and a new one would appear.
+
+So the coalescer joins them: where a batch has exactly one path of a name gone and exactly one of that
+name arrived, that is the move — `Renamed`, and `Classify` moves whatever had it open. Two departures
+or two arrivals of one name are left as they are, because which went where is not known; a file
+deleted while another of its name is created elsewhere in the same batch reads as a move, which for
+whatever had the old one open is the more useful mistake.
+
+`ProjectSourceWatcher`, beside `ProjectFileWatcher` in the MSBuild package as
+[ADR 0016](0016-watching-belongs-with-the-provider.md) places watchers, reports changes with their
+kinds. It watches each project's directory with everything below it — a folder created there is
+heard with what is put in it, and a project's events come from one watch in order — and the files
+outside the projects that the snapshot names through their own directories. A build's writes come
+with it, and `Classify` discards them by `BuildDirectories`; a burst that overflows the buffer is an
+`Overflow`, and a rescan.

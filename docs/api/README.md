@@ -382,18 +382,31 @@ using var coalescer = FileChangeCoalescer.ForChanges(batch =>
     // changes.RequiresRescan: changes were lost — look at everything again.
 });
 
-// From whatever observes the files: FileSystemWatcher, an IDE's own events.
+// The MSBuild package's watcher reports every change with its kind; re-arm it on every
+// publication, as ProjectFileWatcher is.
+var watcher = new ProjectSourceWatcher(coalescer.Add);
+workspace.SnapshotChanged += (_, e) => watcher.Watch(e.Snapshot);
+
+// Or from whatever observes the files already: an IDE's own events.
 coalescer.Add(new FileChange(path, FileChangeKind.Created));
 coalescer.Add(FileChange.Renamed(oldPath, newPath));
 coalescer.Add(FileChange.Overflow);
 ```
+
+`ProjectSourceWatcher` watches each project's directory with everything below it, and the files
+outside them that the snapshot names — the solution, imports above the projects, linked files —
+through their own directories; it watches what `ProjectFileWatcher` would as well, so a host needs
+one or the other. A build's own writes come with it, and `Classify` leaves them out.
 
 **The coalescer nets each path over the batch**, because only its first and last state matter: a
 file created and deleted inside a batch never happened, one deleted and created again was replaced.
 That is what makes an editor's atomic save — the text to a temporary file, the original renamed
 aside, the temporary renamed over it, the original deleted, which is how JetBrains Rider saves —
 arrive as one `Changed` of the saved file instead of five events that each look like the project
-gaining or losing a file. Renames in a chain are one rename; a lost change comes first.
+gaining or losing a file. Renames in a chain are one rename; a lost change comes first. A file moved
+to another folder reaches a watcher as a deletion and a creation — Windows reports it so even inside
+one watch — and one of each with the same name in a batch is that move; with two of either, which
+went where is not known, and the batch says what it saw.
 
 **`Classify` asks every change each question on its own**, because one file can be several things —
 a `Directory.Build.props` beside a project is an import its evaluation read and an item its globs
