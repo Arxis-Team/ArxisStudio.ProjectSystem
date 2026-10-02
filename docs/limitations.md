@@ -581,12 +581,29 @@ or two versions of one package across it, load the first and say `APS5001`.
 `ProjectXamlPopulation` makes a placed control's markup follow the live document
 ([ADR 0022](adr/0022-an-embedded-controls-markup-follows-the-live-document.md)), but population
 happens when an instance is constructed. A preview already showing the control keeps its old
-instance until the host rebuilds that preview — which the host must do, because only it knows
-what is on screen; `ProjectDesignHost` does it for the documents it opened. And it is the markup
+instance until the host builds the elements that place it again — which the host must do, because
+only it knows what is on screen; `ProjectDesignHost` does it for the documents it opened, keeping
+their sessions (a form whose root is the control is built whole). And it is the markup
 that follows the document: the control's *code* — its properties, defaults and handlers — is the
 generation's until the next one replaces it, after a design build
 ([ADR 0028](adr/0028-the-design-host-replaces-a-generation-in-order.md)), or until a restart when
 the generation will not go.
+
+### A control not built yet is offered as its document says it will be
+
+`GetPlaceableControlsAsync` lists an `x:Class` document no build has produced
+([ADR 0031](adr/0031-a-toolbox-lists-controls-by-name-and-builds-through-the-gate.md)) in `using:` its
+CLR namespace and with the kinds its root says — nothing else is known before it is built. Its
+assembly may map that namespace to a URI of its own once built, and the next listing says so; an
+element written in `using:` resolves either way. A document whose root resolves to a window is not
+offered, and one whose root does not resolve is offered as a control.
+
+### Placing a control the IDE just wrote waits for a build and a swap
+
+`EnsureBuiltAsync` builds the control's project and waits for the generation that has the class,
+through the gate: as long as a deferral holds the swap off, the drop waits with it. A class the code
+does not define — an `x:Class` with no class behind it — builds into nothing placeable, and the answer
+is `false` after the build and the swap, not before them.
 
 ### Only `AvaloniaXaml` and `AvaloniaResource` items get an `avares` URI
 

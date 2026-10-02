@@ -318,6 +318,9 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
 
         await _shutdown.CancelAsync().ConfigureAwait(false);
 
+        // Whoever waits for the generation to settle (EnsureBuiltAsync) finds the host disposed.
+        SignalStateMoved();
+
         _work.Writer.TryComplete();
         _buildTimer.Dispose();
 
@@ -656,6 +659,8 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
 
         if (previous != state)
         {
+            SignalStateMoved();
+
             await RaiseAsync(StateChanged, new ProjectDesignStateChangedEventArgs(previous, state)).ConfigureAwait(false);
         }
     }

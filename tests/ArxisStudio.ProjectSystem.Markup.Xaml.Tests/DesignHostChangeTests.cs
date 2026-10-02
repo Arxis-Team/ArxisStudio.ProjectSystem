@@ -15,7 +15,7 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml.Tests;
 /// <summary>
 /// What the other editor does to the files of open documents, as the owner's watcher reports it:
 /// a save taken as a step, a save over unsaved edits held as a conflict, a rename followed, a deletion
-/// reported, and a control's save shown in the forms that place it.
+/// reported, and a control's save shown in the forms that place it — in place, their sessions kept.
 /// </summary>
 [Collection(FixtureGenerations.Name)]
 public sealed class DesignHostChangeTests
@@ -144,6 +144,7 @@ public sealed class DesignHostChangeTests
 
         Assert.Equal("Compiled", CaptionOf(window));
 
+        XamlLoadSession session = window.Session!;
         var changes = new EventProbe<ProjectDesignChangesEventArgs>();
 
         stand.Host.ChangesApplied += changes.Record;
@@ -154,7 +155,9 @@ public sealed class DesignHostChangeTests
 
         await changes.WhenCountAsync(1);
 
+        // The placed control is built again, and the window around it is not: same session, same root.
         Assert.Equal("Saved elsewhere", CaptionOf(window));
+        Assert.Same(session, window.Session);
     }
 
     [AvaloniaFact]
@@ -165,7 +168,8 @@ public sealed class DesignHostChangeTests
         XamlLiveDocument window = await stand.OpenAsync("FixtureWindow.axaml", TestContext.Current.CancellationToken);
         XamlLiveDocument control = await stand.OpenAsync("FixtureControl.axaml", TestContext.Current.CancellationToken);
 
-        TaskCompletionSource rebuilt = NextSession(window);
+        XamlLoadSession session = window.Session!;
+        TaskCompletionSource rebuilt = NextObjects(window);
 
         await control.EditAsync(
             editor =>
@@ -180,6 +184,7 @@ public sealed class DesignHostChangeTests
         await rebuilt.Task.WaitAsync(DesignStand.Patience, TestContext.Current.CancellationToken);
 
         Assert.Equal("Unsaved", CaptionOf(window));
+        Assert.Same(session, window.Session);
     }
 
     [AvaloniaFact]
@@ -190,7 +195,8 @@ public sealed class DesignHostChangeTests
         XamlLiveDocument window = await stand.OpenAsync("FixtureWindow.axaml", TestContext.Current.CancellationToken);
         XamlLiveDocument control = await stand.OpenAsync("FixtureControl.axaml", TestContext.Current.CancellationToken);
 
-        TaskCompletionSource edited = NextSession(window);
+        XamlLoadSession session = window.Session!;
+        TaskCompletionSource edited = NextObjects(window);
 
         await control.EditAsync(
             editor => editor.SetAttribute(editor.Document.Root!.Elements.Single(), new XamlQualifiedName(null, "Text"), "Unsaved"),
@@ -204,6 +210,7 @@ public sealed class DesignHostChangeTests
         await stand.Host.CloseDocumentAsync(control, TestContext.Current.CancellationToken);
 
         Assert.Equal("Compiled", CaptionOf(window));
+        Assert.Same(session, window.Session);
     }
 
     [AvaloniaFact]
@@ -277,22 +284,22 @@ public sealed class DesignHostChangeTests
             .FirstOrDefault();
     }
 
-    /// <summary>Completes when a document's session is replaced by a new one.</summary>
-    private static TaskCompletionSource NextSession(XamlLiveDocument document)
+    /// <summary>Completes when objects of a document are built again in place.</summary>
+    private static TaskCompletionSource NextObjects(XamlLiveDocument document)
     {
-        var replaced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rebuilt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        void OnReplaced(object? sender, XamlSessionReplacedEventArgs e)
+        void OnChanged(object? sender, XamlLiveDocumentChangedEventArgs e)
         {
-            if (e.Current is not null)
+            if (e.Changes.HasFlag(XamlLiveDocumentChanges.Objects))
             {
-                document.SessionReplaced -= OnReplaced;
-                replaced.TrySetResult();
+                document.Changed -= OnChanged;
+                rebuilt.TrySetResult();
             }
         }
 
-        document.SessionReplaced += OnReplaced;
+        document.Changed += OnChanged;
 
-        return replaced;
+        return rebuilt;
     }
 }

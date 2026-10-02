@@ -518,13 +518,21 @@ public sealed partial class ProjectDesignHost
     }
 
     /// <summary>
-    /// Rebuilds the documents somebody is looking at that place a control whose document changed, and
-    /// marks the rest for when they are shown.
+    /// Builds again, in the documents somebody is looking at, the elements that place a control whose
+    /// document changed, and marks the rest for when they are shown.
     /// </summary>
     /// <remarks>
-    /// Population changes constructions, not instances on screen, so a form placing the control is built
-    /// again to show it. A form places the control when an element is named like its class, in its CLR
-    /// namespace — or in a namespace URI that may map to it, which only the types could rule out.
+    /// <para>
+    /// Population changes constructions, not instances on screen, so the elements placing the control are
+    /// built again to show it. Only those elements: their documents keep their sessions, roots and every
+    /// other object (Markup's <c>XamlLiveDocument.RebuildAsync</c> with a chooser), where building the
+    /// whole document again ran a window's constructor again for one control. A document whose root is
+    /// the control is built whole, which is all its session can do.
+    /// </para>
+    /// <para>
+    /// An element places the control when it is named like its class, in its CLR namespace — or in a
+    /// namespace URI that may map to it, which only the types could rule out.
+    /// </para>
     /// </remarks>
     private async Task RefreshDependentsAsync(XamlDocument changed, DesignDocument? except, CancellationToken cancellationToken)
     {
@@ -561,16 +569,20 @@ public sealed partial class ProjectDesignHost
 
         foreach (XamlLiveDocument document in rebuild)
         {
-            await document.RebuildAsync(cancellationToken).ConfigureAwait(false);
+            await document.RebuildAsync(shown => Placing(shown, clrNamespace, simpleName), cancellationToken).ConfigureAwait(false);
         }
     }
 
     /// <summary>Whether a document has an element that may be the control.</summary>
-    private static bool Places(XamlDocument document, string clrNamespace, string simpleName)
+    private static bool Places(XamlDocument document, string clrNamespace, string simpleName) =>
+        Placing(document, clrNamespace, simpleName).Any();
+
+    /// <summary>The elements of a document that may be the control, the root first when it is one.</summary>
+    private static IEnumerable<XamlElement> Placing(XamlDocument document, string clrNamespace, string simpleName)
     {
         if (document.Root is not { } root)
         {
-            return false;
+            yield break;
         }
 
         foreach (XamlElement element in root.DescendantElements().Prepend(root))
@@ -583,11 +595,9 @@ public sealed partial class ProjectDesignHost
             if (ClrNamespaceOf(element.NamespaceUri) is not { } written
                 || string.Equals(written, clrNamespace, StringComparison.Ordinal))
             {
-                return true;
+                yield return element;
             }
         }
-
-        return false;
     }
 
     /// <summary>The CLR namespace a <c>using:</c> or <c>clr-namespace:</c> URI names; nothing for any other.</summary>

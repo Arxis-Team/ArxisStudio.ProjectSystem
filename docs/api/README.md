@@ -915,7 +915,7 @@ of its history (`ExternalEditDescription`) and is shown at once; over unsaved ed
 `ExternalConflict` and nothing changes until the person picks (`AcceptExternalTextAsync` with
 `TakeTheirs` or `KeepMine`); a renamed form follows its file (`DocumentMoved`); a deleted one stays
 open and says so (`DocumentDeleted`). A saved control is shown in every form that places it, open or
-not.
+not — in place: the elements that place it are built again, and the form keeps its session and root.
 
 **Saved code is built** once the code has been quiet for `BuildDelay`, of the top projects of what
 changed, restoring first when a restore is due (`BuildCompleted`). A build that rewrote what the
@@ -968,6 +968,35 @@ overwrite.
 One host per project per process: a second one over the same assemblies waits for the first one's
 generation to go, and requires a restart when it does not
 ([ADR 0029](../adr/0029-a-held-generation-may-be-asked-again.md)).
+
+**A toolbox of the project's controls** is a listing by name — what the live generation built of a
+project and what it references, and the `x:Class` documents among them no build has produced yet
+([ADR 0031](../adr/0031-a-toolbox-lists-controls-by-name-and-builds-through-the-gate.md)):
+
+```csharp
+ImmutableArray<ProjectControlInfo> controls = await host.GetPlaceableControlsAsync(project, token);
+
+// ClassName, Name, XmlNamespace, SuggestedPrefix, Kinds, Project, Document, IsBuilt — and no Type,
+// so the toolbox outlives the generation it was read from without holding it.
+```
+
+A control the IDE has just written is listed with `IsBuilt` false, in `using:` its namespace. Placing
+it builds it first:
+
+```csharp
+// What the drop meant, as names: the swap that follows the build rebuilds every form.
+(CanonicalPath file, XamlElementPath parent, int index) intent = (form.File, XamlElementPath.Of(parentElement), index);
+
+if (await host.EnsureBuiltAsync(control, token))   // builds, then waits for the swap through the gate
+{
+    // the live generation has the class: insert the element at the intent, found again by its path
+}
+```
+
+`EnsureBuiltAsync` answers at once for a class the generation has, and otherwise builds the control's
+project and waits for the generation the build calls for — through the gate, never past a deferral, so
+a drop made during a gesture is placed when the gesture lets go. `false` is a failed build, a class the
+build did not produce, or a restart required; `BuildCompleted` and `RestartRequired` say which.
 
 ## Further reading
 

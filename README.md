@@ -102,9 +102,12 @@ it — [ADR 0018](docs/adr/0018-the-adapter-references-markup-by-source.md).
 
 On top of that it keeps a designer beside an IDE: `ProjectDesignHost` opens the designer's documents
 against one generation of the design set's types, takes what the other editor saves — a form as a
-step of its history, a control into every form that places it — builds saved code after a quiet
-moment into an output of its own, and when a build moved the types replaces the generation in the
-one order that lets the old one go, waiting only for what the designer itself is in the middle of.
+step of its history, a control into every form that places it, built again in place — builds saved
+code after a quiet moment into an output of its own, and when a build moved the types replaces the
+generation in the one order that lets the old one go, waiting only for what the designer itself is in
+the middle of. A toolbox gets the project's controls by name, the ones the IDE has just written
+included, and placing one of those builds it through the same gate
+([ADR 0031](docs/adr/0031-a-toolbox-lists-controls-by-name-and-builds-through-the-gate.md)).
 When the old generation will not go, it says that only a new process can show the types — never a
 second copy beside them ([ADR 0028](docs/adr/0028-the-design-host-replaces-a-generation-in-order.md),
 [ADR 0029](docs/adr/0029-a-held-generation-may-be-asked-again.md)).
