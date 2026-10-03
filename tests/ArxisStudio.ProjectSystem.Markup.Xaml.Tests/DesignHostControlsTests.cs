@@ -33,6 +33,13 @@ public sealed class DesignHostControlsTests
         </Window>
         """;
 
+    private const string FreshApplication = $$"""
+        <Application xmlns="https://github.com/avaloniaui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                     x:Class="{{DesignFixtures.Namespace}}.FreshApplication">
+        </Application>
+        """;
+
     /// <summary>The IDE writes a control and a window that no build has produced.</summary>
     private static void WriteFresh(DesignFixtures fixtures, DesignBench bench)
     {
@@ -50,7 +57,8 @@ public sealed class DesignHostControlsTests
 
         ImmutableArray<ProjectControlInfo> controls = await ListAsync(stand);
 
-        // What the generation built, by name, then what it has not; the windows are not controls to place.
+        // What the generation built, by name, then what it has not; the windows are not controls to place,
+        // and neither is ArgumentControl: it is built, and markup cannot create it.
         Assert.Equal(["FixtureControl", "SubscribingControl", "Fresh"], controls.Select(static control => control.Name));
 
         ProjectControlInfo built = controls[0];
@@ -73,6 +81,20 @@ public sealed class DesignHostControlsTests
         Assert.Equal(stand.Fixtures.Document("Fresh.axaml"), fresh.Document);
         Assert.Equal(stand.Host.DesignSet.Single(), fresh.Project);
         Assert.True(fresh.Kinds.HasFlag(XamlTypeKinds.UserControl));
+    }
+
+    [AvaloniaFact]
+    public async Task GetPlaceableControlsAsync_AnApplicationsDocument_IsNotAControl()
+    {
+        // App.axaml declares a class like any form, and its root says it is no control to place.
+        await using DesignStand stand = await DesignStand.StartAsync(
+            static (fixtures, _) => fixtures.Write("FreshApplication.axaml", FreshApplication),
+            TestContext.Current.CancellationToken);
+
+        ImmutableArray<ProjectControlInfo> controls = await ListAsync(stand);
+
+        Assert.DoesNotContain(controls, static control => control.Name == "FreshApplication");
+        Assert.Equal(["FixtureControl", "SubscribingControl"], controls.Select(static control => control.Name));
     }
 
     [AvaloniaFact]

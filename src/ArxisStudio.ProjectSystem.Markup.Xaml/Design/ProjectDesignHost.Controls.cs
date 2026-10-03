@@ -65,8 +65,11 @@ public sealed partial class ProjectDesignHost
             async () =>
             {
                 Dictionary<string, DeclaredClass> declared = await DeclaredClassesAsync(snapshot, closure, cancellationToken).ConfigureAwait(false);
-                ImmutableArray<ProjectControlInfo> built = BuiltControls(closure, declared);
-                var builtNames = new HashSet<string>(built.Select(static control => control.ClassName), StringComparer.Ordinal);
+
+                // Every class the generation built, placeable or not: an application's class is built and is
+                // no control, and asking it to be built again would be asking for nothing.
+                var builtNames = new HashSet<string>(StringComparer.Ordinal);
+                ImmutableArray<ProjectControlInfo> built = BuiltControls(closure, declared, builtNames);
                 var unbuilt = new List<ProjectControlInfo>();
 
                 foreach ((string className, DeclaredClass declaration) in declared)
@@ -363,10 +366,14 @@ public sealed partial class ProjectDesignHost
     /// What the live generation built of the closure that a document can place, by name — holding
     /// nothing of the generation once it has answered.
     /// </summary>
+    /// <param name="closure">The projects whose builds are read.</param>
+    /// <param name="declared">The classes the closure's documents declare, for the document of each control.</param>
+    /// <param name="classes">Filled with every class the generation built that the catalog reads, placeable or not.</param>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private ImmutableArray<ProjectControlInfo> BuiltControls(
         ImmutableArray<ProjectIdentity> closure,
-        Dictionary<string, DeclaredClass> declared)
+        Dictionary<string, DeclaredClass> declared,
+        HashSet<string> classes)
     {
         ProjectAssemblyContext? generation;
 
@@ -393,6 +400,8 @@ public sealed partial class ProjectDesignHost
 
                 foreach (XamlTypeEntry entry in XamlTypeCatalog.Create([assembly]).Entries)
                 {
+                    classes.Add(entry.FullName);
+
                     if (IsPlaceable(entry.Kinds))
                     {
                         controls.Add(new ProjectControlInfo(
@@ -423,12 +432,14 @@ public sealed partial class ProjectDesignHost
 
     /// <summary>
     /// A class a document declares and the live generation has not built, as a control — or nothing,
-    /// when its root says it will be a window.
+    /// when its root says it will be a window or no control at all.
     /// </summary>
     /// <remarks>
     /// The root is resolved in the environment of the project the document is in, so a window of the
-    /// project's own base class is a window too; a root that does not resolve says nothing either way,
-    /// and the class is listed.
+    /// project's own base class is a window too. A root that resolves to something that is not a control —
+    /// <c>App.axaml</c>'s application, a resource dictionary, styles — declares a class no document places,
+    /// and was listed as one until the root was asked that as well. A root that does not resolve says
+    /// nothing either way, and the class is listed.
     /// </remarks>
     private async Task<ProjectControlInfo?> UnbuiltAsync(string className, DeclaredClass declaration, CancellationToken cancellationToken)
     {
@@ -451,7 +462,7 @@ public sealed partial class ProjectDesignHost
 
                 switch (KindOf(resolution))
                 {
-                    case RootKind.Window:
+                    case RootKind.Window or RootKind.NotAControl:
                         return null;
 
                     case RootKind.UserControl:
@@ -483,14 +494,17 @@ public sealed partial class ProjectDesignHost
     private static RootKind KindOf(XamlTypeResolution resolution) =>
         resolution.Type is not { } type ? RootKind.Unknown
         : typeof(TopLevel).IsAssignableFrom(type) ? RootKind.Window
+        : !typeof(Control).IsAssignableFrom(type) ? RootKind.NotAControl
         : typeof(UserControl).IsAssignableFrom(type) ? RootKind.UserControl
-        : RootKind.Unknown;
+        : RootKind.Control;
 
     private enum RootKind
     {
         Unknown,
         Window,
+        NotAControl,
         UserControl,
+        Control,
     }
 
     /// <summary>A class a document declares: the project it is in, the file, and the root it is written as.</summary>

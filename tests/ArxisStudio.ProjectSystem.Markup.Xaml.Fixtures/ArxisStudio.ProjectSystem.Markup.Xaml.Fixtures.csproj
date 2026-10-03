@@ -18,4 +18,14 @@
     <PackageReference Include="Avalonia" />
   </ItemGroup>
 
+  <!--
+    ArgumentControl is a view markup cannot create: its one constructor takes an argument, as a view built
+    by dependency injection does. Avalonia warns that its runtime loader cannot reach such a class
+    (AVLN3001), and that is the fixture's whole point — a class the build produced that no document can
+    place, which a toolbox must neither offer nor call unbuilt.
+  -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);AVLN3001</NoWarn>
+  </PropertyGroup>
+
 </Project>

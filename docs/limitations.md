@@ -596,7 +596,10 @@ the generation will not go.
 CLR namespace and with the kinds its root says — nothing else is known before it is built. Its
 assembly may map that namespace to a URI of its own once built, and the next listing says so; an
 element written in `using:` resolves either way. A document whose root resolves to a window is not
-offered, and one whose root does not resolve is offered as a control.
+offered, and neither is one whose root resolves to anything that is not a control — `App.axaml`'s
+application, a resource dictionary, styles; one whose root does not resolve is offered as a control.
+"Not built" means the generation has no class of that name at all: a class it built that markup cannot
+create — a view whose one constructor takes an argument — is neither offered nor called unbuilt.
 
 ### Placing a control the IDE just wrote waits for a build and a swap
 

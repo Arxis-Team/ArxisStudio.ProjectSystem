@@ -980,8 +980,9 @@ ImmutableArray<ProjectControlInfo> controls = await host.GetPlaceableControlsAsy
 // so the toolbox outlives the generation it was read from without holding it.
 ```
 
-A control the IDE has just written is listed with `IsBuilt` false, in `using:` its namespace. Placing
-it builds it first:
+A control the IDE has just written is listed with `IsBuilt` false, in `using:` its namespace; a
+document whose root is a window, an application or anything else that is not a control is not listed.
+Placing an unbuilt one builds it first:
 
 ```csharp
 // What the drop meant, as names: the swap that follows the build rebuilds every form.
