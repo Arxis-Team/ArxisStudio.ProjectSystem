@@ -59,7 +59,7 @@ public sealed partial class ProjectDesignHost
         {
             await ReportStateAsync().ConfigureAwait(false);
 
-            SolutionSnapshot snapshot = _workspace.CurrentSnapshot
+            SolutionSnapshot snapshot = _source.Snapshot
                 ?? throw new InvalidOperationException("Load the workspace before building: a build is of a snapshot's projects.");
 
             ImmutableArray<ProjectIdentity> set = DesignSetOf(snapshot);
@@ -181,7 +181,7 @@ public sealed partial class ProjectDesignHost
                 {
                     await ReportStateAsync().ConfigureAwait(false);
 
-                    if (_workspace.CurrentSnapshot is { } snapshot)
+                    if (_source.Snapshot is { } snapshot)
                     {
                         await BuildCoreAsync(snapshot, projects, DesignSetOf(snapshot), reason, cancellationToken).ConfigureAwait(false);
                     }
@@ -217,7 +217,7 @@ public sealed partial class ProjectDesignHost
     /// </summary>
     private async Task BuildWhatIsOutOfDateAsync(string reason, CancellationToken cancellationToken)
     {
-        if (_workspace.CurrentSnapshot is not { } snapshot)
+        if (_source.Snapshot is not { } snapshot)
         {
             return;
         }
@@ -270,7 +270,7 @@ public sealed partial class ProjectDesignHost
                 }
 
                 // The model reads what restore wrote: packages, and the paths of their assemblies.
-                await _workspace.RefreshAsync(cancellationToken).ConfigureAwait(false);
+                await _source.RefreshAsync(cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -317,7 +317,8 @@ public sealed partial class ProjectDesignHost
         ImmutableArray<ProjectIdentity> projects,
         CancellationToken cancellationToken)
     {
-        WorkspaceLoadRequest request = _workspace.CurrentRequest ?? snapshot.Request;
+        // The request the snapshot was evaluated with: the source publishes the two together.
+        WorkspaceLoadRequest request = snapshot.Request;
 
         var operation = new ProjectOperationRequest
         {
@@ -331,7 +332,7 @@ public sealed partial class ProjectDesignHost
             GlobalProperties = ProjectMetadata.Create(request.GlobalProperties.Concat(_options.BuildProperties)),
         };
 
-        return _workspace.ExecuteAsync(operation, progress: null, cancellationToken).AsTask();
+        return _source.ExecuteAsync(operation, progress: null, cancellationToken).AsTask();
     }
 
     /// <summary>

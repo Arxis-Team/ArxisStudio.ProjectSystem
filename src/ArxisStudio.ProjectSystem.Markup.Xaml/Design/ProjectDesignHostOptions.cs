@@ -96,4 +96,10 @@ public sealed record ProjectDesignHostOptions
     /// interface thread, after every participant and document let go.
     /// </summary>
     public Func<CancellationToken, ValueTask>? ReleaseHostState { get; init; }
+
+    /// <summary>
+    /// Gets what writes a document's text to its file when the host saves it, or <see langword="null"/>
+    /// for the host to write the file itself. See <see cref="IProjectDesignWriter"/>.
+    /// </summary>
+    public IProjectDesignWriter? Writer { get; init; }
 }

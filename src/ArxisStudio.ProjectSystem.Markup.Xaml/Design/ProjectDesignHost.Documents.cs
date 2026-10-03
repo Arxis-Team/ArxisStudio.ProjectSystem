@@ -192,7 +192,7 @@ public sealed partial class ProjectDesignHost
             await DisposeDocumentAsync(closing).ConfigureAwait(false);
 
             if (unsaved
-                && _workspace.CurrentSnapshot is { } snapshot
+                && _source.Snapshot is { } snapshot
                 && await RegisterFromDiskAsync(snapshot, closing.File, cancellationToken).ConfigureAwait(false) is { } fromDisk)
             {
                 await RefreshDependentsAsync(fromDisk, except: null, cancellationToken).ConfigureAwait(false);
@@ -295,8 +295,15 @@ public sealed partial class ProjectDesignHost
 
     /// <summary>Writes a document's text to its file, in the encoding it was read in, and records it as saved.</summary>
     /// <remarks>
+    /// <para>
     /// The write comes back through the owner's watcher as a change to the file, and the document
     /// answers it as its own save — nothing is taken twice and nothing is a conflict.
+    /// </para>
+    /// <para>
+    /// It is written by <see cref="ProjectDesignHostOptions.Writer"/> when the owner gave one — an IDE's
+    /// file service, which keeps its history — and in place otherwise. A writer that throws leaves the
+    /// document unsaved.
+    /// </para>
     /// </remarks>
     /// <param name="document">A document the host opened.</param>
     /// <param name="cancellationToken">A token to observe.</param>
@@ -316,16 +323,8 @@ public sealed partial class ProjectDesignHost
         }
 
         SourceText written = document.Document.SourceText;
-        byte[] preamble = written.HasByteOrderMark ? written.Encoding.GetPreamble() : [];
-        byte[] body = written.Encoding.GetBytes(written.ToString());
 
-        FileStream stream = new(file.Value, FileMode.Create, FileAccess.Write, FileShare.Read, 4096, useAsync: true);
-
-        await using (stream.ConfigureAwait(false))
-        {
-            await stream.WriteAsync(preamble, cancellationToken).ConfigureAwait(false);
-            await stream.WriteAsync(body, cancellationToken).ConfigureAwait(false);
-        }
+        await (_options.Writer ?? DiskDesignWriter.Instance).WriteAsync(file, written, cancellationToken).ConfigureAwait(false);
 
         await document.MarkSavedAsync(written, cancellationToken).ConfigureAwait(false);
     }
@@ -668,7 +667,7 @@ public sealed partial class ProjectDesignHost
             }
         }
 
-        return _workspace.CurrentSnapshot ?? throw new InvalidOperationException("The workspace has no snapshot.");
+        return _source.Snapshot ?? throw new InvalidOperationException("The workspace has no snapshot.");
     }
 
     /// <summary>

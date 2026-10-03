@@ -32,11 +32,16 @@ internal sealed class DesignStand : IAsyncDisposable
     /// <param name="arrange">Changes the project before the workspace is loaded, or <see langword="null"/>.</param>
     /// <param name="cancellationToken">A token to observe.</param>
     /// <param name="options">Changes the host's options, or <see langword="null"/>.</param>
+    /// <param name="source">
+    /// Makes the source the host reads and builds through, or <see langword="null"/> for the bench's
+    /// workspace itself.
+    /// </param>
     /// <returns>The stand.</returns>
     internal static async Task<DesignStand> StartAsync(
         Action<DesignFixtures, DesignBench>? arrange,
         CancellationToken cancellationToken,
-        Func<ProjectDesignHostOptions, ProjectDesignHostOptions>? options = null)
+        Func<ProjectDesignHostOptions, ProjectDesignHostOptions>? options = null,
+        Func<DesignBench, IProjectDesignSource>? source = null)
     {
         var fixtures = new DesignFixtures();
         var bench = new DesignBench(fixtures);
@@ -46,7 +51,10 @@ internal sealed class DesignStand : IAsyncDisposable
         await bench.LoadAsync(cancellationToken);
 
         ProjectDesignHostOptions chosen = bench.Options();
-        var host = new ProjectDesignHost(bench.Workspace, options?.Invoke(chosen) ?? chosen);
+        ProjectDesignHostOptions given = options?.Invoke(chosen) ?? chosen;
+        ProjectDesignHost host = source is null
+            ? new ProjectDesignHost(bench.Workspace, given)
+            : new ProjectDesignHost(source(bench), given);
 
         await host.StartAsync(cancellationToken);
 

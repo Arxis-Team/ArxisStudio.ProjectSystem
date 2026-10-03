@@ -91,7 +91,7 @@ public sealed partial class ProjectDesignHost
     /// <summary>Deals with one batch of file changes.</summary>
     private async Task SettleAsync(ImmutableArray<FileChange> batch, CancellationToken cancellationToken)
     {
-        if (_workspace.CurrentSnapshot is not { } snapshot)
+        if (_source.Snapshot is not { } snapshot)
         {
             return;
         }
@@ -151,7 +151,7 @@ public sealed partial class ProjectDesignHost
 
         if (changes.RequiresRescan || !changes.Invalidation.IsEmpty || !changes.MembershipChanged.IsEmpty)
         {
-            await _workspace.RefreshAsync(cancellationToken).ConfigureAwait(false);
+            await _source.RefreshAsync(cancellationToken).ConfigureAwait(false);
         }
 
         if (!code.IsEmpty)
@@ -444,10 +444,13 @@ public sealed partial class ProjectDesignHost
         path.Extension.Equals(".cs", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Queues a published snapshot for the pump, and answers resources from it at once.</summary>
-    private void OnSnapshotChanged(object? sender, WorkspaceChangedEventArgs e)
+    private void OnSnapshotChanged(object? sender, EventArgs e)
     {
-        // The newest snapshot, not necessarily this one: notifications may arrive out of order.
-        SolutionSnapshot snapshot = _workspace.CurrentSnapshot ?? e.Snapshot;
+        // The newest snapshot, read rather than carried: notifications may arrive out of order.
+        if (_source.Snapshot is not { } snapshot)
+        {
+            return;
+        }
 
         lock (_sync)
         {
@@ -491,7 +494,7 @@ public sealed partial class ProjectDesignHost
     /// </summary>
     private async Task<bool> GenerationOutlivedAsync()
     {
-        if (_workspace.CurrentSnapshot is not { } snapshot)
+        if (_source.Snapshot is not { } snapshot)
         {
             return false;
         }

@@ -249,6 +249,7 @@ What is recorded so far:
 | [0029](docs/adr/0029-a-held-generation-may-be-asked-again.md) | A generation found held may be asked again, and the cleanup runs again; no generation is born beside another of the same assemblies, whoever retired it |
 | [0030](docs/adr/0030-a-reclaim-is-tested-against-real-avalonia.md) | The adapter's tests run on headless Avalonia, against a fixtures library never loaded into the default context, one generation at a time |
 | [0031](docs/adr/0031-a-toolbox-lists-controls-by-name-and-builds-through-the-gate.md) | A toolbox lists a project's controls by name, the unbuilt `x:Class` documents included; placing one builds it and waits for the swap through the gate, never past a deferral; a placed control's markup rebuilds only the elements that place it |
+| [0032](docs/adr/0032-a-design-host-reads-builds-and-saves-through-its-owner.md) | A design host reads and builds through an `IProjectDesignSource` and saves through an `IProjectDesignWriter`, so an IDE that owns the workspace and the files keeps one MSBuild, one writer and one local history; a workspace is `ProjectDesignSource.From` |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

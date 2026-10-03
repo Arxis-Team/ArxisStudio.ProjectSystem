@@ -44,7 +44,7 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// </remarks>
 public sealed partial class ProjectDesignHost : IAsyncDisposable
 {
-    private readonly ProjectWorkspace _workspace;
+    private readonly IProjectDesignSource _source;
     private readonly ProjectDesignHostOptions _options;
     private readonly Lock _sync = new();
 
@@ -81,10 +81,22 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
     /// <param name="options">How to build, wait and let go, or <see langword="null"/> for the defaults.</param>
     /// <exception cref="ArgumentNullException"><paramref name="workspace"/> is <see langword="null"/>.</exception>
     public ProjectDesignHost(ProjectWorkspace workspace, ProjectDesignHostOptions? options = null)
+        : this(ProjectDesignSource.From(workspace ?? throw new ArgumentNullException(nameof(workspace))), options)
     {
-        ArgumentNullException.ThrowIfNull(workspace);
+    }
 
-        _workspace = workspace;
+    /// <summary>
+    /// Creates a host over a source of snapshots and builds the owner keeps — an IDE's project service
+    /// rather than a workspace of the designer's own (ADR 0032).
+    /// </summary>
+    /// <param name="source">What says what the project is, and builds it.</param>
+    /// <param name="options">How to build, wait, let go and save, or <see langword="null"/> for the defaults.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="source"/> is <see langword="null"/>.</exception>
+    public ProjectDesignHost(IProjectDesignSource source, ProjectDesignHostOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        _source = source;
         _options = options ?? ProjectDesignHostOptions.Default;
 
         Gate = new ProjectDesignSwapGate();
@@ -96,7 +108,7 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
             Timeout.InfiniteTimeSpan,
             Timeout.InfiniteTimeSpan);
 
-        _workspace.SnapshotChanged += OnSnapshotChanged;
+        _source.SnapshotChanged += OnSnapshotChanged;
     }
 
     /// <summary>Raised on the user interface thread when <see cref="State"/> moves.</summary>
@@ -226,7 +238,7 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        SolutionSnapshot snapshot = _workspace.CurrentSnapshot
+        SolutionSnapshot snapshot = _source.Snapshot
             ?? throw new InvalidOperationException("Load the workspace before starting the design host: a generation is of a snapshot's projects.");
 
         ThrowUnlessLoadedForDesign(snapshot);
@@ -313,7 +325,7 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
             return;
         }
 
-        _workspace.SnapshotChanged -= OnSnapshotChanged;
+        _source.SnapshotChanged -= OnSnapshotChanged;
         Gate.Changed -= OnGateChanged;
 
         await _shutdown.CancelAsync().ConfigureAwait(false);
@@ -454,7 +466,7 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
     /// </remarks>
     private async Task CreateGenerationAsync(CancellationToken cancellationToken)
     {
-        SolutionSnapshot snapshot = _workspace.CurrentSnapshot
+        SolutionSnapshot snapshot = _source.Snapshot
             ?? throw new InvalidOperationException("The workspace has no snapshot to make a generation of.");
 
         ImmutableArray<ProjectIdentity> set = DesignSetOf(snapshot);

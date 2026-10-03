@@ -969,6 +969,36 @@ One host per project per process: a second one over the same assemblies waits fo
 generation to go, and requires a restart when it does not
 ([ADR 0029](../adr/0029-a-held-generation-may-be-asked-again.md)).
 
+**A designer inside an IDE** does not own the workspace: the IDE's project service evaluates and builds
+on its own queue, and writes the solution's files through its own service, which keeps a local history
+and knows its own writes from other editors'. The host then reads and builds through the owner's
+service, and saves through its file service
+([ADR 0032](../adr/0032-a-design-host-reads-builds-and-saves-through-its-owner.md)):
+
+```csharp
+sealed class IdeSource(IdeProjects projects) : IProjectDesignSource
+{
+    public SolutionSnapshot? Snapshot => projects.DesignSnapshot;      // evaluated with the build properties
+    public event EventHandler? SnapshotChanged { add => projects.DesignChanged += value; remove => projects.DesignChanged -= value; }
+    public ValueTask RefreshAsync(CancellationToken token) => projects.RereadAsync(token);
+    public ValueTask<ProjectOperationResult> ExecuteAsync(
+        ProjectOperationRequest request, IProgress<ProjectOperationProgress>? progress, CancellationToken token) =>
+        projects.RunOnTheQueueAsync(request, progress, token);          // as given: the host decides when to restore
+}
+
+sealed class IdeWriter(IdeFiles files) : IProjectDesignWriter
+{
+    public ValueTask WriteAsync(CanonicalPath file, SourceText text, CancellationToken token) =>
+        files.WriteAsync(file, text, token);                            // history, its own echo, a refusal over news
+}
+
+await using var host = new ProjectDesignHost(new IdeSource(projects), options with { Writer = new IdeWriter(files) });
+```
+
+`ProjectDesignHost(workspace, options)` is `ProjectDesignHost(ProjectDesignSource.From(workspace),
+options)`, and a host with no `Writer` writes the file in place, as it always did. A writer that throws
+leaves the document unsaved.
+
 **A toolbox of the project's controls** is a listing by name — what the live generation built of a
 project and what it references, and the `x:Class` documents among them no build has produced yet
 ([ADR 0031](../adr/0031-a-toolbox-lists-controls-by-name-and-builds-through-the-gate.md)):
