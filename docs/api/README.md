@@ -993,6 +993,10 @@ if (await host.EnsureBuiltAsync(control, token))   // builds, then waits for the
 }
 ```
 
+The data a form binds to is offered the same way — `GetTypeCatalogAsync(project)` is Markup's catalog
+of the project and what it references, by name, and its entries of kind `Data` are the view models a
+document can take as its data type.
+
 `EnsureBuiltAsync` answers at once for a class the generation has, and otherwise builds the control's
 project and waits for the generation the build calls for — through the gate, never past a deferral, so
 a drop made during a gesture is placed when the gesture lets go. `false` is a failed build, a class the

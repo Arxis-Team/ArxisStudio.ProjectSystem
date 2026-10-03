@@ -86,6 +86,72 @@ public sealed partial class ProjectDesignHost
     }
 
     /// <summary>
+    /// The types a project's documents can name from the project and the projects it references, as the
+    /// live generation built them, read by name.
+    /// </summary>
+    /// <remarks>
+    /// What a data panel offers as a document's data type is in it — the entries whose kinds say
+    /// <see cref="XamlTypeKinds.Data"/> — as well as the controls. The catalog holds no type, so it can
+    /// outlive the generation; it is a reading of the one live now, taken in a turn. Packages are not in
+    /// it: their types are theirs to document, not the project's to offer.
+    /// </remarks>
+    /// <param name="project">The project whose documents name the types.</param>
+    /// <param name="cancellationToken">A token to observe.</param>
+    /// <returns>The catalog; empty for a project outside the design set or a host with no generation.</returns>
+    /// <exception cref="InvalidOperationException">The host has not been started.</exception>
+    /// <exception cref="ObjectDisposedException">The host was disposed.</exception>
+    public async ValueTask<XamlTypeCatalog> GetTypeCatalogAsync(ProjectIdentity project, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        SolutionSnapshot snapshot = StartedSnapshot();
+        ImmutableArray<ProjectIdentity> closure = ClosureOf(snapshot, DesignSetOf(snapshot), project);
+        XamlTypeCatalog catalog = XamlTypeCatalog.Create([]);
+
+        if (closure.IsEmpty)
+        {
+            return catalog;
+        }
+
+        await InTurnAsync(
+            () =>
+            {
+                catalog = CatalogOf(closure);
+
+                return Task.CompletedTask;
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        return catalog;
+    }
+
+    /// <summary>The catalog of what the live generation built of the closure, holding nothing of it afterwards.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private XamlTypeCatalog CatalogOf(ImmutableArray<ProjectIdentity> closure)
+    {
+        ProjectAssemblyContext? generation;
+
+        lock (_sync)
+        {
+            generation = _generation;
+        }
+
+        if (generation is not { IsUnloaded: false })
+        {
+            return XamlTypeCatalog.Create([]);
+        }
+
+        try
+        {
+            return XamlTypeCatalog.Create([.. closure.Select(generation.ResolveProjectAssembly).OfType<System.Reflection.Assembly>()]);
+        }
+        catch (ObjectDisposedException)
+        {
+            return XamlTypeCatalog.Create([]);
+        }
+    }
+
+    /// <summary>
     /// Makes a control placeable: builds its project when the live generation does not have its class,
     /// and waits for the generation that does.
     /// </summary>

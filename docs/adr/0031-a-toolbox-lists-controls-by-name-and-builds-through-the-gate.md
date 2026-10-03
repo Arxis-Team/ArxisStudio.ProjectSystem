@@ -32,6 +32,10 @@ A document whose root resolves to a window is left out. `ProjectControlInfo` car
 element name, the namespace, the prefix, the kinds, the owning project, the control's own document,
 and whether it is built.
 
+**What a project's documents can name is a catalog of names too.** `GetTypeCatalogAsync(project)` reads
+the same closure into Markup's catalog — controls and data alike, packages left out — so a data panel
+offers the project's view models as a document's data type without holding one of their types.
+
 **Placing a control that is not built builds it, through the gate.** `EnsureBuiltAsync(control)`
 answers at once for a class the live generation has.
 
@@ -58,8 +62,8 @@ which is all its session can do.
 - The kinds of an unbuilt control are what its root says it will be: a user control, or a control.
 - `EnsureBuiltAsync` waits as long as a deferral lasts. A drop made during a gesture is placed when the
   gesture lets go.
-- Public API added: `ProjectControlInfo`, `ProjectDesignHost.GetPlaceableControlsAsync` and
-  `ProjectDesignHost.EnsureBuiltAsync`.
+- Public API added: `ProjectControlInfo`, `ProjectDesignHost.GetPlaceableControlsAsync`,
+  `ProjectDesignHost.GetTypeCatalogAsync` and `ProjectDesignHost.EnsureBuiltAsync`.
 - Tests: `DesignHostControlsTests` covers the listing, a build skipped for a loaded class, a build and a
   swap for one that is not, a failed build, and a deferral that holds the wait.
   `DesignHostChangeTests` asserts that a form placing a saved control keeps its session.

@@ -76,6 +76,26 @@ public sealed class DesignHostControlsTests
     }
 
     [AvaloniaFact]
+    public async Task GetTypeCatalogAsync_TheProjectsBuild_NamesItsDataAndItsControlsAndNoPackage()
+    {
+        await using DesignStand stand = await DesignStand.StartAsync(null, TestContext.Current.CancellationToken);
+
+        XamlTypeCatalog catalog = await stand.Host.GetTypeCatalogAsync(
+            stand.Host.DesignSet.Single(), TestContext.Current.CancellationToken);
+
+        XamlTypeEntry? model = catalog.Find(DesignFixtures.Namespace + ".FixtureModel");
+        XamlTypeEntry? control = catalog.Find(DesignFixtures.Namespace + ".FixtureControl");
+
+        Assert.NotNull(model);
+        Assert.Equal(XamlTypeKinds.Data, model.Kinds & XamlTypeKinds.Data);
+        Assert.NotNull(control);
+        Assert.Equal(XamlTypeKinds.Control, control.Kinds & XamlTypeKinds.Control);
+
+        // Avalonia's own types are a package's, not the project's to offer.
+        Assert.Null(catalog.Find("Avalonia.Controls.Button"));
+    }
+
+    [AvaloniaFact]
     public async Task GetPlaceableControlsAsync_AProjectOutsideTheDesignSet_IsNothing()
     {
         await using DesignStand stand = await DesignStand.StartAsync(null, TestContext.Current.CancellationToken);
