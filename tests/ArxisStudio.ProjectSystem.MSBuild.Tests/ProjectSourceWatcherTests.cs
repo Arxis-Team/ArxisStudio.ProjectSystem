@@ -150,6 +150,64 @@ public sealed class ProjectSourceWatcherTests : IDisposable
     }
 
     [Fact]
+    public void Watch_TheSameSolutionAgain_KeepsTheWatchesItHas()
+    {
+        using var watcher = new ProjectSourceWatcher(static _ => { });
+
+        watcher.Watch(Solution());
+
+        int started = watcher.Started;
+        int watching = watcher.Watching;
+
+        // A host calls this after every snapshot; a watch replaced each time had a gap nothing heard.
+        watcher.Watch(Solution());
+
+        Assert.True(watching > 0);
+        Assert.Equal(started, watcher.Started);
+        Assert.Equal(watching, watcher.Watching);
+    }
+
+    [Fact]
+    public void Watch_AProjectThatWentAway_StopsBeingWatchedAndTheRestIsKept()
+    {
+        using var watcher = new ProjectSourceWatcher(static _ => { });
+
+        watcher.Watch(Solution(withLibrary: true));
+
+        int started = watcher.Started;
+        int watching = watcher.Watching;
+
+        watcher.Watch(Solution());
+
+        Assert.Equal(watching - 1, watcher.Watching);
+        Assert.Equal(started, watcher.Started);
+
+        // And back: only the directory that returned is started.
+        watcher.Watch(Solution(withLibrary: true));
+
+        Assert.Equal(watching, watcher.Watching);
+        Assert.Equal(started + 1, watcher.Started);
+    }
+
+    [Fact(Timeout = Patience)]
+    public async Task Watch_Again_StillHearsAChangeOnce()
+    {
+        CanonicalPath created = At("App", "Views", "Settings.axaml");
+        var recorder = new Recorder(change => change.Path == created);
+
+        using var watcher = new ProjectSourceWatcher(recorder.Add);
+
+        watcher.Watch(Solution());
+        watcher.Watch(Solution());
+
+        await File.WriteAllTextAsync(created.Value, "<UserControl />", Token);
+
+        await recorder.Done.WaitAsync(Token);
+
+        Assert.Equal([new FileChange(created, FileChangeKind.Created)], recorder.Netted());
+    }
+
+    [Fact]
     public void AfterDisposal_WatchingThrows()
     {
         var watcher = new ProjectSourceWatcher(static _ => { });
@@ -172,7 +230,7 @@ public sealed class ProjectSourceWatcherTests : IDisposable
 
     private CanonicalPath At(params string[] segments) => CanonicalPath.Create(Path.Combine([_root, .. segments]));
 
-    private SolutionSnapshot Solution()
+    private SolutionSnapshot Solution(bool withLibrary = false)
     {
         WorkspaceIdentity workspace = WorkspaceIdentity.New();
         CanonicalPath projectFile = At("App", "App.csproj");
@@ -194,6 +252,21 @@ public sealed class ProjectSourceWatcherTests : IDisposable
         };
 
         solution.Projects.Add(project.ToSnapshot());
+
+        if (withLibrary)
+        {
+            CanonicalPath libraryFile = At("Lib", "Lib.csproj");
+
+            Directory.CreateDirectory(libraryFile.Directory.Value);
+            File.WriteAllText(libraryFile.Value, "<Project />");
+
+            solution.Projects.Add(new ProjectSnapshotBuilder
+            {
+                Identity = ProjectIdentity.Create(workspace, libraryFile),
+                Name = "Lib",
+                ProjectFilePath = libraryFile,
+            }.ToSnapshot());
+        }
 
         return solution.ToSnapshot();
     }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
+using System.Linq;
 using System.Threading;
 
 namespace ArxisStudio.ProjectSystem.MSBuild;
@@ -47,7 +48,7 @@ public sealed class ProjectSourceWatcher : IDisposable
 
     private readonly Action<FileChange> _onChange;
     private readonly Lock _sync = new();
-    private readonly List<FileSystemWatcher> _watchers = [];
+    private readonly Dictionary<WatchedDirectory, FileSystemWatcher> _watchers = [];
 
     private bool _disposed;
 
@@ -67,11 +68,21 @@ public sealed class ProjectSourceWatcher : IDisposable
     }
 
     /// <summary>
-    /// Watches what a snapshot's projects are made of, and stops watching whatever was watched before.
+    /// Watches what a snapshot's projects are made of, and stops watching whatever was watched before
+    /// and is not any more.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Replaces rather than adds: a refresh produces a new snapshot, and a project that went away
     /// should stop being heard. Call it again after every publication.
+    /// </para>
+    /// <para>
+    /// A directory watched before and still to be watched keeps its watch. Replacing every watch on every
+    /// publication opened a gap between the old watch stopping and the new one starting, and a change in it
+    /// was heard by neither; a host that calls this after every snapshot would have had that gap on every
+    /// save that moved the model. A watch that stopped raising events — its directory went away and came
+    /// back, a share dropped — is started again.
+    /// </para>
     /// </remarks>
     /// <param name="snapshot">The solution to watch.</param>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
@@ -86,11 +97,37 @@ public sealed class ProjectSourceWatcher : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            StopAll();
+            var wanted = new HashSet<WatchedDirectory>(plan);
+
+            foreach (WatchedDirectory gone in _watchers.Keys.Where(directory => !wanted.Contains(directory)).ToArray())
+            {
+                Stop(gone);
+            }
 
             foreach (WatchedDirectory directory in plan)
             {
+                if (_watchers.TryGetValue(directory, out FileSystemWatcher? kept) && kept.EnableRaisingEvents)
+                {
+                    continue;
+                }
+
+                Stop(directory);
                 Start(directory);
+            }
+        }
+    }
+
+    /// <summary>Gets how many watches have been started over this watcher's life. For tests.</summary>
+    internal int Started { get; private set; }
+
+    /// <summary>Gets how many directories are watched now. For tests.</summary>
+    internal int Watching
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _watchers.Count;
             }
         }
     }
@@ -136,7 +173,8 @@ public sealed class ProjectSourceWatcher : IDisposable
 
             watcher.EnableRaisingEvents = true;
 
-            _watchers.Add(watcher);
+            _watchers[directory] = watcher;
+            Started++;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -146,9 +184,18 @@ public sealed class ProjectSourceWatcher : IDisposable
         }
     }
 
+    private void Stop(WatchedDirectory directory)
+    {
+        if (_watchers.Remove(directory, out FileSystemWatcher? watcher))
+        {
+            watcher.EnableRaisingEvents = false;
+            watcher.Dispose();
+        }
+    }
+
     private void StopAll()
     {
-        foreach (FileSystemWatcher watcher in _watchers)
+        foreach (FileSystemWatcher watcher in _watchers.Values)
         {
             watcher.EnableRaisingEvents = false;
             watcher.Dispose();
