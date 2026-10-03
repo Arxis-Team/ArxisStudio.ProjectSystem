@@ -152,6 +152,14 @@ The core has no UI-thread affinity and must not capture a synchronization contex
 in `src/` is `ConfigureAwait(false)`, and `.editorconfig` makes `CA2007` an error there so the
 compiler enforces it rather than review.
 
+The adapter's design host is the one place that touches a user interface, and only through an
+explicit call to its dispatcher: its events are raised on the user interface thread, every Avalonia
+object it makes, writes or closes is touched inside such a call, and the work between them runs off
+that thread under the same `ConfigureAwait(false)`
+([ADR 0028](docs/adr/0028-the-design-host-replaces-a-generation-in-order.md)). A step that touched an
+object wherever its `await` happened to resume would work on the user interface thread by accident
+and throw everywhere else.
+
 ### The workspace owns versions and order
 
 Every successful publication advances a monotonically increasing version. Failed and cancelled
