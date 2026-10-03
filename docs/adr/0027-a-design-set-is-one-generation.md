@@ -60,3 +60,25 @@ generation is of.
   over the first opens. A designer opens forms of the projects it loads, so the reads were coming.
 - A name conflict or a shadowed project is a diagnostic, not an exception, and the designer shows it
   rather than failing the set: everything else in it still loads.
+
+## Amendment, 2026-10-04: a closure includes the packages that map a XAML namespace
+
+A closure was what the projects build — their outputs and their project references — and a package
+was reached only by naming its assembly. But a document never names a theme's assembly: `FluentTheme`
+is written in `https://github.com/avaloniaui` and lives in `Avalonia.Themes.Fluent`, a package; so do
+the data grid and the colour picker, and every third-party library of controls maps a namespace of its
+own. Markup's type resolver searches the closure and whatever the process has loaded, so a host that
+happened to load the package resolved the name, and the designer sample — a host built on Fluent —
+always did. ArxisStudio, a host with a theme of its own, answered that the namespace mapped nothing it
+could find: every form lost its application's theme, and any form with a data grid could not load.
+
+So **a project's closure includes the packages of its runtime assets that map a XAML namespace** —
+declare Avalonia's `XmlnsDefinitionAttribute` — after what the projects build, so a project's own type
+still wins a name. The single-project environment searches them too. Whether a package maps one is
+read from its metadata, without loading it: a package's assembly goes to the default context and stays,
+and asking by loading would keep every restored package in the process for the question alone. A
+package the host already has answers with the host's copy, as before.
+
+The adapter's tests hold it with a package fixture of their own — a library that maps a namespace,
+never referenced as an assembly — through `AssembliesOf`, the single-project search, and a type resolved
+by the namespace either way.

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ArxisStudio.ProjectSystem.Markup.Xaml.PackageFixtures</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    A package's controls, for the adapter's tests: a library that maps a XAML namespace of its own, as
+    Avalonia.Themes.Fluent maps https://github.com/avaloniaui. A project's restore names it as a runtime
+    asset; a document names its types by the namespace, never by the assembly.
+
+    Never referenced as an assembly, for the same reason as the project fixtures: a test proves a type
+    found only if nothing else had already put the assembly into the process.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+  </ItemGroup>
+
+</Project>

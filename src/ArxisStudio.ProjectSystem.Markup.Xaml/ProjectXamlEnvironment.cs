@@ -274,12 +274,14 @@ public static class ProjectXamlEnvironment
     /// the class was sitting in the context at the time.
     /// </para>
     /// <para>
-    /// Only what the projects build, not the packages. Those are the few the collectible context
-    /// owns and the ones a rebuild changes, and they are where an <c>x:Class</c> and a project's own
-    /// controls live. Loading every restored package eagerly would be a great deal of work done
-    /// before anything asked for it, and — because package assemblies go to the default context and
-    /// stay — an irreversible one. A type in a package is still reached by naming its assembly, and
-    /// a package the host has already loaded is found anyway.
+    /// What the projects build, and of the packages only those that map a XAML namespace. The first are
+    /// the few the collectible context owns and the ones a rebuild changes, and they are where an
+    /// <c>x:Class</c> and a project's own controls live. A package that maps a namespace is where a name
+    /// written against that namespace lives — <c>FluentTheme</c> in <c>Avalonia.Themes.Fluent</c> — and
+    /// nothing else would bring it in. Loading every restored package eagerly would be a great deal of
+    /// work done before anything asked for it, and — because package assemblies go to the default
+    /// context and stay — an irreversible one; a type in any other package is still reached by naming
+    /// its assembly.
     /// </para>
     /// <para>
     /// An assembly that will not load is skipped rather than reported. It is not this method's
@@ -287,18 +289,19 @@ public static class ProjectXamlEnvironment
     /// says which type could not be found rather than which file could not be read.
     /// </para>
     /// </remarks>
-    private static List<Assembly> Searchable(ProjectAssemblyContext context)
+    internal static List<Assembly> Searchable(ProjectAssemblyContext context)
     {
         var searchable = new List<Assembly>();
 
         foreach (RuntimeAssemblyReference reference in context.Assemblies)
         {
-            if (reference.Origin is not (RuntimeAssemblyOrigin.Project or RuntimeAssemblyOrigin.ProjectReference))
+            string simpleName = System.IO.Path.GetFileNameWithoutExtension(reference.Path.FileName);
+
+            if (reference.Origin is not (RuntimeAssemblyOrigin.Project or RuntimeAssemblyOrigin.ProjectReference)
+                && !(reference.Origin == RuntimeAssemblyOrigin.Package && context.MapsXamlNamespace(simpleName)))
             {
                 continue;
             }
-
-            string simpleName = System.IO.Path.GetFileNameWithoutExtension(reference.Path.FileName);
 
             if (simpleName.Length > 0 && context.Resolve(new AssemblyName(simpleName)) is { } assembly)
             {

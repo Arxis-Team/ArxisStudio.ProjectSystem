@@ -4,6 +4,8 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 using System.Threading;
 
@@ -41,6 +43,14 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// the set could not load as the projects asked is said in <see cref="Diagnostics"/>.
 /// </para>
 /// <para>
+/// <b>A closure includes the packages that map a XAML namespace.</b> A document names such a package's
+/// types by the namespace, never by the assembly — <c>FluentTheme</c> is written in
+/// <c>https://github.com/avaloniaui</c> and lives in <c>Avalonia.Themes.Fluent</c> — so a closure of
+/// what the projects build left them to whatever the host happened to have loaded, and a host with a
+/// theme of its own lost every form's (ADR 0027, amended 2026-10-04). Whether a package maps one is read
+/// from its metadata; a package that maps nothing is not loaded for being asked.
+/// </para>
+/// <para>
 /// <b>Everything is loaded at once, when the generation is created.</b> Loading an assembly when a
 /// document first names it let a build that ran in between put two builds into one generation —
 /// the library from before it and the application from after. Created when no build is running, a
@@ -71,6 +81,7 @@ public sealed partial class ProjectAssemblyContext
     private readonly Dictionary<string, FileStamp> _stamps;
     private readonly Dictionary<ProjectIdentity, ImmutableArray<string>> _closures;
     private readonly Dictionary<ProjectIdentity, string> _outputs;
+    private readonly HashSet<string> _xamlPackages;
     private readonly Dictionary<string, CanonicalPath> _packagesLoaded = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _gate = new();
 
@@ -93,6 +104,7 @@ public sealed partial class ProjectAssemblyContext
         _stable = set.Stable;
         _closures = set.Closures;
         _outputs = set.Outputs;
+        _xamlPackages = set.XamlPackages;
         _stamps = Stamp(set.Rebuildable);
 
         var context = new AssemblyLoadContext(name, isCollectible: true);
@@ -214,6 +226,7 @@ public sealed partial class ProjectAssemblyContext
         Dictionary<string, CanonicalPath> Stable,
         Dictionary<ProjectIdentity, ImmutableArray<string>> Closures,
         Dictionary<ProjectIdentity, string> Outputs,
+        HashSet<string> XamlPackages,
         ImmutableArray<ProjectDiagnostic> Diagnostics);
 
     private static (ImmutableArray<RuntimeAssemblyReference> Assemblies, DesignSet Set) Gather(
@@ -223,6 +236,7 @@ public sealed partial class ProjectAssemblyContext
         var stable = new Dictionary<string, CanonicalPath>(StringComparer.OrdinalIgnoreCase);
         var closures = new Dictionary<ProjectIdentity, ImmutableArray<string>>();
         var outputs = new Dictionary<ProjectIdentity, string>();
+        var xamlPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var diagnostics = ImmutableArray.CreateBuilder<ProjectDiagnostic>();
         var conflicting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var paths = new HashSet<CanonicalPath>();
@@ -287,6 +301,16 @@ public sealed partial class ProjectAssemblyContext
                         projects.Add(assembly.Project);
                     }
                 }
+
+                // After what the projects build, which the snapshot returns first, so a project's own
+                // type still wins a name. Read once per file and set: the answer is the file's.
+                if (assembly.Origin == RuntimeAssemblyOrigin.Package
+                    && !closure.Contains(simpleName, StringComparer.OrdinalIgnoreCase)
+                    && (xamlPackages.Contains(simpleName) || MapsXamlNamespace(assembly.Path)))
+                {
+                    closure.Add(simpleName);
+                    xamlPackages.Add(simpleName);
+                }
             }
 
             closures[project] = [.. closure];
@@ -308,16 +332,69 @@ public sealed partial class ProjectAssemblyContext
             }
         }
 
-        return (assemblies.ToImmutable(), new DesignSet(rebuildable, stable, closures, outputs, diagnostics.ToImmutable()));
+        return (assemblies.ToImmutable(), new DesignSet(rebuildable, stable, closures, outputs, xamlPackages, diagnostics.ToImmutable()));
     }
 
     /// <summary>
-    /// The assemblies one project's documents may name: its own output and what it references,
-    /// loaded by this generation.
+    /// Whether a package's assembly maps a XAML namespace — declares Avalonia's
+    /// <c>XmlnsDefinitionAttribute</c> — read from its metadata without loading it.
+    /// </summary>
+    /// <remarks>
+    /// A package's assembly goes to the default context and stays there, so asking by loading would
+    /// keep every restored package in the process for the question alone. A file that cannot be read
+    /// maps nothing here; the document that names its namespace says which type it could not find.
+    /// </remarks>
+    private static bool MapsXamlNamespace(CanonicalPath path)
+    {
+        try
+        {
+            using FileStream stream = File.OpenRead(path.Value);
+            using var image = new PEReader(stream);
+
+            if (!image.HasMetadata)
+            {
+                return false;
+            }
+
+            MetadataReader reader = image.GetMetadataReader();
+
+            foreach (CustomAttributeHandle handle in reader.GetAssemblyDefinition().GetCustomAttributes())
+            {
+                // The attribute's type is Avalonia's, so in a package it is always a reference to
+                // another assembly's type, through a member reference to its constructor.
+                if (reader.GetCustomAttribute(handle).Constructor is { Kind: HandleKind.MemberReference } constructor
+                    && reader.GetMemberReference((MemberReferenceHandle)constructor).Parent is { Kind: HandleKind.TypeReference } parent)
+                {
+                    TypeReference type = reader.GetTypeReference((TypeReferenceHandle)parent);
+
+                    if (reader.StringComparer.Equals(type.Name, "XmlnsDefinitionAttribute")
+                        && reader.StringComparer.Equals(type.Namespace, "Avalonia.Metadata"))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or BadImageFormatException)
+        {
+        }
+
+        return false;
+    }
+
+    /// <summary>Whether a package of this generation maps a XAML namespace, by its simple name.</summary>
+    /// <param name="simpleName">The assembly's simple name.</param>
+    /// <returns><see langword="true"/> when the package declares one.</returns>
+    internal bool MapsXamlNamespace(string simpleName) => _xamlPackages.Contains(simpleName);
+
+    /// <summary>
+    /// The assemblies one project's documents may name: its own output, what it references, and the
+    /// packages that map a XAML namespace, loaded by this generation.
     /// </summary>
     /// <remarks>
     /// What a type resolver for that project's documents searches. A form of a library does not see
-    /// the application that references it, as its build does not.
+    /// the application that references it, as its build does not. A package that maps a namespace is
+    /// loaded the way packages are — into the default context, or the host's copy when it has one.
     /// </remarks>
     /// <param name="project">One of <see cref="Projects"/>, or a project they reference.</param>
     /// <returns>The assemblies, the project's own first; empty for a project this generation is not of.</returns>
