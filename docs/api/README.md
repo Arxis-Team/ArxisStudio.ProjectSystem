@@ -1021,6 +1021,12 @@ if (application?.Application is { } declared)        // null: no application in 
 }
 ```
 
+**A project on another Avalonia is not loaded.** The design set's resolved `Avalonia` is measured against
+the process's before every generation ([ADR 0034](../adr/0034-a-project-on-another-avalonia-is-not-loaded.md)):
+another major version is `Unsupported` — no generation, no builds, documents with their text, and
+`UnsupportedReason` saying which project is on which version — and another minor version a warning in
+`GenerationDiagnostics`. A snapshot naming the version the designer runs lifts it without a restart.
+
 A library's form is dressed by the application of the first project of the design set that references
 the library. What an application declares may be of the project's types: let go of it when the host asks
 the designer to let go for a swap. A swap closes every application still open, a closed one holds nothing,

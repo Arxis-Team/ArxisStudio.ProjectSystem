@@ -29,4 +29,11 @@ public enum ProjectDesignState
 
     /// <summary>The host was disposed.</summary>
     Disposed = 6,
+
+    /// <summary>
+    /// The design set is built against another major version of Avalonia than this process runs, and no
+    /// generation is made of it (<see cref="ProjectDesignHost.UnsupportedReason"/>). Documents open with their
+    /// text and nothing built from it. A snapshot naming a version the process runs lifts it.
+    /// </summary>
+    Unsupported = 7,
 }

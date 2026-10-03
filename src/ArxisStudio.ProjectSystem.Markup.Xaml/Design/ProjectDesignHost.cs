@@ -187,14 +187,17 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
         }
     }
 
-    /// <summary>Gets what the live generation could not load as the projects asked.</summary>
+    /// <summary>
+    /// Gets what the live generation could not load as the projects asked, and what the Avalonia the design
+    /// set is built against says against the one this process runs (ADR 0034).
+    /// </summary>
     public ImmutableArray<ProjectDiagnostic> GenerationDiagnostics
     {
         get
         {
             lock (_sync)
             {
-                return _generation?.Diagnostics ?? [];
+                return (_generation?.Diagnostics ?? []).AddRange(_compatibility);
             }
         }
     }
@@ -261,8 +264,17 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
 
             try
             {
-                await BuildWhatIsOutOfDateAsync("the designer is starting", cancellationToken).ConfigureAwait(false);
-                await CreateGenerationAsync(cancellationToken).ConfigureAwait(false);
+                // A design set built against an Avalonia this process does not run is neither built nor
+                // loaded: documents open with their text, and a later snapshot may lift it.
+                if (AvaloniaFits(snapshot, DesignSetOf(snapshot)))
+                {
+                    await BuildWhatIsOutOfDateAsync("the designer is starting", cancellationToken).ConfigureAwait(false);
+                    await CreateGenerationAsync(cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    NoGeneration(snapshot);
+                }
             }
             finally
             {
@@ -495,6 +507,18 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
         await RegisterDocumentsAsync(snapshot, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Records the design set of a snapshot no generation is made of.</summary>
+    private void NoGeneration(SolutionSnapshot snapshot)
+    {
+        lock (_sync)
+        {
+            _designSet = DesignSetOf(snapshot);
+            _resources = ProjectResourceMap.Create(snapshot);
+            _stale = false;
+            _staleReason = null;
+        }
+    }
+
     /// <summary>The simple names of the assemblies a design set's projects build.</summary>
     private static HashSet<string> BuiltNames(SolutionSnapshot snapshot, ImmutableArray<ProjectIdentity> set)
     {
@@ -652,6 +676,7 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
     private ProjectDesignState ComputeState() =>
         _disposed != 0 ? ProjectDesignState.Disposed
         : _restartReason is not null ? ProjectDesignState.RestartRequired
+        : _unsupportedReason is not null ? ProjectDesignState.Unsupported
         : _swapping ? ProjectDesignState.Swapping
         : !_started ? ProjectDesignState.Starting
         : _building.CurrentCount == 0 ? ProjectDesignState.Building

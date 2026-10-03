@@ -518,6 +518,22 @@ public sealed partial class ProjectDesignHost
 
         ImmutableArray<ProjectIdentity> set = DesignSetOf(snapshot);
 
+        if (UnsupportedReason is not null)
+        {
+            // Nothing to leave behind: the snapshot is measured again, and a swap makes the generation the
+            // moment the design set is built against the Avalonia this process runs.
+            if (!AvaloniaFits(snapshot, set))
+            {
+                await ReportStateAsync().ConfigureAwait(false);
+
+                return false;
+            }
+
+            MarkStale("the project is built against the Avalonia the designer runs");
+
+            return true;
+        }
+
         if (generation is not null && !generation.IsUnloaded && PackageMoved(generation, snapshot, set) is { } package)
         {
             await RequireRestartAsync(

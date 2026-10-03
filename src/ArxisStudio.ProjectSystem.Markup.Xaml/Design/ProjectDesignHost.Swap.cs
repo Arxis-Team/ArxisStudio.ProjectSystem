@@ -241,9 +241,17 @@ public sealed partial class ProjectDesignHost
         long rebuilding = clock.GetTimestamp();
 
         // The successor: what is out of date built first, then loaded, then shown and taken up — unless
-        // another generation of the same assemblies stays in the process, and there is none.
-        await BuildWhatIsOutOfDateAsync("the types are being replaced", cancellationToken).ConfigureAwait(false);
-        await CreateGenerationAsync(cancellationToken).ConfigureAwait(false);
+        // another generation of the same assemblies stays in the process, or the design set is built against
+        // an Avalonia this process does not run, and there is none.
+        if (_source.Snapshot is { } successor && AvaloniaFits(successor, DesignSetOf(successor)))
+        {
+            await BuildWhatIsOutOfDateAsync("the types are being replaced", cancellationToken).ConfigureAwait(false);
+            await CreateGenerationAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else if (_source.Snapshot is { } unsupported)
+        {
+            NoGeneration(unsupported);
+        }
 
         if (GenerationName is not null)
         {

@@ -30,4 +30,21 @@ public static class ProjectDesignDiagnosticCodes
     /// separate process could show it.
     /// </remarks>
     public const string ShadowedByHost = "APS5002";
+
+    /// <summary>
+    /// <c>APS5003</c> — a project of the design set is built against another major version of Avalonia than
+    /// the designer runs, and no generation is made.
+    /// </summary>
+    /// <remarks>
+    /// Its compiled markup calls members this process does not have, and they would fail one by one in
+    /// whatever the designer showed. The documents show their text; a snapshot naming a version the
+    /// designer runs lifts it (ADR 0034).
+    /// </remarks>
+    public const string AvaloniaVersionUnsupported = "APS5003";
+
+    /// <summary>
+    /// <c>APS5004</c> — a project of the design set is built against another minor version of Avalonia than
+    /// the designer runs. The generation is made, and the forms may differ from what the program shows.
+    /// </summary>
+    public const string AvaloniaVersionDiffers = "APS5004";
 }

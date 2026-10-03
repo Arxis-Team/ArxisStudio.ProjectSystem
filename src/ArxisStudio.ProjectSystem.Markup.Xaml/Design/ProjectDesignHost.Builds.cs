@@ -117,7 +117,8 @@ public sealed partial class ProjectDesignHost
     {
         lock (_sync)
         {
-            if (Volatile.Read(ref _disposed) != 0)
+            // Nothing is shown of a design set built against another Avalonia, so nothing is built for it.
+            if (Volatile.Read(ref _disposed) != 0 || _unsupportedReason is not null)
             {
                 return;
             }
@@ -129,6 +130,18 @@ public sealed partial class ProjectDesignHost
 
         // Outside the lock: a clock may call back on this very thread.
         _buildTimer.Change(_options.BuildDelay, Timeout.InfiniteTimeSpan);
+    }
+
+    /// <summary>The builds the host started on its own, or a completed task when none are running. For tests.</summary>
+    internal Task BuildInFlight
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _buildLoop ?? Task.CompletedTask;
+            }
+        }
     }
 
     /// <summary>The quiet moment is over: start building, unless a build in flight takes the work after itself.</summary>
