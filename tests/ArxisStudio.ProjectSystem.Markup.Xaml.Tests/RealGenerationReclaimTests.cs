@@ -130,6 +130,37 @@ public sealed class RealGenerationReclaimTests
                 + "its type again in the reclaim's own dispatcher turns, after the cleanup.");
     }
 
+    [AvaloniaFact]
+    public async Task TryReclaim_AGenerationThatLoadedNothingAndCompiledMarkup_IsGone()
+    {
+        using var fixtures = new DesignFixtures();
+
+        // A project whose build is not there — the first design build failed — makes a generation of
+        // nothing. Its documents still compile, of the controls Avalonia itself has.
+        ProjectAssemblyContext generation = ProjectAssemblyContext.Create(
+            fixtures.Snapshot(
+                new WorkspaceLoadRequest { Workspace = Workspace, EntryPointPath = fixtures.ProjectFile },
+                static project => project.Outputs.Clear()),
+            fixtures.Project(Workspace));
+
+        CompileInItsScope(generation);
+
+        Assert.True(
+            await generation.TryReclaimAsync(TestContext.Current.CancellationToken),
+            "A generation that loaded nothing stayed once markup was compiled in its scope: a context whose only assembly is "
+                + "the compiler's dynamic one is never unloaded.");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void CompileInItsScope(ProjectAssemblyContext generation)
+    {
+        using (generation.EnterLoadScope())
+        {
+            _ = Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader.Load(
+                "<Border xmlns='https://github.com/avaloniaui'><Button Content='Hello' /></Border>");
+        }
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ProjectAssemblyContext Generation(DesignFixtures fixtures) =>
         ProjectAssemblyContext.Create(fixtures.Snapshot(Workspace), fixtures.Project(Workspace));

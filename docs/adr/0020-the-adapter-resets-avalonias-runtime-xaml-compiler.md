@@ -66,3 +66,20 @@ from the previous generation.
 - The compiler's re-initialisation on generation change re-emits its support types. That is paid
   once per rebuild, in a tool whose whole purpose is rebuilding.
 - If Avalonia grows a public reset or per-context compiler, this scope should shrink to calling it.
+
+## Amendment, 2026-10-04: a generation that loaded nothing does not take the compiler in
+
+A design set whose builds are not there — the first design build failed, or a project has no output
+yet — makes a generation that loads no assembly at all. Entering its scope put the compiler's dynamic
+assembly into it, and that assembly became the context's only one. The runtime does not unload a
+collectible context whose only assembly is a dynamic one: measured outside Avalonia and the adapter, a
+context with one `RunAndCollect` assembly defined under contextual reflection stayed alive through
+eighty-four forced collections, while the same context with an ordinary assembly loaded first went in
+the first one. In the adapter, the first successful build after a failed one answered with a restart.
+
+So `EnterLoadScope` checks the context first. One that holds no assembly enters nothing: its
+documents name nothing of the project and compile against the process, in the default context — and
+the compiler's state is cleared again when that scope ends, because state left in the default context
+outlives every generation, and the next one is what it would hold. A generation that loaded anything
+is entered as before. The adapter's test compiles markup in the scope of a generation of nothing and
+reclaims it; without the check it answers that the generation stayed.

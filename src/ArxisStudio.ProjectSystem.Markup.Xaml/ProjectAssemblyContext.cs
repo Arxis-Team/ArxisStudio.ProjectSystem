@@ -550,6 +550,15 @@ public sealed partial class ProjectAssemblyContext
     /// environment, and the session then enters this around every compilation on its own. Nothing
     /// needs to call it by hand.
     /// </para>
+    /// <para>
+    /// <b>A generation that loaded nothing</b> — a design set whose builds are not there, because the
+    /// first design build failed — does not take the compiler in. The runtime never unloads a collectible
+    /// context whose only assembly is a dynamic one: emitted there, the compiler's assembly would keep the
+    /// generation in the process for good, and the first successful build would end in a restart. Its
+    /// documents name nothing of the project, so they compile against the process — and the compiler's
+    /// state is let go of when the scope ends, because state left in the default context outlives every
+    /// generation and holds whatever the next one loads. Measured, and recorded in ADR 0020.
+    /// </para>
     /// </remarks>
     /// <returns>The scope to dispose when the load is done.</returns>
     /// <exception cref="ObjectDisposedException">This context has been unloaded.</exception>
@@ -559,6 +568,13 @@ public sealed partial class ProjectAssemblyContext
 
         AssemblyLoadContext context = _context
             ?? throw new ObjectDisposedException(nameof(ProjectAssemblyContext));
+
+        if (!context.Assemblies.Any())
+        {
+            RuntimeXamlCompiler.EnsureEmittedIn(AssemblyLoadContext.Default);
+
+            return ProcessScope.Instance;
+        }
 
         RuntimeXamlCompiler.EnsureEmittedIn(context);
 
@@ -571,6 +587,17 @@ public sealed partial class ProjectAssemblyContext
     private sealed class LoadScope(AssemblyLoadContext.ContextualReflectionScope scope) : IDisposable
     {
         public void Dispose() => scope.Dispose();
+    }
+
+    /// <summary>
+    /// The scope of a generation that loaded nothing: its markup compiles in the default context, and the
+    /// compiler is let go of on the way out.
+    /// </summary>
+    private sealed class ProcessScope : IDisposable
+    {
+        public static ProcessScope Instance { get; } = new();
+
+        public void Dispose() => RuntimeXamlCompiler.ResetIfEmittedIn(AssemblyLoadContext.Default);
     }
 
     /// <summary>The runtime compiler's static state, reached the only way it can be.</summary>

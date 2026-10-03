@@ -237,7 +237,7 @@ What is recorded so far:
 | [0017](docs/adr/0017-project-files-are-edited-as-xml.md) | Project files are edited as XML; each package hosts one engine and no other |
 | [0018](docs/adr/0018-the-adapter-references-markup-by-source.md) | The adapter references Markup by source, and is the one package allowed to |
 | [0019](docs/adr/0019-a-file-that-is-not-there-yet-is-an-evaluation-input.md) | A provider names where a convention-based import would be, not only where one was found |
-| [0020](docs/adr/0020-the-adapter-resets-avalonias-runtime-xaml-compiler.md) | The adapter resets Avalonias runtime XAML compiler between generations |
+| [0020](docs/adr/0020-the-adapter-resets-avalonias-runtime-xaml-compiler.md) | The adapter resets Avalonias runtime XAML compiler between generations; a generation that loaded nothing compiles in the process and lets the compiler go |
 | [0021](docs/adr/0021-a-run-holds-one-generation-of-a-projects-types.md) | A run holds one generation of a project's types; stale types are answered with a restart |
 | [0022](docs/adr/0022-an-embedded-controls-markup-follows-the-live-document.md) | An embedded control's markup follows the live document; only its code still waits for a restart |
 | [0023](docs/adr/0023-a-generation-is-reclaimed-before-its-successor-is-born.md) | A generation is reclaimed and proven gone before its successor is created; restart is the fallback |
