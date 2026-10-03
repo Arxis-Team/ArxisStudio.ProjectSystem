@@ -372,6 +372,8 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
                 await DisposeDocumentAsync(document).ConfigureAwait(false);
             }
 
+            await CloseApplicationsAsync().ConfigureAwait(false);
+
             if (LetGoOfTheGeneration() is { } generation)
             {
                 await generation.TryReclaimAsync(CancellationToken.None).ConfigureAwait(false);

@@ -201,6 +201,7 @@ public sealed partial class ProjectDesignHost
         // The designer lets go: what it shows, then the documents' sessions, then the windows they built.
         await ReleaseParticipantsAsync(cancellationToken).ConfigureAwait(false);
         await DetachDocumentsAsync(cancellationToken).ConfigureAwait(false);
+        await CloseApplicationsAsync().ConfigureAwait(false);
         await Dispatcher.UIThread.InvokeAsync(CloseRetiredRoots).GetTask().ConfigureAwait(false);
 
         TimeSpan release = clock.GetElapsedTime(started);

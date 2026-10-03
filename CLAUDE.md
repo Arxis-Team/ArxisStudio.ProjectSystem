@@ -250,6 +250,7 @@ What is recorded so far:
 | [0030](docs/adr/0030-a-reclaim-is-tested-against-real-avalonia.md) | The adapter's tests run on headless Avalonia, against a fixtures library never loaded into the default context, one generation at a time |
 | [0031](docs/adr/0031-a-toolbox-lists-controls-by-name-and-builds-through-the-gate.md) | A toolbox lists a project's controls by name, the unbuilt `x:Class` documents included; placing one builds it and waits for the swap through the gate, never past a deferral; a placed control's markup rebuilds only the elements that place it |
 | [0032](docs/adr/0032-a-design-host-reads-builds-and-saves-through-its-owner.md) | A design host reads and builds through an `IProjectDesignSource` and saves through an `IProjectDesignWriter`, so an IDE that owns the workspace and the files keeps one MSBuild, one writer and one local history; a workspace is `ProjectDesignSource.From` |
+| [0033](docs/adr/0033-a-form-is-dressed-by-its-programs-application.md) | A form is dressed by its program's application: `OpenApplicationAsync` loads the project's — or the referencing program's — `App.axaml` as written, one per form because a style has one owner; a swap closes what is open and a closed one holds nothing; a saved one is `ApplicationChanged` |
 
 0004 and 0011 are deviations from the task specification. The rest record decisions the specification
 left open, or alternatives rejected for reasons worth not rediscovering.

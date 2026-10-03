@@ -123,6 +123,7 @@ public sealed partial class ProjectDesignHost
             if (IsMarkupItem(edited.Item) || IsMarkupPath(edited.Item.FullPath))
             {
                 await MarkupSavedAsync(snapshot, edited.Item.FullPath, cancellationToken).ConfigureAwait(false);
+                await ApplicationSavedAsync(edited.Item.FullPath).ConfigureAwait(false);
             }
         }
 
@@ -459,6 +460,8 @@ public sealed partial class ProjectDesignHost
                 _resources = ProjectResourceMap.Create(snapshot);
             }
         }
+
+        ForgetApplicationDocuments();
 
         Enqueue(new Work.Published());
     }

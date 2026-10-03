@@ -999,6 +999,33 @@ await using var host = new ProjectDesignHost(new IdeSource(projects), options wi
 options)`, and a host with no `Writer` writes the file in place, as it always did. A writer that throws
 leaves the document unsaved.
 
+**A form is dressed by its program's application** — the theme `App.axaml` sets and the resources it
+declares — not by the designer's. The host loads them for each form, as written: the program's `App`
+class is never constructed ([ADR 0033](../adr/0033-a-form-is-dressed-by-its-programs-application.md)):
+
+```csharp
+await using ProjectDesignApplication? application = await host.OpenApplicationAsync(form, token);
+
+if (application?.Application is { } declared)        // null: no application in the project or above it
+{
+    // A style and a dictionary have one owner: the form takes them over, and the next form opens its own.
+    IStyle[] styles = [.. declared.Styles];
+    IResourceDictionary resources = declared.Resources;
+
+    declared.Styles.Clear();
+    declared.Resources = new ResourceDictionary();
+
+    formScope.Styles.AddRange(styles);
+    formScope.Resources.MergedDictionaries.Add(resources);
+    formScope.RequestedThemeVariant = application.RequestedThemeVariant;
+}
+```
+
+A library's form is dressed by the application of the first project of the design set that references
+the library. What an application declares may be of the project's types: let go of it when the host asks
+the designer to let go for a swap. A swap closes every application still open, a closed one holds nothing,
+and a saved application document is `ApplicationChanged` — open again.
+
 **A toolbox of the project's controls** is a listing by name — what the live generation built of a
 project and what it references, and the `x:Class` documents among them no build has produced yet
 ([ADR 0031](../adr/0031-a-toolbox-lists-controls-by-name-and-builds-through-the-gate.md)):
