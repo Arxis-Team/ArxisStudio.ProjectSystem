@@ -150,6 +150,31 @@ public sealed class MSBuildOperationTests
         Assert.Equal(ProjectDiagnosticSeverity.Warning, diagnostic.Severity);
     }
 
+    /// <summary>
+    /// An operation's targets run in a worker node, not in the process that asked for them.
+    /// </summary>
+    /// <remarks>
+    /// The host is a long-lived process with assemblies of its own, and some of them are the ones the
+    /// SDK's tasks load too. An IDE that manages packages carries <c>NuGet.Versioning</c>; the SDK's
+    /// <c>ResolvePackageAssets</c> loads its own copy by path into the default load context, and the
+    /// runtime refuses a second assembly of the same name there — every SDK-style build in the IDE
+    /// failed with <c>MSB4018</c>. A worker node loads only what the build loads, and a task that
+    /// crashes takes the node down rather than the host.
+    /// </remarks>
+    [Fact]
+    public async Task AnOperation_RunsItsTargetsOutsideThisProcess()
+    {
+        ProjectOperationResult result = await ExecuteAsync(Request(properties: ("ReportProcess", "true")));
+
+        Assert.Equal(ProjectOperationStatus.Succeeded, result.Status);
+
+        ProjectDiagnostic reported = Assert.Single(
+            result.Diagnostics.Where(static d => d.Code == "APSTEST04"));
+
+        Assert.NotEqual(Environment.CommandLine, reported.Message);
+        Assert.Contains("nodemode", reported.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task ARequestedConfiguration_ReachesTheEngine()
     {

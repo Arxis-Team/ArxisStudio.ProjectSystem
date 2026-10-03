@@ -24,6 +24,12 @@
     <Warning Text="counted @(Counted->Count())" Code="APSTEST03" Condition="'$(CountGlob)' == 'true'" />
     <Warning Text="a warning that does not fail the build" Code="APSTEST01" Condition="'$(EmitWarning)' == 'true'" />
     <Error Text="asked to fail" Code="APSTEST02" Condition="'$(EmitError)' == 'true'" />
+    <!--
+      Where the target ran, told by the command line of the process expanding it: a property function
+      inside a target is expanded by the node that executes the target, not by whoever asked for the
+      build.
+    -->
+    <Warning Text="$([System.Environment]::CommandLine)" Code="APSTEST04" Condition="'$(ReportProcess)' == 'true'" />
   </Target>
 
   <Target Name="Rebuild" DependsOnTargets="Clean;Build" />

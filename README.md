@@ -316,6 +316,9 @@ are separate packages. Evaluating a project runs SDK resolvers, imports and prop
 declared by that project, in this process — see
 [ADR 0009](docs/adr/0009-evaluation-happens-in-process.md). Building one goes further still: targets
 run tasks, and tasks are arbitrary code the project chose, including whatever a restore downloaded.
+They run in an MSBuild worker node rather than in this process — see
+[ADR 0035](docs/adr/0035-an-operation-runs-in-a-worker-node.md) — which keeps a task's assemblies
+out of the host, and is not a sandbox.
 
 **So do not open a project you do not trust.** There is no sandbox here and none is claimed. Doing
 that safely needs an explicit trust and process-isolation design, which is why the model was built

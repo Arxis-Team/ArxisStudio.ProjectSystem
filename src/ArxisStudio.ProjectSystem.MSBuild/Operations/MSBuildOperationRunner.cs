@@ -45,6 +45,16 @@ internal sealed record OperationOutcome
 /// <b>Cancellation is real here</b>, unlike evaluation: MSBuild can abandon submissions, so a
 /// cancelled build stops rather than running to completion and being discarded.
 /// </para>
+/// <para>
+/// <b>Targets run in a worker node, not in this process</b>
+/// (<see href="../../docs/adr/0035-an-operation-runs-in-a-worker-node.md">ADR 0035</see>).
+/// The host is long-lived and carries assemblies of its own, and some of them are the ones the SDK's
+/// tasks load too: an IDE that manages packages has <c>NuGet.Versioning</c> in its default load
+/// context, and <c>ResolvePackageAssets</c> loads the SDK's copy into that same context by path —
+/// which the runtime refuses, so every SDK-style build in such a host failed with <c>MSB4018</c>.
+/// A node loads only what the build loads, and a task that crashes takes the node down rather than
+/// the host. Evaluation stays in this process (ADR 0009): it runs no tasks.
+/// </para>
 /// </remarks>
 internal static class MSBuildOperationRunner
 {
@@ -75,6 +85,9 @@ internal static class MSBuildOperationRunner
             // The engine's own console output belongs to whoever hosts a console. Everything a
             // caller needs arrives through the listener as structured diagnostics.
             DetailedSummary = false,
+
+            // Targets run in a worker node, never in the host: see the remarks on the type.
+            DisableInProcNode = true,
         };
 
         // MSBuild declares its global properties as string?, so the dictionary is typed to match
