@@ -50,3 +50,22 @@ gives for its own predecessor: a new process.
 - Asking again is not a way out of a restart for a designer: a generation that stayed once may stay
   again, and the designer cannot know when its holder lets go. It is what makes a held generation's
   end observable, for a host that knows, and for the tests.
+
+## Amendment, 2026-10-04: the cleanup runs again after every turn a reclaim gives the dispatcher
+
+The second question existed because letting go touches the holder's type. The same happens inside a
+single question: a window of the project, shown and closed just before the reclaim, does its last work
+in the dispatcher turns the reclaim itself gives the user interface, and asks its properties about its
+own type on the way. Once anything has overridden a property's metadata — a button's class constructor
+overrides `InputElement.Focusable`, so every application with a button has — the property remembers
+every type it is asked about in a cache keyed by the type. Measured with a walk of the heap during the
+wait: `Focusable` held the fixtures' window, put back after the cleanup had emptied it, and nothing
+else held the generation; asked a second time, it went.
+
+So `TryReclaimAsync` runs the cleanup again over whatever of the generation is still there after every
+round's dispatcher turn and pause, not only when asked a second time. A generation that something really
+holds still answers "held"; one that only wrote itself back on the way out goes in the same question.
+The adapter's test runs a button's class constructor, shows and closes a window of the fixtures and
+reclaims its generation once; without the repeated cleanup it answers that the generation stayed — and
+in the studio, where buttons always exist, every form shown on the canvas would have ended its swap in a
+restart.

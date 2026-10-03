@@ -165,6 +165,12 @@ public sealed partial class ProjectAssemblyContext
             // that follows the dispatcher turn at once leaves it time for neither, and the controls the
             // frame holds read as a generation something holds.
             await Task.Delay(RoundPause, cancellationToken).ConfigureAwait(false);
+
+            // What finished in that turn may have written the generation back: a window closing does its
+            // last work there, and asks its properties about its own type on the way — a property whose
+            // metadata anybody has overridden then remembers the type again. The cleanup runs again over
+            // whatever is still there, as it does when a held generation is asked a second time.
+            ForgetAgain(traces);
         }
     }
 

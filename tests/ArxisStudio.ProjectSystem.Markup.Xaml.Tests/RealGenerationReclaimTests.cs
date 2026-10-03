@@ -110,6 +110,26 @@ public sealed class RealGenerationReclaimTests
             "A reclaim off the user interface thread did not let the frame that drew the window finish.");
     }
 
+    [AvaloniaFact]
+    public async Task TryReclaim_AWindowShownOnceAButtonExists_IsGone()
+    {
+        // A button's class constructor overrides Focusable for its type, and from then on the property
+        // answers every type it is asked about from a cache keyed by that type — a window of the project
+        // shown on the screen is one. Any application with a button has run it; the studio always has.
+        RuntimeHelpers.RunClassConstructor(typeof(Button).TypeHandle);
+
+        using var fixtures = new DesignFixtures();
+
+        ProjectAssemblyContext generation = Generation(fixtures);
+
+        ShowAndClose(generation, "FixtureWindow");
+
+        Assert.True(
+            await generation.TryReclaimAsync(TestContext.Current.CancellationToken),
+            "A window of the project, shown once a button existed, kept its generation: closing, it asked a property about "
+                + "its type again in the reclaim's own dispatcher turns, after the cleanup.");
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ProjectAssemblyContext Generation(DesignFixtures fixtures) =>
         ProjectAssemblyContext.Create(fixtures.Snapshot(Workspace), fixtures.Project(Workspace));
