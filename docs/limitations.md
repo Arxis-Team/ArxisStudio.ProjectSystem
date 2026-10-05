@@ -528,12 +528,18 @@ of it at once, so replacing it replaces every form's types together.
 
 ### One design host per project per process
 
-No generation is created beside another of the same assemblies
-([ADR 0029](adr/0029-a-held-generation-may-be-asked-again.md)), so a second
+No generation is created beside another of the same assemblies, or of other assemblies that declare the
+same public types ([ADR 0029](adr/0029-a-held-generation-may-be-asked-again.md)), so a second
 `ProjectDesignHost` over the projects of a first waits for the first one's generation to go — which it
 does only once that host is disposed — and requires a restart when it does not. A designer showing two
-solutions that build an assembly of one name is in the same position: the names, not the solutions,
-are what collide in the runtime compiler.
+solutions that build an assembly of one name, or declare a type of one full name, is in the same
+position: the names, not the solutions, are what collide in the runtime compiler.
+
+What the wait does not compare is a XAML namespace two assemblies map (`XmlnsDefinition`) to CLR
+namespaces of different names, each declaring a type of the same simple name: a renamed library that
+renamed its namespaces and kept its types' names. The runtime compiler answers that name from the first
+assembly that maps the namespace, so a successor's form can be given a predecessor's control. Seeing it
+would mean reading every collectible assembly's mappings on every round of the wait.
 
 ### A part of a designer the host does not know of is a restart
 

@@ -203,33 +203,53 @@ public sealed partial class ProjectAssemblyContext
     }
 
     /// <summary>
-    /// Waits for every earlier generation that loaded one of these assemblies to leave the process, and
-    /// says whether they all did.
+    /// Waits for every earlier generation that would answer for one of these assemblies' names to leave the
+    /// process, and says whether they all did.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Avalonia's runtime compiler resolves the names a document uses in every assembly the process has
-    /// loaded, by name, whatever context they live in. A predecessor still in the process — unloaded but
-    /// not yet collected, or held — answers for its successor's types, and a document whose
-    /// <c>x:Class</c> is the successor's fails to load with "Unable to substitute T with T". ADR 0023
-    /// proves a generation gone before its own successor is created; this makes the same true of one the
-    /// caller did not retire itself — another host's, or one disposed rather than reclaimed.
+    /// loaded, whatever context they live in: an assembly by its simple name, and a type written against a
+    /// CLR namespace — <c>using:</c> — by its full name, in the first assembly that has one. A predecessor
+    /// still in the process — unloaded but not yet collected, or held — answers for its successor's types.
+    /// One of the same assemblies makes a document whose <c>x:Class</c> is the successor's fail to load with
+    /// "Unable to substitute T with T"; one of other assemblies that declares the same types — another
+    /// project's, a renamed copy — gives the successor's documents its controls instead, and building them
+    /// writes it back into Avalonia's caches, where no reclaim of the successor's looks. ADR 0023 proves a
+    /// generation gone before its own successor is created; this makes the same true of one the caller did
+    /// not retire itself — another host's, or one disposed rather than reclaimed (ADR 0029).
     /// </para>
     /// <para>
-    /// Costs nothing when no other generation has the names. Otherwise it collects, and gives the user
-    /// interface its turns, for as long as a reclaim would before answering that one is held.
+    /// The types are the public ones a document can name (<see cref="AddPublicTypes"/>), read from the
+    /// assemblies' metadata before anything loads, and a predecessor is asked for each by its full name —
+    /// the question the compiler asks.
+    /// Costs nothing when no other generation has the names or the types. Otherwise it collects, and gives
+    /// the user interface its turns, for as long as a reclaim would before answering that one is held.
     /// </para>
     /// </remarks>
-    /// <param name="names">The simple names of the assemblies about to be loaded.</param>
+    /// <param name="built">The assemblies the projects build, about to be loaded.</param>
     /// <param name="cancellationToken">A token to observe between collections.</param>
-    /// <returns><see langword="true"/> when no other generation holds any of the names.</returns>
-    internal static async ValueTask<bool> WaitForPredecessorsAsync(IReadOnlySet<string> names, CancellationToken cancellationToken)
+    /// <returns><see langword="true"/> when no other generation holds any of the names or the types.</returns>
+    internal static async ValueTask<bool> WaitForPredecessorsAsync(IReadOnlyCollection<CanonicalPath> built, CancellationToken cancellationToken)
     {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var types = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (CanonicalPath assembly in built)
+        {
+            if (System.IO.Path.GetFileNameWithoutExtension(assembly.Value) is { Length: > 0 } name)
+            {
+                names.Add(name);
+            }
+
+            AddPublicTypes(assembly, types);
+        }
+
         long started = Stopwatch.GetTimestamp();
 
         for (var round = 0; ; round++)
         {
-            if (!AnyPredecessor(names))
+            if (!AnyPredecessor(names, types))
             {
                 return true;
             }
@@ -250,24 +270,59 @@ public sealed partial class ProjectAssemblyContext
         }
     }
 
-    /// <summary>Whether the process has an assembly of one of the names in a collectible context.</summary>
+    /// <summary>
+    /// Whether the process has, in a collectible context, an assembly of one of the names or one declaring
+    /// one of the types.
+    /// </summary>
     /// <remarks>
     /// Asked of the domain's assemblies, not of <see cref="AssemblyLoadContext.All"/>: a context leaves
     /// that list the moment it starts unloading, while its assemblies stay loaded — and visible to the
-    /// runtime compiler — until it is collected. Not inlined, so that no assembly it looked at outlives
-    /// the look.
+    /// runtime compiler — until it is collected. Not inlined, so that no assembly or type it looked at
+    /// outlives the look.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool AnyPredecessor(IReadOnlySet<string> names)
+    private static bool AnyPredecessor(HashSet<string> names, HashSet<string> types)
     {
         foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
-            if (assembly.GetName().Name is { } name
-                && names.Contains(name)
-                && AssemblyLoadContext.GetLoadContext(assembly) is { IsCollectible: true })
+            if (AssemblyLoadContext.GetLoadContext(assembly) is not { IsCollectible: true })
+            {
+                continue;
+            }
+
+            if (assembly.GetName().Name is { } name && names.Contains(name))
             {
                 return true;
             }
+
+            // The compiler's own emitted assembly lives in a generation's context too, and holds none of
+            // a project's types.
+            if (!assembly.IsDynamic && DeclaresAny(assembly, types))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Whether an assembly declares a type of one of these full names.</summary>
+    private static bool DeclaresAny(Assembly assembly, HashSet<string> types)
+    {
+        try
+        {
+            foreach (string type in types)
+            {
+                if (assembly.GetType(type, throwOnError: false) is not null)
+                {
+                    return true;
+                }
+            }
+        }
+        catch (Exception exception) when (IsReflection(exception) || exception is System.IO.IOException or BadImageFormatException)
+        {
+            // An assembly that cannot be asked — a forwarder to a file that is not there — declares
+            // nothing a document could be given.
         }
 
         return false;

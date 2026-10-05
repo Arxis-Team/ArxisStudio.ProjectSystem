@@ -965,9 +965,9 @@ its session over and reopens each document with `ProjectDesignDocumentOptions.Te
 then `ReloadAsync`, which turns a file that moved on in the meantime into a conflict rather than an
 overwrite.
 
-One host per project per process: a second one over the same assemblies waits for the first one's
-generation to go, and requires a restart when it does not
-([ADR 0029](../adr/0029-a-held-generation-may-be-asked-again.md)).
+One host per project per process: a second one over the same assemblies — or over other assemblies that
+declare the same types — waits for the first one's generation to go, and requires a restart when it does
+not ([ADR 0029](../adr/0029-a-held-generation-may-be-asked-again.md)).
 
 **A designer inside an IDE** does not own the workspace: the IDE's project service evaluates and builds
 on its own queue, and writes the solution's files through its own service, which keeps a local history

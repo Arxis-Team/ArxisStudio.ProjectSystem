@@ -382,6 +382,78 @@ public sealed partial class ProjectAssemblyContext
         return false;
     }
 
+    /// <summary>
+    /// Adds the full names of the types a document could name that an assembly on disk declares, read from
+    /// its metadata without loading it.
+    /// </summary>
+    /// <remarks>
+    /// What a predecessor could answer for in a successor's documents (<see cref="WaitForPredecessorsAsync"/>):
+    /// the project's controls, views and models, public as a project declares them. Every assembly with
+    /// compiled markup declares the same seven helpers of Avalonia's compiler — five internal, such as
+    /// <c>CompiledAvaloniaXaml.XamlIlContext</c>, and two public whose names no document can write,
+    /// <c>!XamlLoader</c> and <c>!AvaloniaResources</c> — and counting them, any two projects would be one
+    /// another's predecessors. So a type counts when it is public, and so top level, and named as a document
+    /// writes a name. Measured over thirty of ArxisStudio's own assemblies and the fixtures' build: those
+    /// seven were the only top-level types any two of them shared. A file that cannot be read declares
+    /// nothing here.
+    /// </remarks>
+    /// <param name="path">The assembly.</param>
+    /// <param name="types">Where the names go.</param>
+    private static void AddPublicTypes(CanonicalPath path, HashSet<string> types)
+    {
+        try
+        {
+            using FileStream stream = File.OpenRead(path.Value);
+            using var image = new PEReader(stream);
+
+            if (!image.HasMetadata)
+            {
+                return;
+            }
+
+            MetadataReader reader = image.GetMetadataReader();
+
+            foreach (TypeDefinitionHandle handle in reader.TypeDefinitions)
+            {
+                TypeDefinition type = reader.GetTypeDefinition(handle);
+
+                // Public is a top-level type's visibility; a nested type's is NestedPublic.
+                if ((type.Attributes & TypeAttributes.VisibilityMask) == TypeAttributes.Public
+                    && reader.GetString(type.Namespace) is { Length: > 0 } space
+                    && reader.GetString(type.Name) is { } name
+                    && IsNameable(name))
+                {
+                    types.Add($"{space}.{name}");
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or BadImageFormatException)
+        {
+        }
+    }
+
+    /// <summary>Whether a type's name is one a document can write: an identifier, and a generic type's arity after it.</summary>
+    private static bool IsNameable(string name)
+    {
+        int arity = name.IndexOf('`', StringComparison.Ordinal);
+        ReadOnlySpan<char> identifier = arity < 0 ? name : name.AsSpan(0, arity);
+
+        if (identifier.IsEmpty || !(char.IsLetter(identifier[0]) || identifier[0] == '_'))
+        {
+            return false;
+        }
+
+        foreach (char character in identifier)
+        {
+            if (!char.IsLetterOrDigit(character) && character != '_')
+            {
+                return false;
+            }
+        }
+
+        return arity < 0 || (arity < name.Length - 1 && !name.AsSpan(arity + 1).ContainsAnyExceptInRange('0', '9'));
+    }
+
     /// <summary>Whether a package of this generation maps a XAML namespace, by its simple name.</summary>
     /// <param name="simpleName">The assembly's simple name.</param>
     /// <returns><see langword="true"/> when the package declares one.</returns>

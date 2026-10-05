@@ -83,17 +83,17 @@ public sealed class RealGenerationReclaimTests
 
         ProjectAssemblyContext generation = Generation(fixtures);
         WeakReference<object> subscribed = Create(generation, "SubscribingControl");
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { DesignFixtures.AssemblyName };
+        IReadOnlyCollection<CanonicalPath> built = [fixtures.Output];
 
         Assert.False(await generation.TryReclaimAsync(TestContext.Current.CancellationToken));
         Assert.False(
-            await ProjectAssemblyContext.WaitForPredecessorsAsync(names, TestContext.Current.CancellationToken),
+            await ProjectAssemblyContext.WaitForPredecessorsAsync(built, TestContext.Current.CancellationToken),
             "An unloaded generation still in the process was not seen: AssemblyLoadContext.All does not list one that is unloading.");
 
         Unsubscribe(subscribed);
 
         Assert.True(await generation.TryReclaimAsync(TestContext.Current.CancellationToken));
-        Assert.True(await ProjectAssemblyContext.WaitForPredecessorsAsync(names, TestContext.Current.CancellationToken));
+        Assert.True(await ProjectAssemblyContext.WaitForPredecessorsAsync(built, TestContext.Current.CancellationToken));
     }
 
     [AvaloniaFact]

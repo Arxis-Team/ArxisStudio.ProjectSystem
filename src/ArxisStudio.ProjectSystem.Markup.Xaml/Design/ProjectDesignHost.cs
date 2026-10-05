@@ -474,9 +474,10 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
     /// holds <see cref="_building"/>.
     /// </summary>
     /// <remarks>
-    /// An earlier generation of the same assemblies still in the process — another host's, or one that
-    /// would not go — is waited for first, and when it stays there is no generation: the types it would
-    /// answer for are the successor's, and only a new process shows them.
+    /// An earlier generation of the same assemblies, or of other assemblies declaring the same types, still
+    /// in the process — another host's, or one that would not go — is waited for first, and when it stays
+    /// there is no generation: the types it would answer for are the successor's, and only a new process
+    /// shows them.
     /// </remarks>
     private async Task CreateGenerationAsync(CancellationToken cancellationToken)
     {
@@ -486,7 +487,7 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
         ImmutableArray<ProjectIdentity> set = DesignSetOf(snapshot);
 
         if (!set.IsEmpty
-            && !await ProjectAssemblyContext.WaitForPredecessorsAsync(BuiltNames(snapshot, set), cancellationToken).ConfigureAwait(false))
+            && !await ProjectAssemblyContext.WaitForPredecessorsAsync(Built(snapshot, set), cancellationToken).ConfigureAwait(false))
         {
             lock (_sync)
             {
@@ -519,24 +520,23 @@ public sealed partial class ProjectDesignHost : IAsyncDisposable
         }
     }
 
-    /// <summary>The simple names of the assemblies a design set's projects build.</summary>
-    private static HashSet<string> BuiltNames(SolutionSnapshot snapshot, ImmutableArray<ProjectIdentity> set)
+    /// <summary>The assemblies a design set's projects build.</summary>
+    private static HashSet<CanonicalPath> Built(SolutionSnapshot snapshot, ImmutableArray<ProjectIdentity> set)
     {
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var built = new HashSet<CanonicalPath>();
 
         foreach (ProjectIdentity project in set)
         {
             foreach (RuntimeAssemblyReference assembly in snapshot.GetRuntimeAssemblies(project))
             {
-                if (assembly.Origin is RuntimeAssemblyOrigin.Project or RuntimeAssemblyOrigin.ProjectReference
-                    && System.IO.Path.GetFileNameWithoutExtension(assembly.Path.Value) is { Length: > 0 } name)
+                if (assembly.Origin is RuntimeAssemblyOrigin.Project or RuntimeAssemblyOrigin.ProjectReference)
                 {
-                    names.Add(name);
+                    built.Add(assembly.Path);
                 }
             }
         }
 
-        return names;
+        return built;
     }
 
     /// <summary>Makes the generation, its member resolver and its population, and keeps nothing else of them.</summary>

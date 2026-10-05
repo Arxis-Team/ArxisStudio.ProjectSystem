@@ -69,3 +69,33 @@ The adapter's test runs a button's class constructor, shows and closes a window 
 reclaims its generation once; without the repeated cleanup it answers that the generation stayed — and
 in the studio, where buttons always exist, every form shown on the canvas would have ended its swap in a
 restart.
+
+## Amendment, 2026-10-06: a predecessor of other assemblies that declares the same types
+
+The rule waited for a predecessor of the *same assemblies*, and the runtime compiler resolves more than
+assembly names across the process. A type written against a CLR namespace — `using:App` — is looked up by
+its full name in every assembly the process has loaded, and the first one that declares it answers,
+whatever that assembly is called. ArxisStudio's tests found it. One test held a generation past a swap and
+let go of it as it ended; the next test's generation — another assembly name, the same `App.Badge` — was
+created while the first was still unloading, and its form was built from the first one's `Badge`. Building
+that control wrote its type back into Avalonia's caches, where the second generation's reclaim does not
+look, so the first stayed in the process for good, and every successor of the second showed its `Badge`
+too, each swap reporting its own generation reclaimed. A designer meets the same when a solution follows
+another that declares the same types under another assembly name — a renamed copy — while the first one's
+generation is still in the process.
+
+So the wait also covers every collectible assembly that declares a type the design set's builds declare.
+The types are read from the built files' metadata before anything loads, and a predecessor is asked for
+each by its full name (`Assembly.GetType`), the question the compiler asks. They are the public, top-level
+types whose names a document can write. Every assembly with compiled markup declares the same seven
+helpers of Avalonia's compiler — five internal, such as `CompiledAvaloniaXaml.XamlIlContext`, and two
+public whose names no document can write, `!XamlLoader` and `!AvaloniaResources` — and counting them made
+any two projects one another's predecessors. Over thirty of ArxisStudio's own assemblies and the fixtures'
+build, those seven were the only top-level types any two of them shared. A predecessor that goes is
+waited for, as one of the same assemblies is; one that stays is a restart, `GenerationStillHeld`.
+
+Not compared: one XAML namespace that two assemblies map (`XmlnsDefinition`) to CLR namespaces of
+different names, each declaring a type of the same simple name. The compiler would answer that name from
+the first assembly as well. Seeing it means reading every collectible assembly's mappings on every round,
+and it takes a renamed library that renamed its namespaces and kept its types' names; it is listed in the
+limitations.

@@ -12,11 +12,15 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml.Tests;
 
 /// <summary>
 /// When the generation itself is outlived: the model changed what it is made of, a package it loaded
-/// moved to another file, or another generation of the same assemblies is still in the process.
+/// moved to another file, or another generation of the same assemblies — or of the same types — is still
+/// in the process.
 /// </summary>
 [Collection(FixtureGenerations.Name)]
 public sealed class DesignHostGenerationTests
 {
+    /// <summary>What a test holds of a generation, for as long as it means to.</summary>
+    private static object? _held;
+
     private static WorkspaceIdentity Workspace { get; } = WorkspaceIdentity.New();
 
     [AvaloniaFact]
@@ -145,6 +149,35 @@ public sealed class DesignHostGenerationTests
         }
     }
 
+    [AvaloniaFact]
+    public async Task StartAsync_AGenerationOfOtherAssembliesWithTheSameTypesStillHeld_RequiresARestart()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "arxis-namesake-" + Guid.NewGuid().ToString("N"));
+        ProjectAssemblyContext predecessor = Namesake(folder);
+
+        Hold(predecessor);
+
+        try
+        {
+            Assert.False(await predecessor.TryReclaimAsync(TestContext.Current.CancellationToken));
+
+            await using DesignStand stand = await DesignStand.StartAsync(
+                (_, _) => { },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(ProjectDesignState.RestartRequired, stand.Host.State);
+            Assert.Null(stand.Host.GenerationName);
+        }
+        finally
+        {
+            _held = null;
+
+            Assert.True(await predecessor.TryReclaimAsync(TestContext.Current.CancellationToken));
+
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     /// <summary>A library project that joins the solution, unbuilt: its output is not there.</summary>
     private static ProjectSnapshot Library(DesignFixtures fixtures, WorkspaceIdentity workspace)
     {
@@ -191,6 +224,54 @@ public sealed class DesignHostGenerationTests
 
         return CanonicalPath.Create(path);
     }
+
+    /// <summary>
+    /// A generation of another project, whose build declares one of the fixtures' types under an assembly
+    /// name of its own — a renamed copy of the project, as far as a document's <c>using:</c> can tell.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ProjectAssemblyContext Namesake(string folder)
+    {
+        string name = "Namesake" + Guid.NewGuid().ToString("N");
+        string output = Path.Combine(folder, "bin", name + ".dll");
+        CanonicalPath projectFile = CanonicalPath.Create(Path.Combine(folder, "Namesake.csproj"));
+
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+
+        var assembly = new PersistedAssemblyBuilder(new AssemblyName(name), typeof(object).Assembly);
+        TypeBuilder control = assembly.DefineDynamicModule(name).DefineType(
+            $"{DesignFixtures.Namespace}.FixtureControl", TypeAttributes.Public | TypeAttributes.Class);
+
+        control.DefineDefaultConstructor(MethodAttributes.Public);
+        control.CreateType();
+        assembly.Save(output);
+
+        var project = new ProjectSnapshotBuilder
+        {
+            Identity = ProjectIdentity.Create(Workspace, projectFile),
+            Name = "Namesake",
+            ProjectFilePath = projectFile,
+        };
+
+        project.Outputs.Add(new OutputArtifact { Kind = OutputArtifactKind.Assembly, Path = CanonicalPath.Create(output) });
+
+        var solution = new SolutionSnapshotBuilder
+        {
+            Workspace = Workspace,
+            Name = "Namesake",
+            Request = new WorkspaceLoadRequest { Workspace = Workspace, EntryPointPath = projectFile },
+        };
+
+        solution.Projects.Add(project.ToSnapshot());
+
+        return ProjectAssemblyContext.Create(solution.ToSnapshot(), project.Identity);
+    }
+
+    /// <summary>Holds an instance of the generation's type that has a fixture's name, until the test lets go.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Hold(ProjectAssemblyContext generation) =>
+        _held = Activator.CreateInstance(generation.ResolveProjectAssembly(generation.Project)!
+            .GetType($"{DesignFixtures.Namespace}.FixtureControl", throwOnError: true)!);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ProjectAssemblyContext Generation(DesignFixtures fixtures) =>
