@@ -568,6 +568,14 @@ another affected project builds. A project outside the set — a test project, a
 references — is not built for the designer however its code changes, and the generation does not load
 it.
 
+### An unfinished build is rebuilt whole
+
+A build that left an assembly without the markup its project compiles — what MSBuild does after the
+XAML compiler failed once — is followed by a rebuild of the top projects of it
+([ADR 0036](adr/0036-an-assembly-without-its-compiled-markup-is-rebuilt.md)): a full compile where an
+incremental build would have skipped one. A project that compiles no markup at all, loading it at run
+time, is rebuilt once per host before it is believed.
+
 ### The history of a document does not cross a restart
 
 A restart hands the session over as text: what each document says and what its file held. The undo

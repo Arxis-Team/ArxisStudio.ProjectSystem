@@ -247,6 +247,104 @@ public sealed class DesignHostBuildTests
         Assert.Equal([ProjectOperationKind.Build], stand.Bench.Kinds);
     }
 
+    [AvaloniaFact]
+    public async Task BuildAsync_ABuildThatLeavesTheMarkupUncompiled_IsFollowedByARebuild()
+    {
+        await using DesignStand stand = await DesignStand.StartAsync(Code, TestContext.Current.CancellationToken);
+
+        // What MSBuild does after the markup compiler failed once: the C# compiler's assembly is up to
+        // date, so neither compiler runs, and the build succeeds with an assembly no form can construct.
+        stand.Bench.BuildLeavesMarkupUncompiled = true;
+
+        ProjectDesignBuildResult result = await stand.Host.BuildAsync("a test", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal([ProjectOperationKind.Build, ProjectOperationKind.Rebuild], stand.Bench.Kinds);
+        Assert.Equal([stand.Fixtures.Project(stand.Bench.Workspace.Identity)], stand.Bench.Operations[1].Projects);
+        Assert.Equal("bin/ArxisStudio/", stand.Bench.Operations[1].GlobalProperties["OutputPath"]);
+        Assert.Equal(ProjectOperationStatus.Succeeded, result.Status);
+        Assert.True(ProjectDesignHost.HoldsCompiledMarkup(stand.Fixtures.Output), "the rebuild did not compile the markup");
+
+        // The rebuild rewrote the output, and the swap it starts has to be over before the stand goes:
+        // a generation left mid-swap would be the next test's predecessor.
+        await stand.Host.SwapInFlight.WaitAsync(DesignStand.Patience, TestContext.Current.CancellationToken);
+    }
+
+    [AvaloniaFact]
+    public async Task BuildAsync_ARebuildThatFailsOnTheMarkup_ReportsWhatTheCompilerSaid()
+    {
+        await using DesignStand stand = await DesignStand.StartAsync(Code, TestContext.Current.CancellationToken);
+
+        string? generation = stand.Host.GenerationName;
+
+        stand.Bench.BuildLeavesMarkupUncompiled = true;
+        stand.Bench.FailRebuilds = true;
+
+        ProjectDesignBuildResult result = await stand.Host.BuildAsync("a test", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProjectOperationStatus.Failed, result.Status);
+        Assert.Equal("AVLN2000", Assert.Single(result.Diagnostics).Code);
+        Assert.False(result.TypesChanged);
+        Assert.Equal(generation, stand.Host.GenerationName);
+
+        // The failure is said again on the next build, not swallowed by an up-to-date check.
+        ProjectDesignBuildResult again = await stand.Host.BuildAsync("a test", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProjectOperationStatus.Failed, again.Status);
+        Assert.Equal(
+            [ProjectOperationKind.Build, ProjectOperationKind.Rebuild, ProjectOperationKind.Build, ProjectOperationKind.Rebuild],
+            stand.Bench.Kinds);
+    }
+
+    [AvaloniaFact]
+    public async Task BuildAsync_AProjectThatCompilesNoMarkup_IsRebuiltOnlyOnce()
+    {
+        await using DesignStand stand = await DesignStand.StartAsync(Code, TestContext.Current.CancellationToken);
+
+        stand.Bench.BuildLeavesMarkupUncompiled = true;
+        stand.Bench.RebuildCompilesMarkup = false;
+
+        await stand.Host.BuildAsync("a test", cancellationToken: TestContext.Current.CancellationToken);
+        await stand.Host.SwapInFlight.WaitAsync(DesignStand.Patience, TestContext.Current.CancellationToken);
+        await stand.Host.BuildAsync("a test", cancellationToken: TestContext.Current.CancellationToken);
+        await stand.Host.SwapInFlight.WaitAsync(DesignStand.Patience, TestContext.Current.CancellationToken);
+
+        Assert.Equal([ProjectOperationKind.Build, ProjectOperationKind.Rebuild, ProjectOperationKind.Build], stand.Bench.Kinds);
+    }
+
+    [AvaloniaFact]
+    public async Task StartAsync_AnOutputNewerThanEverythingButWithoutCompiledMarkup_IsRebuiltFirst()
+    {
+        // The state a studio is opened on after a design build stopped on markup: nothing is older than
+        // the output, and nothing in it can be constructed.
+        await using DesignStand stand = await DesignStand.StartAsync(
+            (fixtures, bench) =>
+            {
+                Code(fixtures, bench);
+                fixtures.WriteUncompiledOutput();
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal([ProjectOperationKind.Build, ProjectOperationKind.Rebuild], stand.Bench.Kinds);
+        Assert.Equal(ProjectDesignState.Live, stand.Host.State);
+    }
+
+    [Fact]
+    public void HoldsCompiledMarkup_IsReadFromMetadata()
+    {
+        using var fixtures = new DesignFixtures();
+
+        Assert.True(ProjectDesignHost.HoldsCompiledMarkup(fixtures.Output), "the fixtures' build holds compiled markup");
+
+        fixtures.WriteUncompiledOutput();
+
+        Assert.False(ProjectDesignHost.HoldsCompiledMarkup(fixtures.Output), "an assembly without it was taken for one with it");
+
+        // A file nobody can read as an assembly is not judged, and nothing is rebuilt over it.
+        File.WriteAllText(fixtures.Output.Value, "not an assembly");
+
+        Assert.True(ProjectDesignHost.HoldsCompiledMarkup(fixtures.Output));
+    }
+
     [Fact]
     public void TopsOf_ALibraryChanged_BuildsTheApplicationsThatReferenceIt()
     {

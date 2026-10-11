@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,9 +13,18 @@ namespace ArxisStudio.ProjectSystem.Markup.Xaml;
 /// <summary>The designer's own builds: after a quiet moment, of the top projects of what changed, one at a time.</summary>
 public sealed partial class ProjectDesignHost
 {
+    /// <summary>The namespace Avalonia's XAML compiler emits its types into: <c>!XamlLoader</c>, <c>XamlIlContext</c>.</summary>
+    private const string CompiledMarkupNamespace = "CompiledAvaloniaXaml";
+
     private readonly ITimer _buildTimer;
     private readonly HashSet<ProjectIdentity> _pendingBuild = [];
     private readonly HashSet<ProjectIdentity> _restorePending = [];
+
+    /// <summary>
+    /// Projects whose rebuild succeeded and still compiled no markup: they load theirs another way, and
+    /// rebuilding them again would change nothing (ADR 0036).
+    /// </summary>
+    private readonly HashSet<ProjectIdentity> _compilesNoMarkup = [];
 
     private string? _pendingReason;
     private bool _buildArmed;
@@ -34,6 +45,11 @@ public sealed partial class ProjectDesignHost
     /// Builds take turns, and this one takes over what was waiting for the quiet moment. When it
     /// rewrote what the live generation was loaded from, the generation is to be replaced
     /// (<see cref="ProjectDesignBuildResult.TypesChanged"/>), as soon as nothing holds the swap off.
+    /// </para>
+    /// <para>
+    /// A build that succeeded over an assembly without the markup its project compiles — what MSBuild
+    /// leaves after the XAML compiler failed once — is followed by a rebuild of it, whose status and
+    /// diagnostics the result carries (ADR 0036).
     /// </para>
     /// </remarks>
     /// <param name="reason">Why, for whoever reads the result.</param>
@@ -236,7 +252,10 @@ public sealed partial class ProjectDesignHost
         }
 
         ImmutableArray<ProjectIdentity> set = DesignSetOf(snapshot);
-        ImmutableArray<ProjectIdentity> due = OutOfDate(snapshot, set);
+
+        // An output newer than everything can still be unfinished: a build that stopped on its markup
+        // leaves the compiler's assembly behind, and the next build finds it up to date (ADR 0036).
+        ImmutableArray<ProjectIdentity> due = [.. OutOfDate(snapshot, set).Union(Unfinished(snapshot, set))];
 
         if (!due.IsEmpty)
         {
@@ -293,6 +312,31 @@ public sealed partial class ProjectDesignHost
 
             diagnostics.AddRange(build.Diagnostics);
             status = build.Status;
+        }
+
+        // A build that succeeded can have left an assembly without the markup its project compiles. The
+        // markup compiler runs after the C# compiler and only when it does; when it failed, the next
+        // build finds the C# compiler's assembly up to date, skips both, and succeeds — and every form's
+        // InitializeComponent throws "No precompiled XAML found". A rebuild runs both again, and says
+        // what the markup compiler says until it is answered (ADR 0036).
+        if (status == ProjectOperationStatus.Succeeded && Unfinished(snapshot, affected) is { IsEmpty: false } unfinished)
+        {
+            ProjectOperationResult rebuild = await ExecuteAsync(
+                    snapshot, ProjectOperationKind.Rebuild, TopsOf(snapshot, unfinished, set).Tops, cancellationToken)
+                .ConfigureAwait(false);
+
+            diagnostics.AddRange(rebuild.Diagnostics);
+            status = rebuild.Status;
+
+            if (status == ProjectOperationStatus.Succeeded)
+            {
+                ImmutableArray<ProjectIdentity> still = Unfinished(snapshot, unfinished);
+
+                lock (_sync)
+                {
+                    _compilesNoMarkup.UnionWith(still);
+                }
+            }
         }
 
         bool typesChanged = status == ProjectOperationStatus.Succeeded && GenerationMovedOnDisk();
@@ -480,6 +524,79 @@ public sealed partial class ProjectDesignHost
             {
                 return DateTime.MinValue;
             }
+        }
+    }
+
+    /// <summary>
+    /// The projects among these with markup their built assembly holds no compiled form of — less those
+    /// known to compile none.
+    /// </summary>
+    private ImmutableArray<ProjectIdentity> Unfinished(SolutionSnapshot snapshot, IEnumerable<ProjectIdentity> projects)
+    {
+        HashSet<ProjectIdentity> compilesNone;
+
+        lock (_sync)
+        {
+            compilesNone = [.. _compilesNoMarkup];
+        }
+
+        return
+        [
+            .. projects.Where(identity =>
+                !compilesNone.Contains(identity)
+                && snapshot.TryGetProject(identity, out ProjectSnapshot? project)
+                && LacksCompiledMarkup(project)),
+        ];
+    }
+
+    /// <summary>
+    /// Whether a project has markup and a built assembly that holds nothing Avalonia's XAML compiler
+    /// emits. A project with no output yet is out of date, not unfinished.
+    /// </summary>
+    internal static bool LacksCompiledMarkup(ProjectSnapshot project) =>
+        project.Items.Any(IsMarkupItem)
+        && project.Outputs.FirstOrDefault(static output => output.Kind == OutputArtifactKind.Assembly) is { } output
+        && File.Exists(output.Path.Value)
+        && !HoldsCompiledMarkup(output.Path);
+
+    /// <summary>
+    /// Whether an assembly declares a type of Avalonia's XAML compiler — every assembly it compiled markup
+    /// into has seven, <c>CompiledAvaloniaXaml.!XamlLoader</c> among them — read from its metadata without
+    /// loading it.
+    /// </summary>
+    /// <remarks>
+    /// Shared for reading and writing, so a build writing the file meanwhile is not refused by this. A file
+    /// that cannot be read is not judged: the answer is that it holds the markup, and nothing is rebuilt
+    /// for a question nobody could answer.
+    /// </remarks>
+    internal static bool HoldsCompiledMarkup(CanonicalPath assembly)
+    {
+        try
+        {
+            using var stream = new FileStream(
+                assembly.Value, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var image = new PEReader(stream);
+
+            if (!image.HasMetadata)
+            {
+                return true;
+            }
+
+            MetadataReader reader = image.GetMetadataReader();
+
+            foreach (TypeDefinitionHandle handle in reader.TypeDefinitions)
+            {
+                if (reader.StringComparer.Equals(reader.GetTypeDefinition(handle).Namespace, CompiledMarkupNamespace))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or BadImageFormatException)
+        {
+            return true;
         }
     }
 }

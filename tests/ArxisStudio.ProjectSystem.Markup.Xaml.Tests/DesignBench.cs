@@ -62,6 +62,18 @@ internal sealed class DesignBench : IProjectSystemProvider, IProjectOperationPro
     /// <summary>Gets or sets whether a build rewrites the output, as one that compiled something does.</summary>
     internal bool BuildRewritesOutput { get; set; } = true;
 
+    /// <summary>
+    /// Gets or sets whether a build leaves the output without compiled markup, as one does after the
+    /// markup compiler failed and the C# compiler's assembly was found up to date.
+    /// </summary>
+    internal bool BuildLeavesMarkupUncompiled { get; set; }
+
+    /// <summary>Gets or sets whether a rebuild compiles the markup; one that does not leaves it uncompiled.</summary>
+    internal bool RebuildCompilesMarkup { get; set; } = true;
+
+    /// <summary>Gets or sets whether a rebuild fails, as on markup the compiler rejects.</summary>
+    internal bool FailRebuilds { get; set; }
+
     /// <summary>Gets or sets whether operations park until the test lets them go.</summary>
     internal bool HoldOperations { get; set; }
 
@@ -130,7 +142,8 @@ internal sealed class DesignBench : IProjectSystemProvider, IProjectOperationPro
         ValueTask.FromResult(WorkspaceLoadResult.Success(Snapshot(request)));
 
     /// <inheritdoc />
-    public bool CanExecute(ProjectOperationKind kind) => kind is ProjectOperationKind.Restore or ProjectOperationKind.Build;
+    public bool CanExecute(ProjectOperationKind kind) =>
+        kind is ProjectOperationKind.Restore or ProjectOperationKind.Build or ProjectOperationKind.Rebuild;
 
     /// <inheritdoc />
     public async ValueTask<ProjectOperationResult> ExecuteAsync(
@@ -178,9 +191,36 @@ internal sealed class DesignBench : IProjectSystemProvider, IProjectOperationPro
             return ProjectOperationResult.Succeeded();
         }
 
+        if (request.Kind == ProjectOperationKind.Rebuild)
+        {
+            if (FailRebuilds)
+            {
+                return ProjectOperationResult.Failed(new ProjectDiagnostic(
+                    "AVLN2000", "Unable to resolve suitable regular or attached property IsHoldWithMouseEnabled.", ProjectDiagnosticSeverity.Error));
+            }
+
+            if (RebuildCompilesMarkup)
+            {
+                Fixtures.WriteCompiledOutput();
+            }
+            else
+            {
+                Fixtures.WriteUncompiledOutput();
+            }
+
+            Rewrite(Fixtures.Output);
+
+            return ProjectOperationResult.Succeeded();
+        }
+
         if (FailBuilds)
         {
             return ProjectOperationResult.Failed(new ProjectDiagnostic("CS0103", "The name 'Nothing' does not exist.", ProjectDiagnosticSeverity.Error));
+        }
+
+        if (BuildLeavesMarkupUncompiled)
+        {
+            Fixtures.WriteUncompiledOutput();
         }
 
         if (BuildRewritesOutput)

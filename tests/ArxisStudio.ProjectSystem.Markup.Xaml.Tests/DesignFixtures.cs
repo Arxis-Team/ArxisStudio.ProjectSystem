@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Reflection;
+using System.Reflection.Emit;
 
 namespace ArxisStudio.ProjectSystem.Markup.Xaml.Tests;
 
@@ -50,6 +52,23 @@ internal sealed class DesignFixtures : IDisposable
 
     /// <summary>Gets the project's output, a copy of the fixtures' build.</summary>
     internal CanonicalPath Output => CanonicalPath.Create(Path.Combine(Root, "App", "bin", AssemblyName + ".dll"));
+
+    /// <summary>Writes the fixtures' build over the output again, as a build that compiled the markup writes it.</summary>
+    internal void WriteCompiledOutput() =>
+        File.Copy(Path.Combine(Built, AssemblyName + ".dll"), Output.Value, overwrite: true);
+
+    /// <summary>
+    /// Writes an assembly of the fixtures' name with nothing of Avalonia's XAML compiler in it over the
+    /// output — what a build leaves when the C# compiler ran and the markup compiler did not.
+    /// </summary>
+    internal void WriteUncompiledOutput()
+    {
+        var builder = new PersistedAssemblyBuilder(new AssemblyName(AssemblyName), typeof(object).Assembly);
+        ModuleBuilder module = builder.DefineDynamicModule(AssemblyName);
+
+        module.DefineType(Namespace + ".Uncompiled", TypeAttributes.Public | TypeAttributes.Class).CreateType();
+        builder.Save(Output.Value);
+    }
 
     /// <summary>Gets one of the fixtures' documents, in the project folder.</summary>
     /// <param name="name">The document's file name.</param>
