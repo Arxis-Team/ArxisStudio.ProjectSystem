@@ -83,6 +83,20 @@ public sealed partial class ProjectAssemblyContext
     private readonly Dictionary<ProjectIdentity, string> _outputs;
     private readonly HashSet<string> _xamlPackages;
     private readonly Dictionary<string, CanonicalPath> _packagesLoaded = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// What the runtime XAML compiler emitted for this generation's loads while it loaded nothing — the code its
+    /// forms run — until it is unloaded.
+    /// </summary>
+    /// <remarks>
+    /// A generation that loaded something keeps that code in its context. One that loaded nothing compiles in the
+    /// process, and every scope lets the compiler go (<see cref="EnterLoadScope"/>), which left the code with nothing
+    /// to keep it: a resource a form has not asked for yet is a pointer to the code that builds it, and a pointer keeps
+    /// no assembly alive. Asked once a collection had taken the code, the resource ran freed memory, and the process
+    /// ended rather than the form.
+    /// </remarks>
+    private readonly List<Assembly> _emitted = [];
+
     private readonly Lock _gate = new();
 
     private int _disposed;
@@ -708,6 +722,13 @@ public sealed partial class ProjectAssemblyContext
     /// state is let go of when the scope ends, because state left in the default context outlives every
     /// generation and holds whatever the next one loads. Measured, and recorded in ADR 0020.
     /// </para>
+    /// <para>
+    /// What the compiler emitted is not let go of with it: the generation keeps it until it is unloaded, as
+    /// a context keeps what was emitted into it. The forms the load built run that code, and nothing of
+    /// theirs keeps it — a resource not yet asked for holds a pointer to its builder, not the assembly —
+    /// so let go with the compiler, it was collected under a form that still stood, and the form's first
+    /// look at such a resource ended the process (ADR 0020, amended 2026-10-13).
+    /// </para>
     /// </remarks>
     /// <returns>The scope to dispose when the load is done.</returns>
     /// <exception cref="ObjectDisposedException">This context has been unloaded.</exception>
@@ -722,7 +743,7 @@ public sealed partial class ProjectAssemblyContext
         {
             RuntimeXamlCompiler.EnsureEmittedIn(AssemblyLoadContext.Default);
 
-            return ProcessScope.Instance;
+            return new ProcessScope(this);
         }
 
         RuntimeXamlCompiler.EnsureEmittedIn(context);
@@ -739,14 +760,32 @@ public sealed partial class ProjectAssemblyContext
     }
 
     /// <summary>
-    /// The scope of a generation that loaded nothing: its markup compiles in the default context, and the
-    /// compiler is let go of on the way out.
+    /// The scope of a generation that loaded nothing: its markup compiles in the default context, the
+    /// compiler is let go of on the way out, and what it emitted stays with the generation.
     /// </summary>
-    private sealed class ProcessScope : IDisposable
+    private sealed class ProcessScope(ProjectAssemblyContext generation) : IDisposable
     {
-        public static ProcessScope Instance { get; } = new();
+        public void Dispose()
+        {
+            if (RuntimeXamlCompiler.ResetIfEmittedIn(AssemblyLoadContext.Default) is { } emitted)
+            {
+                generation.Keep(emitted);
+            }
+        }
+    }
 
-        public void Dispose() => RuntimeXamlCompiler.ResetIfEmittedIn(AssemblyLoadContext.Default);
+    /// <summary>Keeps what the compiler emitted for a load of this generation, until it is unloaded.</summary>
+    /// <param name="emitted">The compiler's dynamic assembly the load ran in.</param>
+    private void Keep(Assembly emitted)
+    {
+        lock (_gate)
+        {
+            // A load that ends after the generation went keeps nothing: what it built goes with it.
+            if (_context is not null && !_emitted.Contains(emitted))
+            {
+                _emitted.Add(emitted);
+            }
+        }
     }
 
     /// <summary>The runtime compiler's static state, reached the only way it can be.</summary>
@@ -805,7 +844,11 @@ public sealed partial class ProjectAssemblyContext
         /// a successor's scope yet, so the compiler's own dynamic assembly is still the dying
         /// generation's and roots it all by itself.
         /// </remarks>
-        internal static void ResetIfEmittedIn(AssemblyLoadContext dying)
+        /// <returns>
+        /// The dynamic assembly the compiler held and no longer does, for whoever runs its code to keep;
+        /// <see langword="null"/> when its state lived elsewhere or was not there.
+        /// </returns>
+        internal static Assembly? ResetIfEmittedIn(AssemblyLoadContext dying)
         {
             lock (Sync)
             {
@@ -813,14 +856,18 @@ public sealed partial class ProjectAssemblyContext
                 {
                     if (field.Name == "_sreAsm" && field.GetValue(null) is Assembly emitted)
                     {
-                        if (ReferenceEquals(AssemblyLoadContext.GetLoadContext(emitted), dying))
+                        if (!ReferenceEquals(AssemblyLoadContext.GetLoadContext(emitted), dying))
                         {
-                            Reset();
+                            return null;
                         }
 
-                        return;
+                        Reset();
+
+                        return emitted;
                     }
                 }
+
+                return null;
             }
         }
 
@@ -851,6 +898,9 @@ public sealed partial class ProjectAssemblyContext
         lock (_gate)
         {
             _resolved.Clear();
+
+            // The code of a generation that loaded nothing goes with it, as a context's goes with the context.
+            _emitted.Clear();
 
             context = _context;
 

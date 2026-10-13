@@ -83,3 +83,30 @@ the compiler's state is cleared again when that scope ends, because state left i
 outlives every generation, and the next one is what it would hold. A generation that loaded anything
 is entered as before. The adapter's test compiles markup in the scope of a generation of nothing and
 reclaims it; without the check it answers that the generation stayed.
+
+## Amendment, 2026-10-13: what a generation of nothing compiled stays with it
+
+Clearing the compiler's state let go of more than the state. A designer asking a form loaded under a
+generation of nothing for one of its resources took the process down with an access violation: the
+user interface thread executed an address in freed memory. A dump showed the call — Avalonia's
+`PointerDeferredContent<T>`, the deferred value of a keyed resource nobody had asked for yet, calling
+its builder. The builder is a function pointer into the compiler's dynamic assembly, and a pointer
+keeps no assembly alive. In the default context that assembly is collectible and its own; once the
+scope cleared the compiler's fields, nothing referred to it, and a collection took it while the form
+it had built still stood. Any first look at such a resource — a style's pointer-over state, a tool
+reading what the form declares — then ran freed memory, and it was the process that ended, not the
+form. A generation that loaded something never had the hole: its dynamic assembly lives in its
+context, and the context stays until the generation is unloaded.
+
+So the scope of a generation that loaded nothing hands the assembly it lets the compiler go of to the
+generation, which keeps it until it is disposed — the lifetime a context gives the code emitted into
+it. The compiler's state is still cleared when every such scope ends, for the reason above.
+
+- A generation of nothing keeps one dynamic assembly per load: each scope re-initialises the
+  compiler, so each load emits its support types again. That is memory a broken build accumulates
+  while it is edited, given back when the first successful build replaces the generation, or when the
+  solution closes.
+- The adapter's test loads a form with a resource it does not ask for, collects, and asks. It checks
+  the code first, through a weak reference — without the hand-over the code is gone while the form
+  stands, and asking would end the test process rather than fail the test — and then that the code
+  goes once the generation is reclaimed.

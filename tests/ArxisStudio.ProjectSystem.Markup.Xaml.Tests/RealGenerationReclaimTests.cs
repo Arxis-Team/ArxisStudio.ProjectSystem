@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -135,13 +137,7 @@ public sealed class RealGenerationReclaimTests
     {
         using var fixtures = new DesignFixtures();
 
-        // A project whose build is not there — the first design build failed — makes a generation of
-        // nothing. Its documents still compile, of the controls Avalonia itself has.
-        ProjectAssemblyContext generation = ProjectAssemblyContext.Create(
-            fixtures.Snapshot(
-                new WorkspaceLoadRequest { Workspace = Workspace, EntryPointPath = fixtures.ProjectFile },
-                static project => project.Outputs.Clear()),
-            fixtures.Project(Workspace));
+        ProjectAssemblyContext generation = Nothing(fixtures);
 
         CompileInItsScope(generation);
 
@@ -149,6 +145,23 @@ public sealed class RealGenerationReclaimTests
             await generation.TryReclaimAsync(TestContext.Current.CancellationToken),
             "A generation that loaded nothing stayed once markup was compiled in its scope: a context whose only assembly is "
                 + "the compiler's dynamic one is never unloaded.");
+    }
+
+    [AvaloniaFact]
+    public async Task EnterLoadScope_AGenerationThatLoadedNothing_KeepsTheCodeItsFormsRunUntilItGoes()
+    {
+        using var fixtures = new DesignFixtures();
+
+        ProjectAssemblyContext generation = Nothing(fixtures);
+        WeakReference[] code = AskWhatTheFormDidNotAskAtOnce(generation);
+
+        Assert.True(await generation.TryReclaimAsync(TestContext.Current.CancellationToken));
+
+        Collect();
+
+        Assert.False(
+            Array.Exists(code, static trace => trace.IsAlive),
+            "The code a generation's forms ran outlived the generation: what it keeps for them, it lets go of when it goes.");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -160,6 +173,87 @@ public sealed class RealGenerationReclaimTests
                 "<Border xmlns='https://github.com/avaloniaui'><Button Content='Hello' /></Border>");
         }
     }
+
+    /// <summary>
+    /// Loads a form in the generation's scope with a resource nobody asks for while it loads, collects, and asks for it
+    /// then — the way a style asks the first time its control is pointed at.
+    /// </summary>
+    /// <returns>The code the load emitted, weakly.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference[] AskWhatTheFormDidNotAskAtOnce(ProjectAssemblyContext generation)
+    {
+        // Whatever compiled in the process earlier left the compiler there; an empty scope lets it go, so the load's code
+        // is an assembly of its own.
+        generation.EnterLoadScope().Dispose();
+
+        Assembly[] before = AppDomain.CurrentDomain.GetAssemblies();
+        var form = new UserControl();
+
+        using (generation.EnterLoadScope())
+        {
+            // As a designer's session loads a form: into a root it made, in design mode.
+            _ = Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader.Load(
+                new Avalonia.Markup.Xaml.RuntimeXamlLoaderDocument(
+                    new Uri("avares://Fixture/Late.axaml"),
+                    form,
+                    "<UserControl xmlns='https://github.com/avaloniaui' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>"
+                        + "<UserControl.Resources><SolidColorBrush x:Key='Late' Color='Red' /></UserControl.Resources>"
+                        + "</UserControl>"),
+                new Avalonia.Markup.Xaml.RuntimeXamlLoaderConfiguration { DesignMode = true });
+        }
+
+        WeakReference[] code = EmittedSince(before);
+
+        Assert.NotEmpty(code);
+
+        Collect();
+
+        // A resource nobody has asked for is a pointer to the code that builds it, and a pointer keeps no assembly alive:
+        // asked once that code went, it runs freed memory and ends the process instead of failing a test.
+        Assert.True(
+            Array.TrueForAll(code, static trace => trace.IsAlive),
+            "The code a form's markup compiled into went while the form stayed: the scope let the compiler go, and nothing "
+                + "kept what it had emitted.");
+        Assert.True(form.TryGetResource("Late", null, out object? brush));
+        Assert.IsType<Avalonia.Media.SolidColorBrush>(brush);
+
+        return code;
+    }
+
+    /// <summary>The collectible assemblies emitted since <paramref name="before"/>, weakly.</summary>
+    /// <remarks>
+    /// A method of its own, not inlined: the list of the process's assemblies it asks for holds the new ones, and a frame
+    /// run once keeps every temporary of it alive until it returns.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference[] EmittedSince(Assembly[] before) =>
+    [
+        .. AppDomain.CurrentDomain.GetAssemblies()
+            .Except(before)
+            .Where(static assembly => assembly.IsDynamic && assembly.IsCollectible)
+            .Select(static assembly => new WeakReference(assembly)),
+    ];
+
+    private static void Collect()
+    {
+        for (var round = 0; round < 8; round++)
+        {
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+        }
+    }
+
+    /// <summary>
+    /// A generation of a project whose build is not there — the first design build failed — which loads nothing. Its
+    /// documents still compile, of the controls Avalonia itself has.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ProjectAssemblyContext Nothing(DesignFixtures fixtures) =>
+        ProjectAssemblyContext.Create(
+            fixtures.Snapshot(
+                new WorkspaceLoadRequest { Workspace = Workspace, EntryPointPath = fixtures.ProjectFile },
+                static project => project.Outputs.Clear()),
+            fixtures.Project(Workspace));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ProjectAssemblyContext Generation(DesignFixtures fixtures) =>
